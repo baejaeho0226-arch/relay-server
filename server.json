@@ -1,28 +1,60 @@
-// npm install socket.io
-const io = require("socket.io")(3000, {
-    cors: { origin: "*" }
+const express = require('express');
+const cors = require('cors');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const commands = {};
+const notifies = {};
+
+app.get('/', (req, res) => {
+    res.send('Relay Server is Running!');
 });
 
-console.log("=== RELAY SERVER RUNNING ON PORT 3000 ===");
+app.post('/send_command', (req, res) => {
+    const { roomId, command } = req.body;
+    if (roomId && command) {
+        commands[roomId] = command;
+        console.log(`[>] Command '${command}' stored for room: ${roomId}`);
+        return res.status(200).send({ status: 'ok' });
+    }
+    res.status(400).send({ error: 'invalid data' });
+});
 
-io.on("connection", (socket) => {
-    // 1. C++ 또는 앱이 방에 입장
-    socket.on("join_room", (roomId) => {
-        socket.join(roomId);
-        console.log(`[+] Device joined room: ${roomId}`);
-    });
+app.get('/poll', (req, res) => {
+    const roomId = req.query.roomId;
+    if (roomId && commands[roomId]) {
+        const cmd = commands[roomId];
+        delete commands[roomId];
+        console.log(`[<] Command '${cmd}' consumed by C++ from room: ${roomId}`);
+        return res.send(cmd);
+    }
+    res.send('');
+});
 
-    // 2. 앱 -> C++ 신호 전달 ("1" 보내기)
-    socket.on("send_command", (data) => {
-        // data = { roomId: "ROOM_1234", command: "1" }
-        io.to(data.roomId).emit("receive_command", data.command);
-        console.log(`[>] Command '${data.command}' sent to room: ${data.roomId}`);
-    });
+app.post('/send_notify', (req, res) => {
+    const { roomId, message } = req.body;
+    if (roomId && message) {
+        notifies[roomId] = message;
+        console.log(`[>] Notify '${message}' stored for room: ${roomId}`);
+        return res.status(200).send({ status: 'ok' });
+    }
+    res.status(400).send({ error: 'invalid data' });
+});
 
-    // 3. C++ -> 앱 알림 전달 ("2" 보내기)
-    socket.on("send_notify", (data) => {
-        // data = { roomId: "ROOM_1234", message: "2" }
-        io.to(data.roomId).emit("receive_notify", data.message);
-        console.log(`[<] Notify '${data.message}' sent to room: ${data.roomId}`);
-    });
+app.get('/poll_notify', (req, res) => {
+    const roomId = req.query.roomId;
+    if (roomId && notifies[roomId]) {
+        const msg = notifies[roomId];
+        delete notifies[roomId];
+        console.log(`[<] Notify '${msg}' consumed by App from room: ${roomId}`);
+        return res.send(msg);
+    }
+    res.send('');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`=== RELAY SERVER RUNNING ON PORT ${PORT} ===`);
 });
