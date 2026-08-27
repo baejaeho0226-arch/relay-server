@@ -4,264 +4,289 @@ const cors = require('cors');
 const crypto = require('crypto');
 
 const app = express();
+const server = http.createServer(app);
+
 app.use(cors());
 app.use(express.json());
 
-const server = http.createServer(app);
+const PORT = process.env.PORT || 3000;
+const API_TOKEN = process.env.API_TOKEN || '';
 
-const commands = {};
-const notifies = {};
+const SERVER_ID = 'SERVER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
 
-const servers = {};
 const clients = {};
+const values = {};
 
-const API_TOKEN = process.env.API_TOKEN || 'CHANGE_THIS_TOKEN';
-
-const SERVER_TIMEOUT = 30000;
-const CLIENT_TIMEOUT = 30000;
-
-function CheckAuth(req, res) {
-    const token = req.headers['x-api-token'];
-
-    if (!token || token !== API_TOKEN) {
-        res.status(401).send({
-            error: 'unauthorized'
+function CheckToken(req, res, next) {
+    if (API_TOKEN === '') {
+        return res.status(500).json({
+            error: 'API_TOKEN_NOT_CONFIGURED'
         });
-
-        return false;
     }
 
-    return true;
-}
+    const Token = req.headers['x-api-token'];
 
-function CreateID(prefix) {
-    return prefix + '-' + crypto.randomBytes(6).toString('hex').toUpperCase();
-}
-
-function Cleanup() {
-    const now = Date.now();
-
-    for (const id in servers) {
-        if (now - servers[id].lastSeen > SERVER_TIMEOUT) {
-            delete servers[id];
-        }
+    if (Token !== API_TOKEN) {
+        return res.status(401).json({
+            error: 'UNAUTHORIZED'
+        });
     }
 
-    for (const id in clients) {
-        if (now - clients[id].lastSeen > CLIENT_TIMEOUT) {
-            delete clients[id];
-        }
-    }
+    next();
 }
 
-setInterval(Cleanup, 10000);
+function CreateClientID() {
+    let ClientID;
+
+    do {
+        ClientID =
+            'CLIENT-' +
+            crypto.randomBytes(6).toString('hex').toUpperCase();
+    } while (clients[ClientID]);
+
+    return ClientID;
+}
 
 app.get('/', (req, res) => {
     res.send('Relay Server is Running 24/7!');
 });
 
-app.post('/register_server', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
+app.get('/server_info', CheckToken, (req, res) => {
+    res.json({
+        status: 'ok',
+        serverId: SERVER_ID
+    });
+});
 
-    const serverId = CreateID('SERVER');
+app.post('/register_client', CheckToken, (req, res) => {
+    const ClientID = CreateClientID();
 
-    servers[serverId] = {
+    clients[ClientID] = {
+        connectedServer: '',
+        connected: false,
+        createdAt: Date.now(),
         lastSeen: Date.now()
     };
 
-    res.send({
+    res.json({
         status: 'ok',
-        serverId: serverId
+        clientId: ClientID
     });
 });
 
-app.post('/heartbeat_server', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
-
-    const { serverId } = req.body;
-
-    if (!serverId || !servers[serverId]) {
-        res.status(404).send({
-            error: 'server_not_found'
-        });
-
-        return;
-    }
-
-    servers[serverId].lastSeen = Date.now();
-
-    res.send({
-        status: 'ok'
-    });
-});
-
-app.get('/servers', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
-
-    Cleanup();
-
-    const list = Object.keys(servers);
-
-    res.send({
-        servers: list
-    });
-});
-
-app.post('/register_client', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
-
-    const clientId = CreateID('CLIENT');
-
-    clients[clientId] = {
-        lastSeen: Date.now(),
-        serverId: ''
-    };
-
-    res.send({
-        status: 'ok',
-        clientId: clientId
-    });
-});
-
-app.post('/connect_client', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
-
+app.post('/connect_client', CheckToken, (req, res) => {
     const { clientId, serverId } = req.body;
 
-    if (!clientId || !clients[clientId]) {
-        res.status(404).send({
-            error: 'client_not_found'
+    if (!clientId || !serverId) {
+        return res.status(400).json({
+            error: 'INVALID_DATA'
         });
-
-        return;
     }
 
-    if (!serverId || !servers[serverId]) {
-        res.status(404).send({
-            error: 'server_not_found'
+    if (serverId !== SERVER_ID) {
+        return res.status(404).json({
+            error: 'SERVER_NOT_FOUND'
         });
-
-        return;
     }
 
-    clients[clientId].serverId = serverId;
+    if (!clients[clientId]) {
+        return res.status(404).json({
+            error: 'CLIENT_NOT_FOUND'
+        });
+    }
+
+    clients[clientId].connectedServer = serverId;
+    clients[clientId].connected = true;
     clients[clientId].lastSeen = Date.now();
 
-    res.send({
+    res.json({
+        status: 'ok',
+        serverId: SERVER_ID,
+        clientId: clientId,
+        connected: true
+    });
+});
+
+app.post('/send_command', CheckToken, (req, res) => {
+    const { roomId, command, message, clientId } = req.body;
+
+    const Value = command !== undefined
+        ? String(command)
+        : message !== undefined
+            ? String(message)
+            : '';
+
+    if (!roomId || Value === '') {
+        return res.status(400).json({
+            error: 'INVALID_DATA'
+        });
+    }
+
+    if (clientId) {
+        if (!clients[clientId]) {
+            return res.status(404).json({
+                error: 'CLIENT_NOT_FOUND'
+            });
+        }
+
+        if (
+            clients[clientId].connectedServer !== roomId ||
+            !clients[clientId].connected
+        ) {
+            return res.status(403).json({
+                error: 'CLIENT_NOT_CONNECTED'
+            });
+        }
+
+        clients[clientId].lastSeen = Date.now();
+
+        if (!values[roomId]) {
+            values[roomId] = {};
+        }
+
+        values[roomId][clientId] = Value;
+    } else {
+        if (!values[roomId]) {
+            values[roomId] = {};
+        }
+
+        values[roomId].broadcast = Value;
+    }
+
+    res.json({
         status: 'ok'
     });
 });
 
-app.post('/heartbeat_client', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
+app.get('/poll', CheckToken, (req, res) => {
+    const { roomId, clientId } = req.query;
 
+    if (!roomId) {
+        return res.status(400).send('');
+    }
+
+    if (clientId) {
+        if (!clients[clientId]) {
+            return res.status(404).send('');
+        }
+
+        if (
+            clients[clientId].connectedServer !== roomId ||
+            !clients[clientId].connected
+        ) {
+            return res.status(403).send('');
+        }
+
+        clients[clientId].lastSeen = Date.now();
+
+        if (
+            values[roomId] &&
+            values[roomId][clientId] !== undefined
+        ) {
+            const Value = values[roomId][clientId];
+
+            delete values[roomId][clientId];
+
+            return res.send(Value);
+        }
+
+        return res.send('');
+    }
+
+    if (
+        values[roomId] &&
+        values[roomId].broadcast !== undefined
+    ) {
+        const Value = values[roomId].broadcast;
+
+        delete values[roomId].broadcast;
+
+        return res.send(Value);
+    }
+
+    res.send('');
+});
+
+app.post('/disconnect_client', CheckToken, (req, res) => {
     const { clientId } = req.body;
 
-    if (!clientId || !clients[clientId]) {
-        res.status(404).send({
-            error: 'client_not_found'
+    if (!clientId) {
+        return res.status(400).json({
+            error: 'INVALID_DATA'
         });
-
-        return;
     }
 
+    if (!clients[clientId]) {
+        return res.status(404).json({
+            error: 'CLIENT_NOT_FOUND'
+        });
+    }
+
+    clients[clientId].connected = false;
+    clients[clientId].connectedServer = '';
     clients[clientId].lastSeen = Date.now();
 
-    res.send({
+    res.json({
         status: 'ok'
     });
 });
 
-app.post('/send_command', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
-
-    const { roomId, command, message } = req.body;
-
-    const val = command || message;
-
-    if (!roomId || !val) {
-        res.status(400).send({
-            error: 'invalid_data'
-        });
-
-        return;
-    }
-
-    commands[roomId] = String(val);
-
-    res.send({
-        status: 'ok'
-    });
-});
-
-app.get('/poll', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
-
-    const roomId = req.query.roomId;
-
-    if (roomId && commands[roomId]) {
-        const value = commands[roomId];
-
-        delete commands[roomId];
-
-        res.send(value);
-
-        return;
-    }
-
-    res.send('');
-});
-
-app.post('/send_notify', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
-
+app.post('/send_notify', CheckToken, (req, res) => {
     const { roomId, message } = req.body;
 
-    if (!roomId || !message) {
-        res.status(400).send({
-            error: 'invalid_data'
+    if (!roomId || message === undefined) {
+        return res.status(400).json({
+            error: 'INVALID_DATA'
         });
-
-        return;
     }
 
-    notifies[roomId] = String(message);
+    if (!values[roomId]) {
+        values[roomId] = {};
+    }
 
-    res.send({
+    values[roomId].notify = String(message);
+
+    res.json({
         status: 'ok'
     });
 });
 
-app.get('/poll_notify', (req, res) => {
-    if (!CheckAuth(req, res))
-        return;
+app.get('/poll_notify', CheckToken, (req, res) => {
+    const { roomId } = req.query;
 
-    const roomId = req.query.roomId;
+    if (!roomId) {
+        return res.status(400).send('');
+    }
 
-    if (roomId && notifies[roomId]) {
-        const value = notifies[roomId];
+    if (
+        values[roomId] &&
+        values[roomId].notify !== undefined
+    ) {
+        const Message = values[roomId].notify;
 
-        delete notifies[roomId];
+        delete values[roomId].notify;
 
-        res.send(value);
-
-        return;
+        return res.send(Message);
     }
 
     res.send('');
 });
 
-const PORT = process.env.PORT || 3000;
+setInterval(() => {
+    const Now = Date.now();
+
+    Object.keys(clients).forEach((ClientID) => {
+        if (
+            Now - clients[ClientID].lastSeen >
+            5 * 60 * 1000
+        ) {
+            delete clients[ClientID];
+        }
+    });
+}, 60000);
 
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log('Relay Server is Running');
+    console.log('PORT:', PORT);
+    console.log('SERVER ID:', SERVER_ID);
 });
