@@ -199,99 +199,62 @@ app.get(
 ====================================================
 */
 
-app.post(
-    '/send_number',
-    checkToken,
-    (req, res) => {
+app.post('/send_number', checkToken, (req, res) => {
+    const serverId = String(
+        req.body.serverId || ''
+    ).trim();
 
-        const serverId =
-            String(
-                req.body.serverId || ''
-            ).trim();
+    const number = req.body.number;
 
-        const clientId =
-            String(
-                req.body.clientId || ''
-            ).trim();
-
-        const number =
-            req.body.number;
-
-        if (!serverId) {
-            return res.status(400).json({
-                error:
-                    'missing serverId'
-            });
-        }
-
-        if (!clientId) {
-            return res.status(400).json({
-                error:
-                    'missing clientId'
-            });
-        }
-
-        if (
-            number === undefined ||
-            number === null
-        ) {
-            return res.status(400).json({
-                error:
-                    'missing number'
-            });
-        }
-
-        const serverInfo =
-            servers[serverId];
-
-        if (!serverInfo) {
-            return res.status(404).json({
-                error:
-                    'server not found'
-            });
-        }
-
-        if (
-            !isServerAlive(
-                serverInfo
-            )
-        ) {
-            return res.status(503).json({
-                error:
-                    'server offline'
-            });
-        }
-
-        const numberText =
-            String(number).trim();
-
-        if (
-            numberText === '' ||
-            !/^-?\d+$/.test(
-                numberText
-            )
-        ) {
-            return res.status(400).json({
-                error:
-                    'number only'
-            });
-        }
-
-        clients[clientId] = {
-            clientId: clientId,
-            serverId: serverId,
-            lastSeen: Date.now()
-        };
-
-        serverInfo.value =
-            numberText;
-
-        res.status(200).json({
-            status: 'ok'
+    if (!serverId) {
+        return res.status(400).json({
+            error: 'missing serverId'
         });
     }
-);
 
+    if (
+        number === undefined ||
+        number === null
+    ) {
+        return res.status(400).json({
+            error: 'missing number'
+        });
+    }
+
+    const serverInfo =
+        servers[serverId];
+
+    if (!serverInfo) {
+        return res.status(404).json({
+            error: 'server not found'
+        });
+    }
+
+    if (!isServerAlive(serverInfo)) {
+        return res.status(503).json({
+            error: 'server offline'
+        });
+    }
+
+    const numberText =
+        String(number).trim();
+
+    if (
+        numberText === '' ||
+        !/^-?\d+$/.test(numberText)
+    ) {
+        return res.status(400).json({
+            error: 'number only'
+        });
+    }
+
+    serverInfo.value =
+        numberText;
+
+    res.status(200).json({
+        status: 'ok'
+    });
+});
 
 /*
 ====================================================
