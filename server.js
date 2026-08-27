@@ -10,92 +10,142 @@ app.use(cors());
 app.use(express.json());
 
 const API_TOKEN = process.env.API_TOKEN || 'Relay_2026_X7pK29mQ8zL4';
-const SERVER_ID = process.env.SERVER_ID || 'SERVER-D6EB849D4436';
 
-const clients = {};
+const SERVER_TIMEOUT = 15000;
+
+let activeServer = null;
 const queues = {};
+const clients = {};
 
 function CheckToken(req, res, next) {
     const token = req.headers['x-api-token'];
 
     if (token !== API_TOKEN) {
-        return res.status(401).json({
-            error: 'INVALID_TOKEN'
-        });
+        return res.status(401).send('INVALID_TOKEN');
     }
 
     next();
+}
+
+function GenerateServerID() {
+    return 'SERVER-' +
+        crypto.randomBytes(6).toString('hex').toUpperCase();
+}
+
+function GenerateClientID() {
+    return 'CLIENT-' +
+        crypto.randomBytes(8).toString('hex').toUpperCase();
 }
 
 app.get('/', (req, res) => {
     res.send('Relay Server is Running 24/7!');
 });
 
-app.get('/server_info', CheckToken, (req, res) => {
-    res.json({
-        serverId: SERVER_ID
-    });
+app.post('/server/register', CheckToken, (req, res) => {
+    const now = Date.now();
+
+    if (
+        activeServer &&
+        now - activeServer.lastSeen < SERVER_TIMEOUT
+    ) {
+        return res.status(409).send('SERVER_ALREADY_RUNNING');
+    }
+
+    const serverId = GenerateServerID();
+
+    activeServer = {
+        id: serverId,
+        lastSeen: now
+    };
+
+    queues[serverId] = [];
+
+    res.type('text/plain');
+    res.send(serverId);
+});
+
+app.post('/server/heartbeat', CheckToken, (req, res) => {
+    const serverId = String(
+        req.body.serverId || ''
+    ).trim();
+
+    if (
+        !activeServer ||
+        activeServer.id !== serverId
+    ) {
+        return res.status(404).send('SERVER_NOT_FOUND');
+    }
+
+    activeServer.lastSeen = Date.now();
+
+    res.send('OK');
 });
 
 app.post('/connect', CheckToken, (req, res) => {
-    const serverId = req.body.serverId;
-    const clientId = req.body.clientId;
+    const clientId = String(
+        req.body.clientId || ''
+    ).trim();
 
-    if (!serverId || !clientId) {
-        return res.status(400).json({
-            error: 'INVALID_DATA'
-        });
+    if (clientId === '') {
+        return res.status(400).send('INVALID_CLIENT');
     }
 
-    if (serverId !== SERVER_ID) {
-        return res.status(404).json({
-            error: 'SERVER_NOT_FOUND'
-        });
+    if (
+        !activeServer ||
+        Date.now() - activeServer.lastSeen >= SERVER_TIMEOUT
+    ) {
+        activeServer = null;
+        return res.status(503).send('SERVER_OFFLINE');
     }
 
     clients[clientId] = {
-        serverId: serverId,
-        connectedAt: Date.now()
+        serverId: activeServer.id,
+        lastSeen: Date.now()
     };
 
-    if (!queues[serverId]) {
-        queues[serverId] = [];
-    }
-
-    res.json({
-        status: 'connected',
-        serverId: SERVER_ID,
-        clientId: clientId
-    });
+    res.type('text/plain');
+    res.send(activeServer.id);
 });
 
 app.post('/send_number', CheckToken, (req, res) => {
-    const serverId = req.body.serverId;
-    const clientId = req.body.clientId;
-    const number = String(req.body.number || '').trim();
+    const serverId = String(
+        req.body.serverId || ''
+    ).trim();
 
-    if (!serverId || !clientId || !number) {
-        return res.status(400).json({
-            error: 'INVALID_DATA'
-        });
+    const clientId = String(
+        req.body.clientId || ''
+    ).trim();
+
+    const number = String(
+        req.body.number || ''
+    ).trim();
+
+    if (
+        serverId === '' ||
+        clientId === '' ||
+        number === ''
+    ) {
+        return res.status(400).send('INVALID_DATA');
     }
 
-    if (serverId !== SERVER_ID) {
-        return res.status(404).json({
-            error: 'SERVER_NOT_FOUND'
-        });
+    if (
+        !activeServer ||
+        activeServer.id !== serverId ||
+        Date.now() - activeServer.lastSeen >= SERVER_TIMEOUT
+    ) {
+        return res.status(503).send('SERVER_OFFLINE');
     }
 
     if (!clients[clientId]) {
-        return res.status(403).json({
-            error: 'CLIENT_NOT_CONNECTED'
-        });
+        return res.status(403).send('CLIENT_NOT_CONNECTED');
+    }
+
+    if (clients[clientId].serverId !== serverId) {
+        return res.status(403).send('CLIENT_SERVER_MISMATCH');
     }
 
     if (!/^-?\d+$/.test(number)) {
-        return res.status(400).json({
-            error: 'NUMBER_ONLY'
-        });
+        return res.status(400).send('NUMBER_ONLY');
     }
 
     if (!queues[serverId]) {
@@ -108,36 +158,44 @@ app.post('/send_number', CheckToken, (req, res) => {
         time: Date.now()
     });
 
-    res.json({
-        status: 'ok'
-    });
+    clients[clientId].lastSeen = Date.now();
+
+    res.send('OK');
 });
 
 app.get('/poll_number', CheckToken, (req, res) => {
-    const serverId = req.query.serverId;
+    const serverId = String(
+        req.query.serverId || ''
+    ).trim();
 
-    if (!serverId) {
-        return res.status(400).send('');
+    if (
+        !activeServer ||
+        activeServer.id !== serverId ||
+        Date.now() - activeServer.lastSeen >= SERVER_TIMEOUT
+    ) {
+        return res.status(503).send('');
     }
 
-    if (serverId !== SERVER_ID) {
-        return res.status(404).send('');
-    }
-
-    if (!queues[serverId] || queues[serverId].length === 0) {
+    if (
+        !queues[serverId] ||
+        queues[serverId].length === 0
+    ) {
         return res.send('');
     }
 
-    const item = queues[serverId].shift();
+    const item =
+        queues[serverId].shift();
 
     res.type('text/plain');
     res.send(item.number);
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+    process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log('Relay Server started');
-    console.log('SERVER-ID: ' + SERVER_ID);
-    console.log('PORT: ' + PORT);
+    console.log(
+        'Relay Server started on port ' +
+        PORT
+    );
 });
