@@ -122,33 +122,10 @@ app.post(
     }
 );
 
-app.post(
-    '/connect',
+app.get(
+    '/server/current',
     checkToken,
     (req, res) => {
-        const clientId =
-            String(
-                req.headers['x-client-id'] ||
-                req.query.clientId ||
-                (
-                    req.body &&
-                    req.body.clientId
-                ) ||
-                ''
-            ).trim();
-
-        console.log(
-            '[CONNECT]',
-            'clientId =',
-            clientId
-        );
-
-        if (!clientId) {
-            return res.status(400).json({
-                error: 'missing clientId'
-            });
-        }
-
         let selectedServer = null;
 
         for (
@@ -172,23 +149,10 @@ app.post(
 
         if (!selectedServer) {
             return res.status(503).json({
-                error: 'no server available'
+                error:
+                    'no server available'
             });
         }
-
-        clients[clientId] = {
-            clientId: clientId,
-            serverId:
-                selectedServer.serverId,
-            lastSeen: Date.now()
-        };
-
-        console.log(
-            '[CLIENT CONNECT]',
-            clientId,
-            '->',
-            selectedServer.serverId
-        );
 
         res.status(200).send(
             selectedServer.serverId
@@ -215,13 +179,15 @@ app.post(
 
         if (!serverId) {
             return res.status(400).json({
-                error: 'missing serverId'
+                error:
+                    'missing serverId'
             });
         }
 
         if (!clientId) {
             return res.status(400).json({
-                error: 'missing clientId'
+                error:
+                    'missing clientId'
             });
         }
 
@@ -230,7 +196,8 @@ app.post(
             number === null
         ) {
             return res.status(400).json({
-                error: 'missing number'
+                error:
+                    'missing number'
             });
         }
 
@@ -239,7 +206,8 @@ app.post(
 
         if (!serverInfo) {
             return res.status(404).json({
-                error: 'server not found'
+                error:
+                    'server not found'
             });
         }
 
@@ -249,26 +217,8 @@ app.post(
             )
         ) {
             return res.status(503).json({
-                error: 'server offline'
-            });
-        }
-
-        const clientInfo =
-            clients[clientId];
-
-        if (!clientInfo) {
-            return res.status(403).json({
-                error: 'client not connected'
-            });
-        }
-
-        if (
-            clientInfo.serverId !==
-            serverId
-        ) {
-            return res.status(403).json({
                 error:
-                    'client/server mismatch'
+                    'server offline'
             });
         }
 
@@ -282,24 +232,19 @@ app.post(
             )
         ) {
             return res.status(400).json({
-                error: 'number only'
+                error:
+                    'number only'
             });
         }
 
+        clients[clientId] = {
+            clientId: clientId,
+            serverId: serverId,
+            lastSeen: Date.now()
+        };
+
         serverInfo.value =
             numberText;
-
-        clientInfo.lastSeen =
-            Date.now();
-
-        console.log(
-            '[NUMBER]',
-            clientId,
-            '->',
-            serverId,
-            ':',
-            numberText
-        );
 
         res.status(200).json({
             status: 'ok'
@@ -360,11 +305,6 @@ setInterval(
                     .lastHeartbeat >
                 SERVER_TIMEOUT
             ) {
-                console.log(
-                    '[SERVER OFFLINE]',
-                    serverId
-                );
-
                 delete servers[
                     serverId
                 ];
