@@ -1,7 +1,7 @@
 {
   "name": "relay-server",
   "version": "1.0.0",
-  "description": "Relay Server for WinSockServer and Android",
+  "description": "Relay Server for Android and WinSockServer",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
