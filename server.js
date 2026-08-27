@@ -9,42 +9,22 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
-const API_TOKEN = process.env.API_TOKEN || '';
-
-const SERVER_ID = process.env.SERVER_ID || 'SERVER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+const API_TOKEN = process.env.API_TOKEN || 'Relay_2026_X7pK29mQ8zL4';
+const SERVER_ID = process.env.SERVER_ID || 'SERVER-D6EB849D4436';
 
 const clients = {};
-const pendingValues = {};
+const queues = {};
 
 function CheckToken(req, res, next) {
-    if (API_TOKEN === '') {
-        return res.status(500).json({
-            error: 'API_TOKEN_NOT_CONFIGURED'
-        });
-    }
+    const token = req.headers['x-api-token'];
 
-    const Token = req.headers['x-api-token'];
-
-    if (Token !== API_TOKEN) {
+    if (token !== API_TOKEN) {
         return res.status(401).json({
-            error: 'UNAUTHORIZED'
+            error: 'INVALID_TOKEN'
         });
     }
 
     next();
-}
-
-function CreateClientID() {
-    let ClientID;
-
-    do {
-        ClientID =
-            'CLIENT-' +
-            crypto.randomBytes(6).toString('hex').toUpperCase();
-    } while (clients[ClientID]);
-
-    return ClientID;
 }
 
 app.get('/', (req, res) => {
@@ -53,108 +33,78 @@ app.get('/', (req, res) => {
 
 app.get('/server_info', CheckToken, (req, res) => {
     res.json({
-        status: 'ok',
         serverId: SERVER_ID
     });
 });
 
-app.post('/register_client', CheckToken, (req, res) => {
-    const ClientID = CreateClientID();
+app.post('/connect', CheckToken, (req, res) => {
+    const serverId = req.body.serverId;
+    const clientId = req.body.clientId;
 
-    clients[ClientID] = {
-        serverId: '',
-        connected: false,
-        createdAt: Date.now(),
-        lastSeen: Date.now()
-    };
-
-    res.json({
-        status: 'ok',
-        clientId: ClientID
-    });
-});
-
-app.post('/connect_client', CheckToken, (req, res) => {
-    const ClientID = String(req.body.clientId || '');
-    const RequestedServerID = String(req.body.serverId || '');
-
-    if (ClientID === '' || RequestedServerID === '') {
+    if (!serverId || !clientId) {
         return res.status(400).json({
             error: 'INVALID_DATA'
         });
     }
 
-    if (RequestedServerID !== SERVER_ID) {
+    if (serverId !== SERVER_ID) {
         return res.status(404).json({
             error: 'SERVER_NOT_FOUND'
         });
     }
 
-    if (!clients[ClientID]) {
-        return res.status(404).json({
-            error: 'CLIENT_NOT_FOUND'
-        });
+    clients[clientId] = {
+        serverId: serverId,
+        connectedAt: Date.now()
+    };
+
+    if (!queues[serverId]) {
+        queues[serverId] = [];
     }
 
-    clients[ClientID].serverId = SERVER_ID;
-    clients[ClientID].connected = true;
-    clients[ClientID].lastSeen = Date.now();
-
     res.json({
-        status: 'ok',
-        connected: true,
+        status: 'connected',
         serverId: SERVER_ID,
-        clientId: ClientID
+        clientId: clientId
     });
 });
 
 app.post('/send_number', CheckToken, (req, res) => {
-    const ClientID = String(req.body.clientId || '');
-    const ServerID = String(req.body.serverId || '');
-    const NumberValue = String(req.body.number || '');
+    const serverId = req.body.serverId;
+    const clientId = req.body.clientId;
+    const number = String(req.body.number || '').trim();
 
-    if (ClientID === '' || ServerID === '' || NumberValue === '') {
+    if (!serverId || !clientId || !number) {
         return res.status(400).json({
             error: 'INVALID_DATA'
         });
     }
 
-    if (ServerID !== SERVER_ID) {
+    if (serverId !== SERVER_ID) {
         return res.status(404).json({
             error: 'SERVER_NOT_FOUND'
         });
     }
 
-    if (!clients[ClientID]) {
-        return res.status(404).json({
-            error: 'CLIENT_NOT_FOUND'
-        });
-    }
-
-    if (
-        !clients[ClientID].connected ||
-        clients[ClientID].serverId !== SERVER_ID
-    ) {
+    if (!clients[clientId]) {
         return res.status(403).json({
             error: 'CLIENT_NOT_CONNECTED'
         });
     }
 
-    if (!/^[0-9]+$/.test(NumberValue)) {
+    if (!/^-?\d+$/.test(number)) {
         return res.status(400).json({
             error: 'NUMBER_ONLY'
         });
     }
 
-    clients[ClientID].lastSeen = Date.now();
-
-    if (!pendingValues[SERVER_ID]) {
-        pendingValues[SERVER_ID] = [];
+    if (!queues[serverId]) {
+        queues[serverId] = [];
     }
 
-    pendingValues[SERVER_ID].push({
-        clientId: ClientID,
-        number: NumberValue,
+    queues[serverId].push({
+        clientId: clientId,
+        number: number,
         time: Date.now()
     });
 
@@ -164,66 +114,30 @@ app.post('/send_number', CheckToken, (req, res) => {
 });
 
 app.get('/poll_number', CheckToken, (req, res) => {
-    const ServerID = String(req.query.serverId || '');
+    const serverId = req.query.serverId;
 
-    if (ServerID === '') {
+    if (!serverId) {
         return res.status(400).send('');
     }
 
-    if (ServerID !== SERVER_ID) {
+    if (serverId !== SERVER_ID) {
         return res.status(404).send('');
     }
 
-    if (
-        !pendingValues[SERVER_ID] ||
-        pendingValues[SERVER_ID].length === 0
-    ) {
+    if (!queues[serverId] || queues[serverId].length === 0) {
         return res.send('');
     }
 
-    const Item = pendingValues[SERVER_ID].shift();
+    const item = queues[serverId].shift();
 
-    res.send(Item.number);
+    res.type('text/plain');
+    res.send(item.number);
 });
 
-app.post('/disconnect_client', CheckToken, (req, res) => {
-    const ClientID = String(req.body.clientId || '');
-
-    if (ClientID === '') {
-        return res.status(400).json({
-            error: 'INVALID_DATA'
-        });
-    }
-
-    if (!clients[ClientID]) {
-        return res.status(404).json({
-            error: 'CLIENT_NOT_FOUND'
-        });
-    }
-
-    clients[ClientID].connected = false;
-    clients[ClientID].serverId = '';
-
-    res.json({
-        status: 'ok'
-    });
-});
-
-setInterval(() => {
-    const Now = Date.now();
-
-    Object.keys(clients).forEach((ClientID) => {
-        if (
-            Now - clients[ClientID].lastSeen >
-            5 * 60 * 1000
-        ) {
-            delete clients[ClientID];
-        }
-    });
-}, 60000);
+const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log('Relay Server is Running');
-    console.log('PORT:', PORT);
-    console.log('SERVER ID:', SERVER_ID);
+    console.log('Relay Server started');
+    console.log('SERVER-ID: ' + SERVER_ID);
+    console.log('PORT: ' + PORT);
 });
