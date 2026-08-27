@@ -128,10 +128,20 @@ app.post(
     (req, res) => {
         const clientId =
             String(
+                req.headers['x-client-id'] ||
                 req.query.clientId ||
-                req.body.clientId ||
+                (
+                    req.body &&
+                    req.body.clientId
+                ) ||
                 ''
             ).trim();
+
+        console.log(
+            '[CONNECT]',
+            'clientId =',
+            clientId
+        );
 
         if (!clientId) {
             return res.status(400).json({
