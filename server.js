@@ -34,7 +34,10 @@ function checkToken(req, res, next) {
     const token =
         req.headers['x-api-token'];
 
-    if (!token || token !== API_TOKEN) {
+    if (
+        !token ||
+        token !== API_TOKEN
+    ) {
         return res.status(401).json({
             error: 'unauthorized'
         });
@@ -60,14 +63,24 @@ app.get('/', (req, res) => {
     );
 });
 
+
+/*
+====================================================
+ WIN SOCK SERVER 등록
+====================================================
+*/
+
 app.post(
     '/server/register',
     checkToken,
     (req, res) => {
+
         let serverId =
             createServerId();
 
-        while (servers[serverId]) {
+        while (
+            servers[serverId]
+        ) {
             serverId =
                 createServerId();
         }
@@ -89,10 +102,18 @@ app.post(
     }
 );
 
+
+/*
+====================================================
+ WIN SOCK SERVER HEARTBEAT
+====================================================
+*/
+
 app.post(
     '/server/heartbeat',
     checkToken,
     (req, res) => {
+
         const serverId =
             String(
                 req.body.serverId || ''
@@ -100,7 +121,8 @@ app.post(
 
         if (!serverId) {
             return res.status(400).json({
-                error: 'missing serverId'
+                error:
+                    'missing serverId'
             });
         }
 
@@ -109,7 +131,8 @@ app.post(
 
         if (!serverInfo) {
             return res.status(404).json({
-                error: 'server not found'
+                error:
+                    'server not found'
             });
         }
 
@@ -122,16 +145,25 @@ app.post(
     }
 );
 
+
+/*
+====================================================
+ APK가 현재 살아있는 SERVER-ID 조회
+====================================================
+*/
+
 app.get(
     '/server/current',
     checkToken,
     (req, res) => {
+
         let selectedServer = null;
 
         for (
             const serverId
             of Object.keys(servers)
         ) {
+
             const serverInfo =
                 servers[serverId];
 
@@ -160,10 +192,18 @@ app.get(
     }
 );
 
+
+/*
+====================================================
+ APK 숫자 전송
+====================================================
+*/
+
 app.post(
     '/send_number',
     checkToken,
     (req, res) => {
+
         const serverId =
             String(
                 req.body.serverId || ''
@@ -252,10 +292,18 @@ app.post(
     }
 );
 
+
+/*
+====================================================
+ WIN SOCK SERVER 숫자 수신
+====================================================
+*/
+
 app.get(
     '/poll_number',
     checkToken,
     (req, res) => {
+
         const serverId =
             String(
                 req.query.serverId || ''
@@ -290,8 +338,16 @@ app.get(
     }
 );
 
+
+/*
+====================================================
+ 죽은 SERVER / CLIENT 정리
+====================================================
+*/
+
 setInterval(
     () => {
+
         const now =
             Date.now();
 
@@ -299,12 +355,14 @@ setInterval(
             const serverId
             of Object.keys(servers)
         ) {
+
             if (
                 now -
                 servers[serverId]
                     .lastHeartbeat >
                 SERVER_TIMEOUT
             ) {
+
                 delete servers[
                     serverId
                 ];
@@ -315,27 +373,39 @@ setInterval(
             const clientId
             of Object.keys(clients)
         ) {
+
             if (
                 now -
                 clients[clientId]
                     .lastSeen >
                 SERVER_TIMEOUT * 4
             ) {
+
                 delete clients[
                     clientId
                 ];
             }
         }
+
     },
     5000
 );
 
+
+/*
+====================================================
+ SERVER START
+====================================================
+*/
+
 server.listen(
     PORT,
     () => {
+
         console.log(
             'Relay Server running on port ' +
             PORT
         );
+
     }
 );
