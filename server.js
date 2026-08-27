@@ -9,193 +9,414 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-const API_TOKEN = process.env.API_TOKEN || 'Relay_2026_X7pK29mQ8zL4';
+const PORT = process.env.PORT || 3000;
+
+const API_TOKEN =
+    process.env.API_TOKEN ||
+    'Relay_2026_X7pK29mQ8zL4';
+
+const servers = {};
+const clients = {};
 
 const SERVER_TIMEOUT = 15000;
 
-let activeServer = null;
-const queues = {};
-const clients = {};
+function createServerId() {
+    return (
+        'SERVER-' +
+        crypto
+            .randomBytes(6)
+            .toString('hex')
+            .toUpperCase()
+    );
+}
 
-function CheckToken(req, res, next) {
-    const token = req.headers['x-api-token'];
+function createClientId() {
+    return (
+        'CLIENT-' +
+        crypto
+            .randomBytes(8)
+            .toString('hex')
+            .toUpperCase()
+    );
+}
 
-    if (token !== API_TOKEN) {
-        return res.status(401).send('INVALID_TOKEN');
+function checkToken(req, res, next) {
+    const token =
+        req.headers['x-api-token'];
+
+    if (!token || token !== API_TOKEN) {
+        return res
+            .status(401)
+            .json({
+                error: 'unauthorized'
+            });
     }
 
     next();
 }
 
-function GenerateServerID() {
-    return 'SERVER-' +
-        crypto.randomBytes(6).toString('hex').toUpperCase();
-}
+function isServerAlive(serverInfo) {
+    if (!serverInfo) {
+        return false;
+    }
 
-function GenerateClientID() {
-    return 'CLIENT-' +
-        crypto.randomBytes(8).toString('hex').toUpperCase();
+    return (
+        Date.now() -
+        serverInfo.lastHeartbeat
+    ) <= SERVER_TIMEOUT;
 }
 
 app.get('/', (req, res) => {
-    res.send('Relay Server is Running 24/7!');
-});
-
-app.post('/server/register', CheckToken, (req, res) => {
-    const now = Date.now();
-
-    if (
-        activeServer &&
-        now - activeServer.lastSeen < SERVER_TIMEOUT
-    ) {
-        return res.status(409).send('SERVER_ALREADY_RUNNING');
-    }
-
-    const serverId = GenerateServerID();
-
-    activeServer = {
-        id: serverId,
-        lastSeen: now
-    };
-
-    queues[serverId] = [];
-
-    res.type('text/plain');
-    res.send(serverId);
-});
-
-app.post('/server/heartbeat', CheckToken, (req, res) => {
-    const serverId = String(
-        req.body.serverId || ''
-    ).trim();
-
-    if (
-        !activeServer ||
-        activeServer.id !== serverId
-    ) {
-        return res.status(404).send('SERVER_NOT_FOUND');
-    }
-
-    activeServer.lastSeen = Date.now();
-
-    res.send('OK');
-});
-
-app.post('/connect', CheckToken, (req, res) => {
-    const clientId = String(
-        req.body.clientId || ''
-    ).trim();
-
-    if (clientId === '') {
-        return res.status(400).send('INVALID_CLIENT');
-    }
-
-    if (
-        !activeServer ||
-        Date.now() - activeServer.lastSeen >= SERVER_TIMEOUT
-    ) {
-        activeServer = null;
-        return res.status(503).send('SERVER_OFFLINE');
-    }
-
-    clients[clientId] = {
-        serverId: activeServer.id,
-        lastSeen: Date.now()
-    };
-
-    res.type('text/plain');
-    res.send(activeServer.id);
-});
-
-app.post('/send_number', CheckToken, (req, res) => {
-    const serverId = String(
-        req.body.serverId || ''
-    ).trim();
-
-    const clientId = String(
-        req.body.clientId || ''
-    ).trim();
-
-    const number = String(
-        req.body.number || ''
-    ).trim();
-
-    if (
-        serverId === '' ||
-        clientId === '' ||
-        number === ''
-    ) {
-        return res.status(400).send('INVALID_DATA');
-    }
-
-    if (
-        !activeServer ||
-        activeServer.id !== serverId ||
-        Date.now() - activeServer.lastSeen >= SERVER_TIMEOUT
-    ) {
-        return res.status(503).send('SERVER_OFFLINE');
-    }
-
-    if (!clients[clientId]) {
-        return res.status(403).send('CLIENT_NOT_CONNECTED');
-    }
-
-    if (clients[clientId].serverId !== serverId) {
-        return res.status(403).send('CLIENT_SERVER_MISMATCH');
-    }
-
-    if (!/^-?\d+$/.test(number)) {
-        return res.status(400).send('NUMBER_ONLY');
-    }
-
-    if (!queues[serverId]) {
-        queues[serverId] = [];
-    }
-
-    queues[serverId].push({
-        clientId: clientId,
-        number: number,
-        time: Date.now()
-    });
-
-    clients[clientId].lastSeen = Date.now();
-
-    res.send('OK');
-});
-
-app.get('/poll_number', CheckToken, (req, res) => {
-    const serverId = String(
-        req.query.serverId || ''
-    ).trim();
-
-    if (
-        !activeServer ||
-        activeServer.id !== serverId ||
-        Date.now() - activeServer.lastSeen >= SERVER_TIMEOUT
-    ) {
-        return res.status(503).send('');
-    }
-
-    if (
-        !queues[serverId] ||
-        queues[serverId].length === 0
-    ) {
-        return res.send('');
-    }
-
-    const item =
-        queues[serverId].shift();
-
-    res.type('text/plain');
-    res.send(item.number);
-});
-
-const PORT =
-    process.env.PORT || 3000;
-
-server.listen(PORT, () => {
-    console.log(
-        'Relay Server started on port ' +
-        PORT
+    res.send(
+        'Relay Server is Running 24/7!'
     );
 });
+
+app.post(
+    '/server/register',
+    checkToken,
+    (req, res) => {
+        let serverId =
+            createServerId();
+
+        while (servers[serverId]) {
+            serverId =
+                createServerId();
+        }
+
+        servers[serverId] = {
+            serverId: serverId,
+            lastHeartbeat: Date.now(),
+            value: null
+        };
+
+        console.log(
+            '[SERVER REGISTER]',
+            serverId
+        );
+
+        res.status(200).send(
+            serverId
+        );
+    }
+);
+
+app.post(
+    '/server/heartbeat',
+    checkToken,
+    (req, res) => {
+        const {
+            serverId
+        } = req.body;
+
+        if (!serverId) {
+            return res
+                .status(400)
+                .json({
+                    error: 'missing serverId'
+                });
+        }
+
+        const serverInfo =
+            servers[serverId];
+
+        if (!serverInfo) {
+            return res
+                .status(404)
+                .json({
+                    error: 'server not found'
+                });
+        }
+
+        serverInfo.lastHeartbeat =
+            Date.now();
+
+        res.status(200).json({
+            status: 'ok'
+        });
+    }
+);
+
+app.post(
+    '/connect',
+    checkToken,
+    (req, res) => {
+        const {
+            clientId
+        } = req.body;
+
+        if (!clientId) {
+            return res
+                .status(400)
+                .json({
+                    error: 'missing clientId'
+                });
+        }
+
+        let selectedServer = null;
+
+        for (
+            const serverId
+            of Object.keys(servers)
+        ) {
+            const serverInfo =
+                servers[serverId];
+
+            if (
+                isServerAlive(
+                    serverInfo
+                )
+            ) {
+                selectedServer =
+                    serverInfo;
+
+                break;
+            }
+        }
+
+        if (!selectedServer) {
+            return res
+                .status(503)
+                .json({
+                    error:
+                        'no server available'
+                });
+        }
+
+        clients[clientId] = {
+            clientId: clientId,
+            serverId:
+                selectedServer.serverId,
+            lastSeen: Date.now()
+        };
+
+        console.log(
+            '[CLIENT CONNECT]',
+            clientId,
+            '->',
+            selectedServer.serverId
+        );
+
+        res.status(200).send(
+            selectedServer.serverId
+        );
+    }
+);
+
+app.post(
+    '/send_number',
+    checkToken,
+    (req, res) => {
+        const {
+            serverId,
+            clientId,
+            number
+        } = req.body;
+
+        if (!serverId) {
+            return res
+                .status(400)
+                .json({
+                    error:
+                        'missing serverId'
+                });
+        }
+
+        if (!clientId) {
+            return res
+                .status(400)
+                .json({
+                    error:
+                        'missing clientId'
+                });
+        }
+
+        if (
+            number === undefined ||
+            number === null
+        ) {
+            return res
+                .status(400)
+                .json({
+                    error:
+                        'missing number'
+                });
+        }
+
+        const serverInfo =
+            servers[serverId];
+
+        if (!serverInfo) {
+            return res
+                .status(404)
+                .json({
+                    error:
+                        'server not found'
+                });
+        }
+
+        if (
+            !isServerAlive(
+                serverInfo
+            )
+        ) {
+            return res
+                .status(503)
+                .json({
+                    error:
+                        'server offline'
+                });
+        }
+
+        const clientInfo =
+            clients[clientId];
+
+        if (!clientInfo) {
+            return res
+                .status(403)
+                .json({
+                    error:
+                        'client not connected'
+                });
+        }
+
+        if (
+            clientInfo.serverId !==
+            serverId
+        ) {
+            return res
+                .status(403)
+                .json({
+                    error:
+                        'client/server mismatch'
+                });
+        }
+
+        const numberText =
+            String(number).trim();
+
+        if (
+            numberText === '' ||
+            !/^-?\d+$/.test(
+                numberText
+            )
+        ) {
+            return res
+                .status(400)
+                .json({
+                    error:
+                        'number only'
+                });
+        }
+
+        serverInfo.value =
+            numberText;
+
+        clientInfo.lastSeen =
+            Date.now();
+
+        console.log(
+            '[NUMBER]',
+            clientId,
+            '->',
+            serverId,
+            ':',
+            numberText
+        );
+
+        res.status(200).json({
+            status: 'ok'
+        });
+    }
+);
+
+app.get(
+    '/poll_number',
+    checkToken,
+    (req, res) => {
+        const {
+            serverId
+        } = req.query;
+
+        if (!serverId) {
+            return res
+                .status(400)
+                .send('');
+        }
+
+        const serverInfo =
+            servers[serverId];
+
+        if (!serverInfo) {
+            return res.send('');
+        }
+
+        serverInfo.lastHeartbeat =
+            Date.now();
+
+        if (
+            serverInfo.value === null
+        ) {
+            return res.send('');
+        }
+
+        const value =
+            serverInfo.value;
+
+        serverInfo.value = null;
+
+        res.send(value);
+    }
+);
+
+setInterval(() => {
+    const now =
+        Date.now();
+
+    for (
+        const serverId
+        of Object.keys(servers)
+    ) {
+        if (
+            now -
+            servers[serverId]
+                .lastHeartbeat >
+            SERVER_TIMEOUT
+        ) {
+            console.log(
+                '[SERVER OFFLINE]',
+                serverId
+            );
+
+            delete servers[
+                serverId
+            ];
+        }
+    }
+
+    for (
+        const clientId
+        of Object.keys(clients)
+    ) {
+        if (
+            now -
+            clients[clientId]
+                .lastSeen >
+            SERVER_TIMEOUT * 4
+        ) {
+            delete clients[
+                clientId
+            ];
+        }
+    }
+}, 5000);
+
+server.listen(
+    PORT,
+    () => {
+        console.log(
+            'Relay Server running on port ' +
+            PORT
+        );
+    }
+);
