@@ -12,10 +12,10 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const API_TOKEN = process.env.API_TOKEN || '';
 
-const SERVER_ID = 'SERVER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
+const SERVER_ID = process.env.SERVER_ID || 'SERVER-' + crypto.randomBytes(6).toString('hex').toUpperCase();
 
 const clients = {};
-const values = {};
+const pendingValues = {};
 
 function CheckToken(req, res, next) {
     if (API_TOKEN === '') {
@@ -62,7 +62,7 @@ app.post('/register_client', CheckToken, (req, res) => {
     const ClientID = CreateClientID();
 
     clients[ClientID] = {
-        connectedServer: '',
+        serverId: '',
         connected: false,
         createdAt: Date.now(),
         lastSeen: Date.now()
@@ -75,201 +75,138 @@ app.post('/register_client', CheckToken, (req, res) => {
 });
 
 app.post('/connect_client', CheckToken, (req, res) => {
-    const { clientId, serverId } = req.body;
+    const ClientID = String(req.body.clientId || '');
+    const RequestedServerID = String(req.body.serverId || '');
 
-    if (!clientId || !serverId) {
+    if (ClientID === '' || RequestedServerID === '') {
         return res.status(400).json({
             error: 'INVALID_DATA'
         });
     }
 
-    if (serverId !== SERVER_ID) {
+    if (RequestedServerID !== SERVER_ID) {
         return res.status(404).json({
             error: 'SERVER_NOT_FOUND'
         });
     }
 
-    if (!clients[clientId]) {
+    if (!clients[ClientID]) {
         return res.status(404).json({
             error: 'CLIENT_NOT_FOUND'
         });
     }
 
-    clients[clientId].connectedServer = serverId;
-    clients[clientId].connected = true;
-    clients[clientId].lastSeen = Date.now();
+    clients[ClientID].serverId = SERVER_ID;
+    clients[ClientID].connected = true;
+    clients[ClientID].lastSeen = Date.now();
 
     res.json({
         status: 'ok',
+        connected: true,
         serverId: SERVER_ID,
-        clientId: clientId,
-        connected: true
+        clientId: ClientID
     });
 });
 
-app.post('/send_command', CheckToken, (req, res) => {
-    const { roomId, command, message, clientId } = req.body;
+app.post('/send_number', CheckToken, (req, res) => {
+    const ClientID = String(req.body.clientId || '');
+    const ServerID = String(req.body.serverId || '');
+    const NumberValue = String(req.body.number || '');
 
-    const Value = command !== undefined
-        ? String(command)
-        : message !== undefined
-            ? String(message)
-            : '';
-
-    if (!roomId || Value === '') {
+    if (ClientID === '' || ServerID === '' || NumberValue === '') {
         return res.status(400).json({
             error: 'INVALID_DATA'
         });
     }
 
-    if (clientId) {
-        if (!clients[clientId]) {
-            return res.status(404).json({
-                error: 'CLIENT_NOT_FOUND'
-            });
-        }
-
-        if (
-            clients[clientId].connectedServer !== roomId ||
-            !clients[clientId].connected
-        ) {
-            return res.status(403).json({
-                error: 'CLIENT_NOT_CONNECTED'
-            });
-        }
-
-        clients[clientId].lastSeen = Date.now();
-
-        if (!values[roomId]) {
-            values[roomId] = {};
-        }
-
-        values[roomId][clientId] = Value;
-    } else {
-        if (!values[roomId]) {
-            values[roomId] = {};
-        }
-
-        values[roomId].broadcast = Value;
-    }
-
-    res.json({
-        status: 'ok'
-    });
-});
-
-app.get('/poll', CheckToken, (req, res) => {
-    const { roomId, clientId } = req.query;
-
-    if (!roomId) {
-        return res.status(400).send('');
-    }
-
-    if (clientId) {
-        if (!clients[clientId]) {
-            return res.status(404).send('');
-        }
-
-        if (
-            clients[clientId].connectedServer !== roomId ||
-            !clients[clientId].connected
-        ) {
-            return res.status(403).send('');
-        }
-
-        clients[clientId].lastSeen = Date.now();
-
-        if (
-            values[roomId] &&
-            values[roomId][clientId] !== undefined
-        ) {
-            const Value = values[roomId][clientId];
-
-            delete values[roomId][clientId];
-
-            return res.send(Value);
-        }
-
-        return res.send('');
-    }
-
-    if (
-        values[roomId] &&
-        values[roomId].broadcast !== undefined
-    ) {
-        const Value = values[roomId].broadcast;
-
-        delete values[roomId].broadcast;
-
-        return res.send(Value);
-    }
-
-    res.send('');
-});
-
-app.post('/disconnect_client', CheckToken, (req, res) => {
-    const { clientId } = req.body;
-
-    if (!clientId) {
-        return res.status(400).json({
-            error: 'INVALID_DATA'
+    if (ServerID !== SERVER_ID) {
+        return res.status(404).json({
+            error: 'SERVER_NOT_FOUND'
         });
     }
 
-    if (!clients[clientId]) {
+    if (!clients[ClientID]) {
         return res.status(404).json({
             error: 'CLIENT_NOT_FOUND'
         });
     }
 
-    clients[clientId].connected = false;
-    clients[clientId].connectedServer = '';
-    clients[clientId].lastSeen = Date.now();
+    if (
+        !clients[ClientID].connected ||
+        clients[ClientID].serverId !== SERVER_ID
+    ) {
+        return res.status(403).json({
+            error: 'CLIENT_NOT_CONNECTED'
+        });
+    }
+
+    if (!/^[0-9]+$/.test(NumberValue)) {
+        return res.status(400).json({
+            error: 'NUMBER_ONLY'
+        });
+    }
+
+    clients[ClientID].lastSeen = Date.now();
+
+    if (!pendingValues[SERVER_ID]) {
+        pendingValues[SERVER_ID] = [];
+    }
+
+    pendingValues[SERVER_ID].push({
+        clientId: ClientID,
+        number: NumberValue,
+        time: Date.now()
+    });
 
     res.json({
         status: 'ok'
     });
 });
 
-app.post('/send_notify', CheckToken, (req, res) => {
-    const { roomId, message } = req.body;
+app.get('/poll_number', CheckToken, (req, res) => {
+    const ServerID = String(req.query.serverId || '');
 
-    if (!roomId || message === undefined) {
+    if (ServerID === '') {
+        return res.status(400).send('');
+    }
+
+    if (ServerID !== SERVER_ID) {
+        return res.status(404).send('');
+    }
+
+    if (
+        !pendingValues[SERVER_ID] ||
+        pendingValues[SERVER_ID].length === 0
+    ) {
+        return res.send('');
+    }
+
+    const Item = pendingValues[SERVER_ID].shift();
+
+    res.send(Item.number);
+});
+
+app.post('/disconnect_client', CheckToken, (req, res) => {
+    const ClientID = String(req.body.clientId || '');
+
+    if (ClientID === '') {
         return res.status(400).json({
             error: 'INVALID_DATA'
         });
     }
 
-    if (!values[roomId]) {
-        values[roomId] = {};
+    if (!clients[ClientID]) {
+        return res.status(404).json({
+            error: 'CLIENT_NOT_FOUND'
+        });
     }
 
-    values[roomId].notify = String(message);
+    clients[ClientID].connected = false;
+    clients[ClientID].serverId = '';
 
     res.json({
         status: 'ok'
     });
-});
-
-app.get('/poll_notify', CheckToken, (req, res) => {
-    const { roomId } = req.query;
-
-    if (!roomId) {
-        return res.status(400).send('');
-    }
-
-    if (
-        values[roomId] &&
-        values[roomId].notify !== undefined
-    ) {
-        const Message = values[roomId].notify;
-
-        delete values[roomId].notify;
-
-        return res.send(Message);
-    }
-
-    res.send('');
 });
 
 setInterval(() => {
