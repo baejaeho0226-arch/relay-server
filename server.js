@@ -9,366 +9,135 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+const API_TOKEN = process.env.API_TOKEN || 'Relay_2026_X7pK29mQ8zL4';
+const SERVER_ID = process.env.SERVER_ID || 'SERVER-D6EB849D4436';
 
-const API_TOKEN =
-    process.env.API_TOKEN ||
-    'Relay_2026_X7pK29mQ8zL4';
-
-const SERVER_TIMEOUT = 15000;
-
-const servers = {};
 const clients = {};
+const queues = {};
 
-function createServerId() {
-    return (
-        'SERVER-' +
-        crypto
-            .randomBytes(6)
-            .toString('hex')
-            .toUpperCase()
-    );
-}
+function CheckToken(req, res, next) {
+    const token = req.headers['x-api-token'];
 
-function checkToken(req, res, next) {
-    const token =
-        req.headers['x-api-token'];
-
-    if (
-        !token ||
-        token !== API_TOKEN
-    ) {
+    if (token !== API_TOKEN) {
         return res.status(401).json({
-            error: 'unauthorized'
+            error: 'INVALID_TOKEN'
         });
     }
 
     next();
 }
 
-function isServerAlive(serverInfo) {
-    if (!serverInfo) {
-        return false;
-    }
-
-    return (
-        Date.now() -
-        serverInfo.lastHeartbeat
-    ) <= SERVER_TIMEOUT;
-}
-
 app.get('/', (req, res) => {
-    res.send(
-        'Relay Server is Running 24/7!'
-    );
+    res.send('Relay Server is Running 24/7!');
 });
 
+app.get('/server_info', CheckToken, (req, res) => {
+    res.json({
+        serverId: SERVER_ID
+    });
+});
 
-/*
-====================================================
- WIN SOCK SERVER 등록
-====================================================
-*/
+app.post('/connect', CheckToken, (req, res) => {
+    const serverId = req.body.serverId;
+    const clientId = req.body.clientId;
 
-app.post(
-    '/server/register',
-    checkToken,
-    (req, res) => {
-
-        let serverId =
-            createServerId();
-
-        while (
-            servers[serverId]
-        ) {
-            serverId =
-                createServerId();
-        }
-
-        servers[serverId] = {
-            serverId: serverId,
-            lastHeartbeat: Date.now(),
-            value: null
-        };
-
-        console.log(
-            '[SERVER REGISTER]',
-            serverId
-        );
-
-        res.status(200).send(
-            serverId
-        );
-    }
-);
-
-
-/*
-====================================================
- WIN SOCK SERVER HEARTBEAT
-====================================================
-*/
-
-app.post(
-    '/server/heartbeat',
-    checkToken,
-    (req, res) => {
-
-        const serverId =
-            String(
-                req.body.serverId || ''
-            ).trim();
-
-        if (!serverId) {
-            return res.status(400).json({
-                error:
-                    'missing serverId'
-            });
-        }
-
-        const serverInfo =
-            servers[serverId];
-
-        if (!serverInfo) {
-            return res.status(404).json({
-                error:
-                    'server not found'
-            });
-        }
-
-        serverInfo.lastHeartbeat =
-            Date.now();
-
-        res.status(200).json({
-            status: 'ok'
-        });
-    }
-);
-
-
-/*
-====================================================
- APK가 현재 살아있는 SERVER-ID 조회
-====================================================
-*/
-
-app.get(
-    '/server/current',
-    checkToken,
-    (req, res) => {
-
-        let selectedServer = null;
-
-        for (
-            const serverId
-            of Object.keys(servers)
-        ) {
-
-            const serverInfo =
-                servers[serverId];
-
-            if (
-                isServerAlive(
-                    serverInfo
-                )
-            ) {
-                selectedServer =
-                    serverInfo;
-
-                break;
-            }
-        }
-
-        if (!selectedServer) {
-            return res.status(503).json({
-                error:
-                    'no server available'
-            });
-        }
-
-        res.status(200).send(
-            selectedServer.serverId
-        );
-    }
-);
-
-
-/*
-====================================================
- APK 숫자 전송
-====================================================
-*/
-
-app.post('/send_number', checkToken, (req, res) => {
-    const serverId = String(
-        req.body.serverId || ''
-    ).trim();
-
-    const number = req.body.number;
-
-    if (!serverId) {
+    if (!serverId || !clientId) {
         return res.status(400).json({
-            error: 'missing serverId'
+            error: 'INVALID_DATA'
         });
     }
 
-    if (
-        number === undefined ||
-        number === null
-    ) {
-        return res.status(400).json({
-            error: 'missing number'
-        });
-    }
-
-    const serverInfo =
-        servers[serverId];
-
-    if (!serverInfo) {
+    if (serverId !== SERVER_ID) {
         return res.status(404).json({
-            error: 'server not found'
+            error: 'SERVER_NOT_FOUND'
         });
     }
 
-    if (!isServerAlive(serverInfo)) {
-        return res.status(503).json({
-            error: 'server offline'
-        });
+    clients[clientId] = {
+        serverId: serverId,
+        connectedAt: Date.now()
+    };
+
+    if (!queues[serverId]) {
+        queues[serverId] = [];
     }
 
-    const numberText =
-        String(number).trim();
+    res.json({
+        status: 'connected',
+        serverId: SERVER_ID,
+        clientId: clientId
+    });
+});
 
-    if (
-        numberText === '' ||
-        !/^-?\d+$/.test(numberText)
-    ) {
+app.post('/send_number', CheckToken, (req, res) => {
+    const serverId = req.body.serverId;
+    const clientId = req.body.clientId;
+    const number = String(req.body.number || '').trim();
+
+    if (!serverId || !clientId || !number) {
         return res.status(400).json({
-            error: 'number only'
+            error: 'INVALID_DATA'
         });
     }
 
-    serverInfo.value =
-        numberText;
+    if (serverId !== SERVER_ID) {
+        return res.status(404).json({
+            error: 'SERVER_NOT_FOUND'
+        });
+    }
 
-    res.status(200).json({
+    if (!clients[clientId]) {
+        return res.status(403).json({
+            error: 'CLIENT_NOT_CONNECTED'
+        });
+    }
+
+    if (!/^-?\d+$/.test(number)) {
+        return res.status(400).json({
+            error: 'NUMBER_ONLY'
+        });
+    }
+
+    if (!queues[serverId]) {
+        queues[serverId] = [];
+    }
+
+    queues[serverId].push({
+        clientId: clientId,
+        number: number,
+        time: Date.now()
+    });
+
+    res.json({
         status: 'ok'
     });
 });
 
-/*
-====================================================
- WIN SOCK SERVER 숫자 수신
-====================================================
-*/
+app.get('/poll_number', CheckToken, (req, res) => {
+    const serverId = req.query.serverId;
 
-app.get(
-    '/poll_number',
-    checkToken,
-    (req, res) => {
-
-        const serverId =
-            String(
-                req.query.serverId || ''
-            ).trim();
-
-        if (!serverId) {
-            return res.status(400).send('');
-        }
-
-        const serverInfo =
-            servers[serverId];
-
-        if (!serverInfo) {
-            return res.send('');
-        }
-
-        serverInfo.lastHeartbeat =
-            Date.now();
-
-        if (
-            serverInfo.value === null
-        ) {
-            return res.send('');
-        }
-
-        const value =
-            serverInfo.value;
-
-        serverInfo.value = null;
-
-        res.send(value);
+    if (!serverId) {
+        return res.status(400).send('');
     }
-);
 
-
-/*
-====================================================
- 죽은 SERVER / CLIENT 정리
-====================================================
-*/
-
-setInterval(
-    () => {
-
-        const now =
-            Date.now();
-
-        for (
-            const serverId
-            of Object.keys(servers)
-        ) {
-
-            if (
-                now -
-                servers[serverId]
-                    .lastHeartbeat >
-                SERVER_TIMEOUT
-            ) {
-
-                delete servers[
-                    serverId
-                ];
-            }
-        }
-
-        for (
-            const clientId
-            of Object.keys(clients)
-        ) {
-
-            if (
-                now -
-                clients[clientId]
-                    .lastSeen >
-                SERVER_TIMEOUT * 4
-            ) {
-
-                delete clients[
-                    clientId
-                ];
-            }
-        }
-
-    },
-    5000
-);
-
-
-/*
-====================================================
- SERVER START
-====================================================
-*/
-
-server.listen(
-    PORT,
-    () => {
-
-        console.log(
-            'Relay Server running on port ' +
-            PORT
-        );
-
+    if (serverId !== SERVER_ID) {
+        return res.status(404).send('');
     }
-);
+
+    if (!queues[serverId] || queues[serverId].length === 0) {
+        return res.send('');
+    }
+
+    const item = queues[serverId].shift();
+
+    res.type('text/plain');
+    res.send(item.number);
+});
+
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log('Relay Server started');
+    console.log('SERVER-ID: ' + SERVER_ID);
+    console.log('PORT: ' + PORT);
+});
