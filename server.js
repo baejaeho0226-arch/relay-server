@@ -15,10 +15,10 @@ const API_TOKEN =
     process.env.API_TOKEN ||
     'Relay_2026_X7pK29mQ8zL4';
 
+const SERVER_TIMEOUT = 15000;
+
 const servers = {};
 const clients = {};
-
-const SERVER_TIMEOUT = 15000;
 
 function createServerId() {
     return (
@@ -30,26 +30,14 @@ function createServerId() {
     );
 }
 
-function createClientId() {
-    return (
-        'CLIENT-' +
-        crypto
-            .randomBytes(8)
-            .toString('hex')
-            .toUpperCase()
-    );
-}
-
 function checkToken(req, res, next) {
     const token =
         req.headers['x-api-token'];
 
     if (!token || token !== API_TOKEN) {
-        return res
-            .status(401)
-            .json({
-                error: 'unauthorized'
-            });
+        return res.status(401).json({
+            error: 'unauthorized'
+        });
     }
 
     next();
@@ -105,27 +93,24 @@ app.post(
     '/server/heartbeat',
     checkToken,
     (req, res) => {
-        const {
-            serverId
-        } = req.body;
+        const serverId =
+            String(
+                req.body.serverId || ''
+            ).trim();
 
         if (!serverId) {
-            return res
-                .status(400)
-                .json({
-                    error: 'missing serverId'
-                });
+            return res.status(400).json({
+                error: 'missing serverId'
+            });
         }
 
         const serverInfo =
             servers[serverId];
 
         if (!serverInfo) {
-            return res
-                .status(404)
-                .json({
-                    error: 'server not found'
-                });
+            return res.status(404).json({
+                error: 'server not found'
+            });
         }
 
         serverInfo.lastHeartbeat =
@@ -141,16 +126,17 @@ app.post(
     '/connect',
     checkToken,
     (req, res) => {
-        const {
-            clientId
-        } = req.body;
+        const clientId =
+            String(
+                req.query.clientId ||
+                req.body.clientId ||
+                ''
+            ).trim();
 
         if (!clientId) {
-            return res
-                .status(400)
-                .json({
-                    error: 'missing clientId'
-                });
+            return res.status(400).json({
+                error: 'missing clientId'
+            });
         }
 
         let selectedServer = null;
@@ -175,12 +161,9 @@ app.post(
         }
 
         if (!selectedServer) {
-            return res
-                .status(503)
-                .json({
-                    error:
-                        'no server available'
-                });
+            return res.status(503).json({
+                error: 'no server available'
+            });
         }
 
         clients[clientId] = {
@@ -207,52 +190,47 @@ app.post(
     '/send_number',
     checkToken,
     (req, res) => {
-        const {
-            serverId,
-            clientId,
-            number
-        } = req.body;
+        const serverId =
+            String(
+                req.body.serverId || ''
+            ).trim();
+
+        const clientId =
+            String(
+                req.body.clientId || ''
+            ).trim();
+
+        const number =
+            req.body.number;
 
         if (!serverId) {
-            return res
-                .status(400)
-                .json({
-                    error:
-                        'missing serverId'
-                });
+            return res.status(400).json({
+                error: 'missing serverId'
+            });
         }
 
         if (!clientId) {
-            return res
-                .status(400)
-                .json({
-                    error:
-                        'missing clientId'
-                });
+            return res.status(400).json({
+                error: 'missing clientId'
+            });
         }
 
         if (
             number === undefined ||
             number === null
         ) {
-            return res
-                .status(400)
-                .json({
-                    error:
-                        'missing number'
-                });
+            return res.status(400).json({
+                error: 'missing number'
+            });
         }
 
         const serverInfo =
             servers[serverId];
 
         if (!serverInfo) {
-            return res
-                .status(404)
-                .json({
-                    error:
-                        'server not found'
-                });
+            return res.status(404).json({
+                error: 'server not found'
+            });
         }
 
         if (
@@ -260,36 +238,28 @@ app.post(
                 serverInfo
             )
         ) {
-            return res
-                .status(503)
-                .json({
-                    error:
-                        'server offline'
-                });
+            return res.status(503).json({
+                error: 'server offline'
+            });
         }
 
         const clientInfo =
             clients[clientId];
 
         if (!clientInfo) {
-            return res
-                .status(403)
-                .json({
-                    error:
-                        'client not connected'
-                });
+            return res.status(403).json({
+                error: 'client not connected'
+            });
         }
 
         if (
             clientInfo.serverId !==
             serverId
         ) {
-            return res
-                .status(403)
-                .json({
-                    error:
-                        'client/server mismatch'
-                });
+            return res.status(403).json({
+                error:
+                    'client/server mismatch'
+            });
         }
 
         const numberText =
@@ -301,12 +271,9 @@ app.post(
                 numberText
             )
         ) {
-            return res
-                .status(400)
-                .json({
-                    error:
-                        'number only'
-                });
+            return res.status(400).json({
+                error: 'number only'
+            });
         }
 
         serverInfo.value =
@@ -334,14 +301,13 @@ app.get(
     '/poll_number',
     checkToken,
     (req, res) => {
-        const {
-            serverId
-        } = req.query;
+        const serverId =
+            String(
+                req.query.serverId || ''
+            ).trim();
 
         if (!serverId) {
-            return res
-                .status(400)
-                .send('');
+            return res.status(400).send('');
         }
 
         const serverInfo =
@@ -369,47 +335,50 @@ app.get(
     }
 );
 
-setInterval(() => {
-    const now =
-        Date.now();
+setInterval(
+    () => {
+        const now =
+            Date.now();
 
-    for (
-        const serverId
-        of Object.keys(servers)
-    ) {
-        if (
-            now -
-            servers[serverId]
-                .lastHeartbeat >
-            SERVER_TIMEOUT
+        for (
+            const serverId
+            of Object.keys(servers)
         ) {
-            console.log(
-                '[SERVER OFFLINE]',
-                serverId
-            );
+            if (
+                now -
+                servers[serverId]
+                    .lastHeartbeat >
+                SERVER_TIMEOUT
+            ) {
+                console.log(
+                    '[SERVER OFFLINE]',
+                    serverId
+                );
 
-            delete servers[
-                serverId
-            ];
+                delete servers[
+                    serverId
+                ];
+            }
         }
-    }
 
-    for (
-        const clientId
-        of Object.keys(clients)
-    ) {
-        if (
-            now -
-            clients[clientId]
-                .lastSeen >
-            SERVER_TIMEOUT * 4
+        for (
+            const clientId
+            of Object.keys(clients)
         ) {
-            delete clients[
-                clientId
-            ];
+            if (
+                now -
+                clients[clientId]
+                    .lastSeen >
+                SERVER_TIMEOUT * 4
+            ) {
+                delete clients[
+                    clientId
+                ];
+            }
         }
-    }
-}, 5000);
+    },
+    5000
+);
 
 server.listen(
     PORT,
