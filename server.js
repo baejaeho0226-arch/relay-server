@@ -1,51 +1,53 @@
 const net = require('net');
 const crypto = require('crypto');
 
-const PORT = Number(process.env.PORT || 3000);
 
-// API TOKEN은 Railway 환경변수에만 둔다.
-// 기본값을 넣지 않는다.
-const API_TOKEN = process.env.API_TOKEN;
+// ======================================================
+// Railway
+// ======================================================
 
-if (!API_TOKEN) {
-    console.error('ERROR: API_TOKEN environment variable is missing');
-    process.exit(1);
-}
+const PORT =
+    Number(process.env.PORT || 3000);
 
 
 // ======================================================
-// 현재 PC WinSockServer
-// ======================================================
-
-let winSockServer = null;
-
-
-// ======================================================
-// 현재 SERVER-ID
+// 서버 인증용 비밀값
 //
-// WinSockServer가 REGISTER할 때마다 새로 발급
+// Railway Variables에 API_TOKEN을 넣어두세요.
+// 코드에 실제 토큰을 넣지 않습니다.
 // ======================================================
 
-let currentServerId = null;
+const API_TOKEN =
+    process.env.API_TOKEN || '';
 
 
 // ======================================================
-// APK Client 목록
+// 현재 WinSockServer
+// ======================================================
+
+let serverSocket = null;
+
+let serverId = null;
+
+
+// ======================================================
+// 접속한 APK Client
 //
-// clientId -> 정보
+// clientId => 정보
 // ======================================================
 
 const clients = new Map();
 
 
 // ======================================================
-// 랜덤 SERVER-ID
+// RANDOM ID
 // ======================================================
 
-function createServerId() {
+function GenerateID(prefix) {
 
     return (
-        'SERVER-' +
+        prefix +
+        '-' +
         crypto
             .randomBytes(6)
             .toString('hex')
@@ -56,34 +58,10 @@ function createServerId() {
 
 
 // ======================================================
-// 랜덤 CLIENT-ID
+// LINE SEND
 // ======================================================
 
-function createClientId() {
-
-    let id;
-
-    do {
-
-        id =
-            'CLIENT-' +
-            crypto
-                .randomBytes(8)
-                .toString('hex')
-                .toUpperCase();
-
-    } while (clients.has(id));
-
-    return id;
-
-}
-
-
-// ======================================================
-// 한 줄 전송
-// ======================================================
-
-function sendLine(socket, text) {
+function SendLine(socket, text) {
 
     if (
         socket &&
@@ -100,24 +78,24 @@ function sendLine(socket, text) {
 
 
 // ======================================================
-// REGISTER
+// WinSockServer REGISTER
 //
 // REGISTER|API_TOKEN
-//
-// Relay가 SERVER-ID를 랜덤 발급
 // ======================================================
 
-function handleRegister(
+function HandleRegister(
     socket,
     parts
 ) {
 
     if (parts.length !== 2) {
 
-        sendLine(
+        SendLine(
             socket,
-            'ERROR|INVALID_DATA'
+            'ERROR|INVALID_REGISTER'
         );
+
+        socket.destroy();
 
         return;
 
@@ -128,57 +106,63 @@ function handleRegister(
         parts[1];
 
 
-    if (token !== API_TOKEN) {
+    if (
+        !API_TOKEN ||
+        token !== API_TOKEN
+    ) {
 
-        sendLine(
+        SendLine(
             socket,
             'ERROR|INVALID_TOKEN'
         );
+
+        socket.destroy();
 
         return;
 
     }
 
 
-    // 기존 WinSockServer 종료
+    // 기존 서버가 있다면 종료
     if (
-        winSockServer &&
-        !winSockServer.destroyed &&
-        winSockServer !== socket
+        serverSocket &&
+        !serverSocket.destroyed &&
+        serverSocket !== socket
     ) {
 
-        winSockServer.destroy();
+        serverSocket.destroy();
 
     }
 
 
-    // 새로운 SERVER-ID 발급
-    currentServerId =
-        createServerId();
-
-
-    winSockServer =
+    serverSocket =
         socket;
 
 
-    socket.role =
-        'server';
+    serverSocket.isServer =
+        true;
 
 
-    socket.serverId =
-        currentServerId;
+    // ================================================
+    // 새로운 SERVER-ID 발급
+    // ================================================
+
+    serverId =
+        GenerateID(
+            'SERVER'
+        );
 
 
-    sendLine(
+    SendLine(
         socket,
         'REGISTERED|' +
-        currentServerId
+        serverId
     );
 
 
     console.log(
         'SERVER REGISTERED: ' +
-        currentServerId
+        serverId
     );
 
 }
@@ -188,22 +172,18 @@ function handleRegister(
 // APK CONNECT
 //
 // CONNECT
-//
-// CLIENT-ID를 Relay가 랜덤 발급
 // ======================================================
 
-function handleConnect(
+function HandleClientConnect(
     socket
 ) {
 
-    // 현재 WinSockServer가 없으면 접속 거부
     if (
-        !winSockServer ||
-        winSockServer.destroyed ||
-        !currentServerId
+        !serverSocket ||
+        serverSocket.destroyed
     ) {
 
-        sendLine(
+        SendLine(
             socket,
             'ERROR|SERVER_OFFLINE'
         );
@@ -213,32 +193,39 @@ function handleConnect(
     }
 
 
-    const clientId =
-        createClientId();
+    // ================================================
+    // Client-ID 자동 생성
+    // ================================================
+
+    let clientId;
+
+
+    do {
+
+        clientId =
+            GenerateID(
+                'CLIENT'
+            );
+
+    } while (
+        clients.has(clientId)
+    );
 
 
     clients.set(
         clientId,
         {
-            serverId: currentServerId,
-            connectedAt: Date.now()
+            connectedAt: Date.now(),
+            serverId: serverId
         }
     );
 
 
-    socket.role =
-        'client';
+    // ================================================
+    // APK에 Client-ID 전달
+    // ================================================
 
-
-    socket.clientId =
-        clientId;
-
-
-    socket.serverId =
-        currentServerId;
-
-
-    sendLine(
+    SendLine(
         socket,
         'CONNECTED|' +
         clientId
@@ -259,14 +246,14 @@ function handleConnect(
 // SEND|CLIENT_ID|NUMBER
 // ======================================================
 
-function handleSend(
+function HandleSend(
     socket,
     parts
 ) {
 
     if (parts.length !== 3) {
 
-        sendLine(
+        SendLine(
             socket,
             'ERROR|INVALID_DATA'
         );
@@ -283,16 +270,15 @@ function handleSend(
         parts[2];
 
 
-    // Client 확인
-    const client =
-        clients.get(
-            clientId
-        );
+    // ================================================
+    // Client 존재 여부
+    // ================================================
 
+    if (
+        !clients.has(clientId)
+    ) {
 
-    if (!client) {
-
-        sendLine(
+        SendLine(
             socket,
             'ERROR|CLIENT_NOT_CONNECTED'
         );
@@ -302,10 +288,15 @@ function handleSend(
     }
 
 
+    // ================================================
     // 숫자만 허용
-    if (!/^-?\d+$/.test(number)) {
+    // ================================================
 
-        sendLine(
+    if (
+        !/^-?\d+$/.test(number)
+    ) {
+
+        SendLine(
             socket,
             'ERROR|NUMBER_ONLY'
         );
@@ -315,13 +306,16 @@ function handleSend(
     }
 
 
+    // ================================================
     // WinSockServer 확인
+    // ================================================
+
     if (
-        !winSockServer ||
-        winSockServer.destroyed
+        !serverSocket ||
+        serverSocket.destroyed
     ) {
 
-        sendLine(
+        SendLine(
             socket,
             'ERROR|SERVER_OFFLINE'
         );
@@ -331,51 +325,45 @@ function handleSend(
     }
 
 
+    // ================================================
     // WinSockServer로 숫자 전달
-    sendLine(
-        winSockServer,
-        'NUMBER|' + number
+    // ================================================
+
+    SendLine(
+        serverSocket,
+        'NUMBER|' +
+        number
     );
 
 
-    // APK에는 전송 성공만 응답
-    sendLine(
+    // ================================================
+    // APK 응답
+    // ================================================
+
+    SendLine(
         socket,
         'SENT|OK'
     );
 
+}
 
-    console.log(
-        'NUMBER: ' +
-        number +
-        ' CLIENT=' +
-        clientId
-    );
+
+// ======================================================
+// PONG
+// ======================================================
+
+function HandlePong(socket) {
+
+    // 아무 작업도 하지 않음
 
 }
 
 
 // ======================================================
-// PING
+// COMMAND
 // ======================================================
 
-function handlePing(
-    socket
-) {
-
-    sendLine(
-        socket,
-        'PONG'
-    );
-
-}
-
-
-// ======================================================
-// 명령 처리
-// ======================================================
-
-function processCommand(
+function ProcessCommand(
     socket,
     line
 ) {
@@ -384,7 +372,7 @@ function processCommand(
         line.trim();
 
 
-    if (line === '') {
+    if (!line) {
         return;
     }
 
@@ -397,62 +385,76 @@ function processCommand(
         parts[0];
 
 
-    switch (command) {
+    // ================================================
+    // WinSockServer
+    // ================================================
 
-        case 'REGISTER':
+    if (
+        command === 'REGISTER'
+    ) {
 
-            handleRegister(
-                socket,
-                parts
-            );
+        HandleRegister(
+            socket,
+            parts
+        );
 
-            break;
-
-
-        case 'CONNECT':
-
-            handleConnect(
-                socket
-            );
-
-            break;
-
-
-        case 'SEND':
-
-            handleSend(
-                socket,
-                parts
-            );
-
-            break;
-
-
-        case 'PING':
-
-            handlePing(
-                socket
-            );
-
-            break;
-
-
-        case 'PONG':
-
-            // 정상적인 Keep-Alive 응답
-            break;
-
-
-        default:
-
-            sendLine(
-                socket,
-                'ERROR|UNKNOWN_COMMAND'
-            );
-
-            break;
+        return;
 
     }
+
+
+    // ================================================
+    // APK
+    // ================================================
+
+    if (
+        command === 'CONNECT'
+    ) {
+
+        HandleClientConnect(
+            socket
+        );
+
+        return;
+
+    }
+
+
+    if (
+        command === 'SEND'
+    ) {
+
+        HandleSend(
+            socket,
+            parts
+        );
+
+        return;
+
+    }
+
+
+    // ================================================
+    // Keep Alive
+    // ================================================
+
+    if (
+        command === 'PONG'
+    ) {
+
+        HandlePong(
+            socket
+        );
+
+        return;
+
+    }
+
+
+    SendLine(
+        socket,
+        'ERROR|UNKNOWN_COMMAND'
+    );
 
 }
 
@@ -465,13 +467,13 @@ const tcpServer =
     net.createServer(
         socket => {
 
+            let buffer =
+                '';
+
+
             socket.setEncoding(
                 'utf8'
             );
-
-
-            let buffer =
-                '';
 
 
             socket.on(
@@ -489,7 +491,9 @@ const tcpServer =
                             );
 
 
-                        if (pos < 0) {
+                        if (
+                            pos === -1
+                        ) {
                             break;
                         }
 
@@ -514,7 +518,7 @@ const tcpServer =
                             );
 
 
-                        processCommand(
+                        ProcessCommand(
                             socket,
                             line
                         );
@@ -529,39 +533,18 @@ const tcpServer =
                 'close',
                 () => {
 
-                    // WinSockServer 종료
                     if (
-                        winSockServer === socket
+                        serverSocket === socket
                     ) {
 
-                        winSockServer =
+                        serverSocket =
                             null;
 
-                        currentServerId =
+                        serverId =
                             null;
-
 
                         console.log(
                             'SERVER DISCONNECTED'
-                        );
-
-                    }
-
-
-                    // APK 종료
-                    if (
-                        socket.role === 'client' &&
-                        socket.clientId
-                    ) {
-
-                        clients.delete(
-                            socket.clientId
-                        );
-
-
-                        console.log(
-                            'CLIENT DISCONNECTED: ' +
-                            socket.clientId
                         );
 
                     }
@@ -574,7 +557,8 @@ const tcpServer =
                 'error',
                 () => {
 
-                    // 에러는 close에서 정리
+                    // 정상적인 TCP 종료 과정에서
+                    // 발생할 수 있으므로 출력하지 않음
 
                 }
             );
@@ -584,19 +568,19 @@ const tcpServer =
 
 
 // ======================================================
-// WinSockServer Keep-Alive
+// SERVER KEEP ALIVE
 // ======================================================
 
 setInterval(
     () => {
 
         if (
-            winSockServer &&
-            !winSockServer.destroyed
+            serverSocket &&
+            !serverSocket.destroyed
         ) {
 
-            sendLine(
-                winSockServer,
+            SendLine(
+                serverSocket,
                 'PING'
             );
 
@@ -608,7 +592,7 @@ setInterval(
 
 
 // ======================================================
-// 시작
+// START
 // ======================================================
 
 tcpServer.listen(
@@ -621,16 +605,11 @@ tcpServer.listen(
         );
 
         console.log(
-            '       PURE TCP RELAY'
+            '        PURE TCP RELAY'
         );
 
         console.log(
             '================================'
-        );
-
-        console.log(
-            'PORT: ' +
-            PORT
         );
 
         console.log(
@@ -650,11 +629,8 @@ tcpServer.listen(
         );
 
         console.log(
-            'SERVER-ID: AUTO'
-        );
-
-        console.log(
-            'CLIENT-ID: AUTO'
+            'Port: ' +
+            PORT
         );
 
         console.log(
