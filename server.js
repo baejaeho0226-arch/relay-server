@@ -11,7 +11,10 @@ const servers = new Map();
 const clients = new Map();
 
 function RandomID(prefix) {
-    return prefix + crypto.randomBytes(8).toString('hex').toUpperCase();
+    return prefix +
+        crypto.randomBytes(8)
+            .toString('hex')
+            .toUpperCase();
 }
 
 function MakeUniqueID(prefix, map) {
@@ -60,6 +63,10 @@ function GetAvailableServer() {
     const list = [];
 
     for (const server of servers.values()) {
+        if (!server.registered) {
+            continue;
+        }
+
         if (!server.socket || server.socket.destroyed) {
             continue;
         }
@@ -75,7 +82,9 @@ function GetAvailableServer() {
         return null;
     }
 
-    list.sort((a, b) => a.clients.size - b.clients.size);
+    list.sort((a, b) => {
+        return a.clients.size - b.clients.size;
+    });
 
     return list[0];
 }
@@ -89,7 +98,11 @@ function HandleServerLine(connection, line) {
 
     if (line === 'REGISTER') {
         if (connection.registered) {
-            SendLine(connection.socket, 'ERROR|ALREADY_REGISTERED');
+            SendLine(
+                connection.socket,
+                'ERROR|ALREADY_REGISTERED'
+            );
+
             return;
         }
 
@@ -103,7 +116,10 @@ function HandleServerLine(connection, line) {
         connection.lastSeen = Date.now();
         connection.clients = new Set();
 
-        servers.set(serverId, connection);
+        servers.set(
+            serverId,
+            connection
+        );
 
         SendLine(
             connection.socket,
@@ -158,9 +174,14 @@ function HandleClientLine(connection, line) {
             connectedAt: Date.now()
         };
 
-        clients.set(clientId, client);
+        clients.set(
+            clientId,
+            client
+        );
 
-        server.clients.add(clientId);
+        server.clients.add(
+            clientId
+        );
 
         SendLine(
             connection.socket,
@@ -189,10 +210,27 @@ function HandleClientLine(connection, line) {
             return;
         }
 
-        const clientId = parts[1];
+        const clientId = parts[1].trim();
         const number = parts[2].trim();
 
-        // 숫자만 허용
+        if (clientId === '') {
+            SendLine(
+                connection.socket,
+                'ERROR|CLIENT_ID_EMPTY'
+            );
+
+            return;
+        }
+
+        if (number === '') {
+            SendLine(
+                connection.socket,
+                'ERROR|NUMBER_EMPTY'
+            );
+
+            return;
+        }
+
         if (!/^-?\d+$/.test(number)) {
             SendLine(
                 connection.socket,
@@ -202,7 +240,6 @@ function HandleClientLine(connection, line) {
             return;
         }
 
-        // CLIENT-ID 검색
         const client = clients.get(clientId);
 
         if (!client) {
@@ -214,10 +251,13 @@ function HandleClientLine(connection, line) {
             return;
         }
 
-        // SERVER 검색
-        const server = servers.get(client.serverId);
+        const server = servers.get(
+            client.serverId
+        );
 
-        if (!server || !server.socket || server.socket.destroyed) {
+        if (!server) {
+            clients.delete(clientId);
+
             SendLine(
                 connection.socket,
                 'ERROR|SERVER_OFFLINE'
@@ -226,9 +266,16 @@ function HandleClientLine(connection, line) {
             return;
         }
 
-        // ========================================
-        // WinSockServer로 숫자 전달
-        // ========================================
+        if (!server.socket || server.socket.destroyed) {
+            RemoveServer(server);
+
+            SendLine(
+                connection.socket,
+                'ERROR|SERVER_OFFLINE'
+            );
+
+            return;
+        }
 
         const packet =
             'NUMBER|' +
@@ -236,13 +283,12 @@ function HandleClientLine(connection, line) {
             '|' +
             number;
 
-        const sendResult =
-            SendLine(
-                server.socket,
-                packet
-            );
+        const sent = SendLine(
+            server.socket,
+            packet
+        );
 
-        if (!sendResult) {
+        if (!sent) {
             SendLine(
                 connection.socket,
                 'ERROR|SERVER_SEND_FAILED'
@@ -250,10 +296,6 @@ function HandleClientLine(connection, line) {
 
             return;
         }
-
-        // ========================================
-        // ApkWinSock에 전송 성공 응답
-        // ========================================
 
         SendLine(
             connection.socket,
@@ -285,105 +327,136 @@ function CreateConnection(socket) {
         10000
     );
 
-    socket.on('data', data => {
-        connection.buffer += data.toString('utf8');
+    socket.on(
+        'data',
+        data => {
+            connection.buffer += data.toString('utf8');
 
-        while (true) {
-            const pos =
-                connection.buffer.indexOf('\n');
+            while (true) {
+                const pos =
+                    connection.buffer.indexOf('\n');
 
-            if (pos < 0) {
-                break;
-            }
+                if (pos < 0) {
+                    break;
+                }
 
-            let line =
-                connection.buffer.substring(
-                    0,
-                    pos
-                );
-
-            connection.buffer =
-                connection.buffer.substring(
-                    pos + 1
-                );
-
-            line =
-                line.replace(
-                    /\r$/,
-                    ''
-                );
-
-            // ==================================
-            // 최초 명령으로 타입 판별
-            // ==================================
-
-            if (!connection.type) {
-                if (line === 'REGISTER') {
-                    connection.type = 'server';
-                } else if (line === 'CONNECT') {
-                    connection.type = 'client';
-                } else if (line.startsWith('SEND|')) {
-                    connection.type = 'client';
-                } else {
-                    SendLine(
-                        socket,
-                        'ERROR|UNKNOWN_COMMAND'
+                let line =
+                    connection.buffer.substring(
+                        0,
+                        pos
                     );
 
-                    continue;
+                connection.buffer =
+                    connection.buffer.substring(
+                        pos + 1
+                    );
+
+                line =
+                    line.replace(
+                        /\r$/,
+                        ''
+                    );
+
+                // ==================================
+                // 최초 명령으로 타입 판별
+                // ==================================
+
+                if (!connection.type) {
+                    if (line === 'REGISTER') {
+                        connection.type = 'server';
+                    } else if (line === 'CONNECT') {
+                        connection.type = 'client';
+                    } else if (line.startsWith('SEND|')) {
+                        connection.type = 'client';
+                    } else {
+                        SendLine(
+                            socket,
+                            'ERROR|UNKNOWN_COMMAND'
+                        );
+
+                        continue;
+                    }
+                }
+
+                if (connection.type === 'server') {
+                    HandleServerLine(
+                        connection,
+                        line
+                    );
+                } else {
+                    HandleClientLine(
+                        connection,
+                        line
+                    );
                 }
             }
+        }
+    );
 
+    socket.on(
+        'close',
+        () => {
             if (connection.type === 'server') {
-                HandleServerLine(
-                    connection,
-                    line
-                );
-            } else {
-                HandleClientLine(
-                    connection,
-                    line
+                RemoveServer(
+                    connection
                 );
             }
         }
-    });
+    );
 
-    socket.on('close', () => {
-        // ========================================
-        // 서버 연결만 제거
-        // ========================================
-
-        if (connection.type === 'server') {
-            RemoveServer(connection);
+    socket.on(
+        'error',
+        () => {
         }
-
-        // ========================================
-        // CLIENT는 여기서 삭제하지 않는다.
-        //
-        // CONNECT TCP가 끝나도 CLIENT-ID를
-        // 계속 유지한다.
-        // ========================================
-    });
-
-    socket.on('error', () => {
-        // 화면 출력 없음
-    });
+    );
 }
 
-const server = net.createServer(socket => {
-    CreateConnection(socket);
-});
+const server = net.createServer(
+    socket => {
+        CreateConnection(
+            socket
+        );
+    }
+);
+
+server.on(
+    'error',
+    error => {
+        console.error(
+            'SERVER ERROR:',
+            error.message
+        );
+    }
+);
 
 server.listen(
     PORT,
     HOST,
     () => {
-        console.log('================================');
-        console.log('       PURE TCP RELAY');
-        console.log('================================');
-        console.log('Port: ' + PORT);
-        console.log('Protocol: RAW TCP');
-        console.log('================================');
+        console.log(
+            '================================'
+        );
+
+        console.log(
+            '       PURE TCP RELAY'
+        );
+
+        console.log(
+            '================================'
+        );
+
+        console.log(
+            'Port: ' +
+            PORT
+        );
+
+        console.log(
+            'Protocol: RAW TCP'
+        );
+
+        console.log(
+            '================================'
+        );
     }
 );
 
@@ -391,24 +464,35 @@ server.listen(
 // WinSockServer 상태 체크
 // ================================================
 
-setInterval(() => {
-    const now = Date.now();
+setInterval(
+    () => {
+        const now = Date.now();
 
-    for (const connection of servers.values()) {
-        if (!connection.socket || connection.socket.destroyed) {
-            RemoveServer(connection);
-            continue;
+        for (const connection of servers.values()) {
+            if (!connection.socket ||
+                connection.socket.destroyed) {
+                RemoveServer(
+                    connection
+                );
+
+                continue;
+            }
+
+            if (now - connection.lastSeen > 30000) {
+                connection.socket.destroy();
+
+                RemoveServer(
+                    connection
+                );
+
+                continue;
+            }
+
+            SendLine(
+                connection.socket,
+                'PING'
+            );
         }
-
-        if (now - connection.lastSeen > 30000) {
-            connection.socket.destroy();
-            RemoveServer(connection);
-            continue;
-        }
-
-        SendLine(
-            connection.socket,
-            'PING'
-        );
-    }
-}, 10000);
+    },
+    10000
+);
