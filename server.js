@@ -1,4 +1,3 @@
-```javascript
 const net = require('net');
 const crypto = require('crypto');
 
@@ -413,4 +412,3 @@ setInterval(() => {
         );
     }
 }, 10000);
-```
