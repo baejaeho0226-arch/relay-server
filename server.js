@@ -8,74 +8,141 @@ const SERVER_ID =
 const API_TOKEN =
     process.env.API_TOKEN || 'Relay_2026_X7pK29mQ8zL4';
 
-const queues = [];
 
+// SERVER-ID별 대기 숫자
+const queues = {};
+
+
+// 연결된 APK Client 목록
 const clients = new Map();
 
+
 function log(message) {
-    console.log(new Date().toISOString() + ' ' + message);
+    console.log(
+        new Date().toISOString() +
+        ' ' +
+        message
+    );
 }
 
+
 function sendLine(socket, text) {
+
     if (!socket.destroyed) {
         socket.write(text + '\n');
     }
 }
 
+
 function processCommand(socket, line) {
+
     line = line.trim();
 
-    if (!line) {
+    if (line === '') {
         return;
     }
 
+
     const parts = line.split('|');
+
     const command = parts[0];
 
-    /*
-        CONNECT|TOKEN|SERVER_ID|CLIENT_ID
-    */
+
+    // ==================================================
+    // CONNECT
+    //
+    // CONNECT|TOKEN|SERVER_ID|CLIENT_ID
+    // ==================================================
+
     if (command === 'CONNECT') {
 
         if (parts.length !== 4) {
-            sendLine(socket, 'ERROR|INVALID_DATA');
+
+            sendLine(
+                socket,
+                'ERROR|INVALID_DATA'
+            );
+
             return;
         }
+
 
         const token = parts[1];
         const serverId = parts[2];
         const clientId = parts[3];
 
+
+        // Token 검사
         if (token !== API_TOKEN) {
-            sendLine(socket, 'ERROR|INVALID_TOKEN');
-            log('CONNECT rejected: INVALID_TOKEN');
+
+            sendLine(
+                socket,
+                'ERROR|INVALID_TOKEN'
+            );
+
+            log(
+                'CONNECT FAILED: INVALID_TOKEN'
+            );
+
             return;
         }
 
+
+        // SERVER-ID 검사
         if (serverId !== SERVER_ID) {
-            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+
+            sendLine(
+                socket,
+                'ERROR|SERVER_NOT_FOUND'
+            );
+
             log(
-                'CONNECT rejected: invalid SERVER-ID=' +
+                'CONNECT FAILED: INVALID SERVER-ID = ' +
                 serverId
             );
+
             return;
         }
 
-        if (!clientId) {
-            sendLine(socket, 'ERROR|INVALID_CLIENT_ID');
+
+        // Client-ID 검사
+        if (clientId === '') {
+
+            sendLine(
+                socket,
+                'ERROR|INVALID_CLIENT_ID'
+            );
+
             return;
         }
 
-        clients.set(clientId, {
-            socket: socket,
-            serverId: serverId,
-            connectedAt: Date.now()
-        });
 
+        // Client 등록
+        clients.set(
+            clientId,
+            {
+                socket: socket,
+                serverId: serverId,
+                connectedAt: Date.now()
+            }
+        );
+
+
+        // Queue 생성
+        if (!queues[serverId]) {
+            queues[serverId] = [];
+        }
+
+
+        // 성공 응답
         sendLine(
             socket,
-            'CONNECTED|' + SERVER_ID + '|' + clientId
+            'CONNECTED|' +
+            serverId +
+            '|' +
+            clientId
         );
+
 
         log(
             'CLIENT CONNECTED: ' +
@@ -84,110 +151,209 @@ function processCommand(socket, line) {
             serverId
         );
 
+
         return;
     }
 
-    /*
-        SEND|TOKEN|SERVER_ID|CLIENT_ID|NUMBER
-    */
+
+    // ==================================================
+    // SEND
+    //
+    // SEND|TOKEN|SERVER_ID|CLIENT_ID|NUMBER
+    // ==================================================
+
     if (command === 'SEND') {
 
         if (parts.length !== 5) {
-            sendLine(socket, 'ERROR|INVALID_DATA');
+
+            sendLine(
+                socket,
+                'ERROR|INVALID_DATA'
+            );
+
             return;
         }
+
 
         const token = parts[1];
         const serverId = parts[2];
         const clientId = parts[3];
         const number = parts[4];
 
+
+        // Token 검사
         if (token !== API_TOKEN) {
-            sendLine(socket, 'ERROR|INVALID_TOKEN');
+
+            sendLine(
+                socket,
+                'ERROR|INVALID_TOKEN'
+            );
+
             return;
         }
 
+
+        // SERVER-ID 검사
         if (serverId !== SERVER_ID) {
-            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+
+            sendLine(
+                socket,
+                'ERROR|SERVER_NOT_FOUND'
+            );
+
             return;
         }
 
-        const client = clients.get(clientId);
+
+        // Client 연결 검사
+        const client =
+            clients.get(clientId);
+
 
         if (!client) {
-            sendLine(socket, 'ERROR|CLIENT_NOT_CONNECTED');
+
+            sendLine(
+                socket,
+                'ERROR|CLIENT_NOT_CONNECTED'
+            );
+
             return;
         }
 
-        if (client.serverId !== SERVER_ID) {
-            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+
+        // 다른 SERVER-ID에 등록된 Client인지 검사
+        if (client.serverId !== serverId) {
+
+            sendLine(
+                socket,
+                'ERROR|SERVER_NOT_FOUND'
+            );
+
             return;
         }
 
+
+        // 숫자 검사
         if (!/^-?\d+$/.test(number)) {
-            sendLine(socket, 'ERROR|NUMBER_ONLY');
+
+            sendLine(
+                socket,
+                'ERROR|NUMBER_ONLY'
+            );
+
             return;
         }
 
-        queues.push({
-            serverId: serverId,
-            clientId: clientId,
-            number: number,
-            time: Date.now()
-        });
 
-        sendLine(socket, 'SENT|OK');
+        // Queue 생성
+        if (!queues[serverId]) {
+            queues[serverId] = [];
+        }
+
+
+        // 숫자 저장
+        queues[serverId].push(
+            {
+                clientId: clientId,
+                number: number,
+                time: Date.now()
+            }
+        );
+
+
+        // 성공 응답
+        sendLine(
+            socket,
+            'SENT|OK'
+        );
+
 
         log(
             'NUMBER QUEUED: ' +
             number +
             ' CLIENT=' +
-            clientId +
-            ' SERVER=' +
-            serverId
+            clientId
         );
+
 
         return;
     }
 
-    /*
-        POLL|TOKEN|SERVER_ID
-    */
+
+    // ==================================================
+    // POLL
+    //
+    // POLL|TOKEN|SERVER_ID
+    // ==================================================
+
     if (command === 'POLL') {
 
         if (parts.length !== 3) {
-            sendLine(socket, 'ERROR|INVALID_DATA');
+
+            sendLine(
+                socket,
+                'ERROR|INVALID_DATA'
+            );
+
             return;
         }
+
 
         const token = parts[1];
         const serverId = parts[2];
 
+
+        // Token 검사
         if (token !== API_TOKEN) {
-            sendLine(socket, 'ERROR|INVALID_TOKEN');
+
+            sendLine(
+                socket,
+                'ERROR|INVALID_TOKEN'
+            );
+
             return;
         }
 
+
+        // SERVER-ID 검사
         if (serverId !== SERVER_ID) {
-            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+
+            sendLine(
+                socket,
+                'ERROR|SERVER_NOT_FOUND'
+            );
+
             return;
         }
 
-        const index = queues.findIndex(
-            item => item.serverId === serverId
-        );
 
-        if (index === -1) {
-            sendLine(socket, 'EMPTY');
+        // Queue가 없는 경우
+        if (
+            !queues[serverId] ||
+            queues[serverId].length === 0
+        ) {
+
+            sendLine(
+                socket,
+                'EMPTY'
+            );
+
             return;
         }
 
-        const item = queues.splice(index, 1)[0];
 
+        // 가장 오래된 숫자 가져오기
+        const item =
+            queues[serverId].shift();
+
+
+        // 숫자 반환
         sendLine(
             socket,
-            'NUMBER|' + item.number
+            'NUMBER|' +
+            item.number
         );
+
 
         log(
             'NUMBER DELIVERED: ' +
@@ -196,91 +362,205 @@ function processCommand(socket, line) {
             item.clientId
         );
 
+
         return;
     }
 
-    sendLine(socket, 'ERROR|UNKNOWN_COMMAND');
+
+    // ==================================================
+    // 잘못된 명령
+    // ==================================================
+
+    sendLine(
+        socket,
+        'ERROR|UNKNOWN_COMMAND'
+    );
 }
 
-const server = net.createServer(socket => {
 
-    const remote =
-        socket.remoteAddress +
-        ':' +
-        socket.remotePort;
+// ======================================================
+// TCP SERVER
+// ======================================================
 
-    log('TCP CONNECT: ' + remote);
+const server =
+    net.createServer(
+        socket => {
 
-    let buffer = '';
+            const remote =
+                socket.remoteAddress +
+                ':' +
+                socket.remotePort;
 
-    socket.setEncoding('utf8');
 
-    socket.on('data', data => {
+            log(
+                'TCP CONNECT: ' +
+                remote
+            );
 
-        buffer += data;
 
-        while (true) {
+            let buffer = '';
 
-            const newlineIndex = buffer.indexOf('\n');
 
-            if (newlineIndex === -1) {
-                break;
-            }
+            socket.setEncoding(
+                'utf8'
+            );
 
-            let line =
-                buffer.substring(0, newlineIndex);
 
-            buffer =
-                buffer.substring(newlineIndex + 1);
+            socket.on(
+                'data',
+                data => {
 
-            line = line.replace(/\r$/, '');
+                    buffer += data;
 
-            processCommand(socket, line);
+
+                    while (true) {
+
+                        const newlineIndex =
+                            buffer.indexOf('\n');
+
+
+                        if (
+                            newlineIndex === -1
+                        ) {
+                            break;
+                        }
+
+
+                        let line =
+                            buffer.substring(
+                                0,
+                                newlineIndex
+                            );
+
+
+                        buffer =
+                            buffer.substring(
+                                newlineIndex + 1
+                            );
+
+
+                        line =
+                            line.replace(
+                                /\r$/,
+                                ''
+                            );
+
+
+                        processCommand(
+                            socket,
+                            line
+                        );
+                    }
+                }
+            );
+
+
+            socket.on(
+                'close',
+                () => {
+
+                    // 해당 Socket을 사용하는 Client 제거
+                    for (
+                        const [
+                            clientId,
+                            client
+                        ] of clients
+                    ) {
+
+                        if (
+                            client.socket === socket
+                        ) {
+
+                            clients.delete(
+                                clientId
+                            );
+
+
+                            log(
+                                'CLIENT DISCONNECTED: ' +
+                                clientId
+                            );
+                        }
+                    }
+
+
+                    log(
+                        'TCP CLOSE: ' +
+                        remote
+                    );
+                }
+            );
+
+
+            socket.on(
+                'error',
+                error => {
+
+                    log(
+                        'SOCKET ERROR ' +
+                        remote +
+                        ': ' +
+                        error.message
+                    );
+                }
+            );
         }
-    });
+    );
 
-    socket.on('close', () => {
 
-        for (const [clientId, client] of clients) {
+// ======================================================
+// LISTEN
+// ======================================================
 
-            if (client.socket === socket) {
-                clients.delete(clientId);
+server.listen(
+    PORT,
+    '0.0.0.0',
+    () => {
 
-                log(
-                    'CLIENT DISCONNECTED: ' +
-                    clientId
-                );
-            }
-        }
-
-        log('TCP CLOSE: ' + remote);
-    });
-
-    socket.on('error', error => {
-
-        log(
-            'SOCKET ERROR ' +
-            remote +
-            ': ' +
-            error.message
+        console.log(
+            '================================'
         );
-    });
-});
 
-server.listen(PORT, '0.0.0.0', () => {
+        console.log(
+            '       RAW TCP RELAY SERVER'
+        );
 
-    console.log('================================');
-    console.log(' RAW TCP RELAY SERVER');
-    console.log('================================');
+        console.log(
+            '================================'
+        );
 
-    console.log('SERVER-ID: ' + SERVER_ID);
-    console.log('TCP PORT: ' + PORT);
+        console.log(
+            'SERVER-ID: ' +
+            SERVER_ID
+        );
 
-    console.log('Protocol: RAW TCP');
-    console.log('HTTP: DISABLED');
-    console.log('HTTPS: DISABLED');
-    console.log('WebSocket: DISABLED');
-    console.log('FTP: DISABLED');
+        console.log(
+            'TCP PORT: ' +
+            PORT
+        );
 
-    console.log('================================');
-});
+        console.log(
+            'Protocol: PURE TCP'
+        );
+
+        console.log(
+            'HTTP: DISABLED'
+        );
+
+        console.log(
+            'HTTPS: DISABLED'
+        );
+
+        console.log(
+            'WebSocket: DISABLED'
+        );
+
+        console.log(
+            'FTP: DISABLED'
+        );
+
+        console.log(
+            '================================'
+        );
+    }
+);
