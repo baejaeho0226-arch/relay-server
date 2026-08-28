@@ -1,143 +1,286 @@
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const crypto = require('crypto');
+const net = require('net');
 
-const app = express();
-const server = http.createServer(app);
+const PORT = Number(process.env.PORT || 3000);
 
-app.use(cors());
-app.use(express.json());
+const SERVER_ID =
+    process.env.SERVER_ID || 'SERVER-D6EB849D4436';
 
-const API_TOKEN = process.env.API_TOKEN || 'Relay_2026_X7pK29mQ8zL4';
-const SERVER_ID = process.env.SERVER_ID || 'SERVER-D6EB849D4436';
+const API_TOKEN =
+    process.env.API_TOKEN || 'Relay_2026_X7pK29mQ8zL4';
 
-const clients = {};
-const queues = {};
+const queues = [];
 
-function CheckToken(req, res, next) {
-    const token = req.headers['x-api-token'];
+const clients = new Map();
 
-    if (token !== API_TOKEN) {
-        return res.status(401).json({
-            error: 'INVALID_TOKEN'
-        });
-    }
-
-    next();
+function log(message) {
+    console.log(new Date().toISOString() + ' ' + message);
 }
 
-app.get('/', (req, res) => {
-    res.send('Relay Server is Running 24/7!');
-});
+function sendLine(socket, text) {
+    if (!socket.destroyed) {
+        socket.write(text + '\n');
+    }
+}
 
-app.get('/server_info', CheckToken, (req, res) => {
-    res.json({
-        serverId: SERVER_ID
+function processCommand(socket, line) {
+    line = line.trim();
+
+    if (!line) {
+        return;
+    }
+
+    const parts = line.split('|');
+    const command = parts[0];
+
+    /*
+        CONNECT|TOKEN|SERVER_ID|CLIENT_ID
+    */
+    if (command === 'CONNECT') {
+
+        if (parts.length !== 4) {
+            sendLine(socket, 'ERROR|INVALID_DATA');
+            return;
+        }
+
+        const token = parts[1];
+        const serverId = parts[2];
+        const clientId = parts[3];
+
+        if (token !== API_TOKEN) {
+            sendLine(socket, 'ERROR|INVALID_TOKEN');
+            log('CONNECT rejected: INVALID_TOKEN');
+            return;
+        }
+
+        if (serverId !== SERVER_ID) {
+            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+            log(
+                'CONNECT rejected: invalid SERVER-ID=' +
+                serverId
+            );
+            return;
+        }
+
+        if (!clientId) {
+            sendLine(socket, 'ERROR|INVALID_CLIENT_ID');
+            return;
+        }
+
+        clients.set(clientId, {
+            socket: socket,
+            serverId: serverId,
+            connectedAt: Date.now()
+        });
+
+        sendLine(
+            socket,
+            'CONNECTED|' + SERVER_ID + '|' + clientId
+        );
+
+        log(
+            'CLIENT CONNECTED: ' +
+            clientId +
+            ' SERVER=' +
+            serverId
+        );
+
+        return;
+    }
+
+    /*
+        SEND|TOKEN|SERVER_ID|CLIENT_ID|NUMBER
+    */
+    if (command === 'SEND') {
+
+        if (parts.length !== 5) {
+            sendLine(socket, 'ERROR|INVALID_DATA');
+            return;
+        }
+
+        const token = parts[1];
+        const serverId = parts[2];
+        const clientId = parts[3];
+        const number = parts[4];
+
+        if (token !== API_TOKEN) {
+            sendLine(socket, 'ERROR|INVALID_TOKEN');
+            return;
+        }
+
+        if (serverId !== SERVER_ID) {
+            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+            return;
+        }
+
+        const client = clients.get(clientId);
+
+        if (!client) {
+            sendLine(socket, 'ERROR|CLIENT_NOT_CONNECTED');
+            return;
+        }
+
+        if (client.serverId !== SERVER_ID) {
+            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+            return;
+        }
+
+        if (!/^-?\d+$/.test(number)) {
+            sendLine(socket, 'ERROR|NUMBER_ONLY');
+            return;
+        }
+
+        queues.push({
+            serverId: serverId,
+            clientId: clientId,
+            number: number,
+            time: Date.now()
+        });
+
+        sendLine(socket, 'SENT|OK');
+
+        log(
+            'NUMBER QUEUED: ' +
+            number +
+            ' CLIENT=' +
+            clientId +
+            ' SERVER=' +
+            serverId
+        );
+
+        return;
+    }
+
+    /*
+        POLL|TOKEN|SERVER_ID
+    */
+    if (command === 'POLL') {
+
+        if (parts.length !== 3) {
+            sendLine(socket, 'ERROR|INVALID_DATA');
+            return;
+        }
+
+        const token = parts[1];
+        const serverId = parts[2];
+
+        if (token !== API_TOKEN) {
+            sendLine(socket, 'ERROR|INVALID_TOKEN');
+            return;
+        }
+
+        if (serverId !== SERVER_ID) {
+            sendLine(socket, 'ERROR|SERVER_NOT_FOUND');
+            return;
+        }
+
+        const index = queues.findIndex(
+            item => item.serverId === serverId
+        );
+
+        if (index === -1) {
+            sendLine(socket, 'EMPTY');
+            return;
+        }
+
+        const item = queues.splice(index, 1)[0];
+
+        sendLine(
+            socket,
+            'NUMBER|' + item.number
+        );
+
+        log(
+            'NUMBER DELIVERED: ' +
+            item.number +
+            ' CLIENT=' +
+            item.clientId
+        );
+
+        return;
+    }
+
+    sendLine(socket, 'ERROR|UNKNOWN_COMMAND');
+}
+
+const server = net.createServer(socket => {
+
+    const remote =
+        socket.remoteAddress +
+        ':' +
+        socket.remotePort;
+
+    log('TCP CONNECT: ' + remote);
+
+    let buffer = '';
+
+    socket.setEncoding('utf8');
+
+    socket.on('data', data => {
+
+        buffer += data;
+
+        while (true) {
+
+            const newlineIndex = buffer.indexOf('\n');
+
+            if (newlineIndex === -1) {
+                break;
+            }
+
+            let line =
+                buffer.substring(0, newlineIndex);
+
+            buffer =
+                buffer.substring(newlineIndex + 1);
+
+            line = line.replace(/\r$/, '');
+
+            processCommand(socket, line);
+        }
+    });
+
+    socket.on('close', () => {
+
+        for (const [clientId, client] of clients) {
+
+            if (client.socket === socket) {
+                clients.delete(clientId);
+
+                log(
+                    'CLIENT DISCONNECTED: ' +
+                    clientId
+                );
+            }
+        }
+
+        log('TCP CLOSE: ' + remote);
+    });
+
+    socket.on('error', error => {
+
+        log(
+            'SOCKET ERROR ' +
+            remote +
+            ': ' +
+            error.message
+        );
     });
 });
 
-app.post('/connect', CheckToken, (req, res) => {
-    const serverId = req.body.serverId;
-    const clientId = req.body.clientId;
+server.listen(PORT, '0.0.0.0', () => {
 
-    if (!serverId || !clientId) {
-        return res.status(400).json({
-            error: 'INVALID_DATA'
-        });
-    }
+    console.log('================================');
+    console.log(' RAW TCP RELAY SERVER');
+    console.log('================================');
 
-    if (serverId !== SERVER_ID) {
-        return res.status(404).json({
-            error: 'SERVER_NOT_FOUND'
-        });
-    }
-
-    clients[clientId] = {
-        serverId: serverId,
-        connectedAt: Date.now()
-    };
-
-    if (!queues[serverId]) {
-        queues[serverId] = [];
-    }
-
-    res.json({
-        status: 'connected',
-        serverId: SERVER_ID,
-        clientId: clientId
-    });
-});
-
-app.post('/send_number', CheckToken, (req, res) => {
-    const serverId = req.body.serverId;
-    const clientId = req.body.clientId;
-    const number = String(req.body.number || '').trim();
-
-    if (!serverId || !clientId || !number) {
-        return res.status(400).json({
-            error: 'INVALID_DATA'
-        });
-    }
-
-    if (serverId !== SERVER_ID) {
-        return res.status(404).json({
-            error: 'SERVER_NOT_FOUND'
-        });
-    }
-
-    if (!clients[clientId]) {
-        return res.status(403).json({
-            error: 'CLIENT_NOT_CONNECTED'
-        });
-    }
-
-    if (!/^-?\d+$/.test(number)) {
-        return res.status(400).json({
-            error: 'NUMBER_ONLY'
-        });
-    }
-
-    if (!queues[serverId]) {
-        queues[serverId] = [];
-    }
-
-    queues[serverId].push({
-        clientId: clientId,
-        number: number,
-        time: Date.now()
-    });
-
-    res.json({
-        status: 'ok'
-    });
-});
-
-app.get('/poll_number', CheckToken, (req, res) => {
-    const serverId = req.query.serverId;
-
-    if (!serverId) {
-        return res.status(400).send('');
-    }
-
-    if (serverId !== SERVER_ID) {
-        return res.status(404).send('');
-    }
-
-    if (!queues[serverId] || queues[serverId].length === 0) {
-        return res.send('');
-    }
-
-    const item = queues[serverId].shift();
-
-    res.type('text/plain');
-    res.send(item.number);
-});
-
-const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, () => {
-    console.log('Relay Server started');
     console.log('SERVER-ID: ' + SERVER_ID);
-    console.log('PORT: ' + PORT);
+    console.log('TCP PORT: ' + PORT);
+
+    console.log('Protocol: RAW TCP');
+    console.log('HTTP: DISABLED');
+    console.log('HTTPS: DISABLED');
+    console.log('WebSocket: DISABLED');
+    console.log('FTP: DISABLED');
+
+    console.log('================================');
 });
