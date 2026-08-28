@@ -1,13 +1,10 @@
 {
   "name": "relay-server",
-  "version": "1.0.0",
-  "description": "Relay Server for Android and WinSockServer",
+  "version": "2.0.0",
+  "description": "Pure TCP Relay Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
-  }
+  "dependencies": {}
 }
