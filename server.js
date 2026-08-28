@@ -101,19 +101,38 @@ function GetOnlineServer(serverId) {
     return server;
 }
 
+function IsServerAlreadyAssigned(serverId) {
+    for (const saved of clientIdentities.values()) {
+        if (saved && saved.serverId === serverId) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function GetAvailableServer() {
     const list = [];
 
     for (const server of servers.values()) {
         if (!server.registered) continue;
         if (!server.socket || server.socket.destroyed) continue;
+
+        // 이미 한 번 CLIENT에 배정된 SERVER는
+        // 새로운 CLIENT에게 절대 재사용하지 않는다.
+        if (IsServerAlreadyAssigned(server.serverId)) {
+            continue;
+        }
+
         list.push(server);
     }
 
     if (list.length === 0) return null;
 
-    list.sort((a, b) => a.clients.size - b.clients.size);
-    return list[0];
+    // 미사용 SERVER 중 하나를 선택한다.
+    const index = crypto.randomInt(0, list.length);
+
+    return list[index];
 }
 
 function RegisterServer(connection, identityKey) {
