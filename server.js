@@ -12,7 +12,9 @@ const clients = new Map();
 
 function RandomID(prefix) {
     return prefix +
-        crypto.randomBytes(8).toString('hex').toUpperCase();
+        crypto.randomBytes(8)
+            .toString('hex')
+            .toUpperCase();
 }
 
 function MakeUniqueID(prefix, map) {
@@ -26,90 +28,95 @@ function MakeUniqueID(prefix, map) {
 }
 
 function SendLine(socket, text) {
-    if (!socket.destroyed) {
-        socket.write(text + '\n');
+    if (!socket || socket.destroyed) {
+        return false;
     }
+
+    socket.write(
+        text + '\n'
+    );
+
+    return true;
 }
 
-function RemoveServer(server) {
-    if (!server || !server.serverId) {
+function RemoveServer(connection) {
+    if (!connection.serverId) {
         return;
     }
 
-    const current =
-        servers.get(server.serverId);
+    const server =
+        servers.get(
+            connection.serverId
+        );
 
-    if (current === server) {
-        servers.delete(server.serverId);
+    if (server === connection) {
+        servers.delete(
+            connection.serverId
+        );
     }
 
     for (const [clientId, client] of clients) {
-        if (client.serverId === server.serverId) {
-            clients.delete(clientId);
+        if (
+            client.serverId ===
+            connection.serverId
+        ) {
+            clients.delete(
+                clientId
+            );
         }
-    }
-}
-
-function RemoveClient(client) {
-    if (!client || !client.clientId) {
-        return;
-    }
-
-    const current =
-        clients.get(client.clientId);
-
-    if (current === client) {
-        clients.delete(client.clientId);
     }
 }
 
 function GetAvailableServer() {
     const now = Date.now();
 
-    const available = [];
+    const list = [];
 
     for (const server of servers.values()) {
+
         if (server.socket.destroyed) {
             continue;
         }
 
-        if (now - server.lastSeen > 30000) {
+        if (
+            now -
+            server.lastSeen >
+            30000
+        ) {
             continue;
         }
 
-        available.push(server);
+        list.push(server);
     }
 
-    if (available.length === 0) {
+    if (list.length === 0) {
         return null;
     }
 
-    available.sort(
+    list.sort(
         (a, b) =>
             a.clients.size -
             b.clients.size
     );
 
-    return available[0];
+    return list[0];
 }
 
-function HandleServerLine(server, line) {
-
+function HandleServerLine(
+    connection,
+    line
+) {
     line = line.trim();
 
     if (line === '') {
         return;
     }
 
-    // -----------------------------------------------
-    // REGISTER
-    // -----------------------------------------------
-
     if (line === 'REGISTER') {
 
-        if (server.registered) {
+        if (connection.registered) {
             SendLine(
-                server.socket,
+                connection.socket,
                 'ERROR|ALREADY_REGISTERED'
             );
 
@@ -122,25 +129,25 @@ function HandleServerLine(server, line) {
                 servers
             );
 
-        server.serverId =
+        connection.serverId =
             serverId;
 
-        server.registered =
+        connection.registered =
             true;
 
-        server.lastSeen =
+        connection.lastSeen =
             Date.now();
 
-        server.clients =
+        connection.clients =
             new Set();
 
         servers.set(
             serverId,
-            server
+            connection
         );
 
         SendLine(
-            server.socket,
+            connection.socket,
             'REGISTERED|' +
             serverId
         );
@@ -148,73 +155,48 @@ function HandleServerLine(server, line) {
         return;
     }
 
-
-    // -----------------------------------------------
-    // PONG
-    // -----------------------------------------------
-
     if (line === 'PONG') {
 
-        server.lastSeen =
+        connection.lastSeen =
             Date.now();
 
         return;
     }
 
-
-    // -----------------------------------------------
-    // UNKNOWN
-    // -----------------------------------------------
-
     SendLine(
-        server.socket,
+        connection.socket,
         'ERROR|UNKNOWN_COMMAND'
     );
 }
 
-function HandleClientLine(client, line) {
-
+function HandleClientLine(
+    connection,
+    line
+) {
     line = line.trim();
 
     if (line === '') {
         return;
     }
 
-
-    // -----------------------------------------------
+    // ============================================
     // CONNECT
-    // -----------------------------------------------
+    // ============================================
 
     if (line === 'CONNECT') {
-
-        if (client.connected) {
-
-            SendLine(
-                client.socket,
-                'CONNECTED|' +
-                client.clientId +
-                '|' +
-                client.serverId
-            );
-
-            return;
-        }
-
 
         const server =
             GetAvailableServer();
 
-
         if (!server) {
 
             SendLine(
-                client.socket,
+                connection.socket,
                 'ERROR|NO_SERVER'
             );
 
             return;
         }
-
 
         const clientId =
             MakeUniqueID(
@@ -222,15 +204,11 @@ function HandleClientLine(client, line) {
                 clients
             );
 
-
-        client.clientId =
-            clientId;
-
-        client.serverId =
-            server.serverId;
-
-        client.connected =
-            true;
+        const client = {
+            clientId: clientId,
+            serverId: server.serverId,
+            connectedAt: Date.now()
+        };
 
         clients.set(
             clientId,
@@ -241,9 +219,8 @@ function HandleClientLine(client, line) {
             clientId
         );
 
-
         SendLine(
-            client.socket,
+            connection.socket,
             'CONNECTED|' +
             clientId +
             '|' +
@@ -253,27 +230,24 @@ function HandleClientLine(client, line) {
         return;
     }
 
-
-    // -----------------------------------------------
-    // SEND|CLIENT-ID|NUMBER
-    // -----------------------------------------------
+    // ============================================
+    // SEND
+    // ============================================
 
     if (line.startsWith('SEND|')) {
 
         const parts =
             line.split('|');
 
-
         if (parts.length !== 3) {
 
             SendLine(
-                client.socket,
+                connection.socket,
                 'ERROR|INVALID_SEND'
             );
 
             return;
         }
-
 
         const clientId =
             parts[1];
@@ -281,48 +255,38 @@ function HandleClientLine(client, line) {
         const number =
             parts[2].trim();
 
-
+        // 숫자만 허용
         if (!/^-?\d+$/.test(number)) {
 
             SendLine(
-                client.socket,
+                connection.socket,
                 'ERROR|NUMBER_ONLY'
             );
 
             return;
         }
 
+        // CLIENT-ID 검색
+        const client =
+            clients.get(
+                clientId
+            );
 
-        if (!client.connected) {
+        if (!client) {
 
             SendLine(
-                client.socket,
-                'ERROR|NOT_CONNECTED'
+                connection.socket,
+                'ERROR|CLIENT_NOT_FOUND'
             );
 
             return;
         }
 
-
-        if (
-            clientId !==
-            client.clientId
-        ) {
-
-            SendLine(
-                client.socket,
-                'ERROR|CLIENT_ID'
-            );
-
-            return;
-        }
-
-
+        // SERVER 검색
         const server =
             servers.get(
                 client.serverId
             );
-
 
         if (
             !server ||
@@ -330,38 +294,46 @@ function HandleClientLine(client, line) {
         ) {
 
             SendLine(
-                client.socket,
+                connection.socket,
                 'ERROR|SERVER_OFFLINE'
             );
 
             return;
         }
 
+        // ========================================
+        // WinSockServer로 숫자 전달
+        // ========================================
 
+        if (
+            !SendLine(
+                server.socket,
+                'NUMBER|' +
+                clientId +
+                '|' +
+                number
+            )
+        ) {
+
+            SendLine(
+                connection.socket,
+                'ERROR|SERVER_SEND_FAILED'
+            );
+
+            return;
+        }
+
+        // APK 응답
         SendLine(
-            server.socket,
-            'NUMBER|' +
-            client.clientId +
-            '|' +
-            number
-        );
-
-
-        SendLine(
-            client.socket,
+            connection.socket,
             'SENT|OK'
         );
 
         return;
     }
 
-
-    // -----------------------------------------------
-    // UNKNOWN
-    // -----------------------------------------------
-
     SendLine(
-        client.socket,
+        connection.socket,
         'ERROR|UNKNOWN_COMMAND'
     );
 }
@@ -377,17 +349,8 @@ function CreateConnection(socket) {
 
         serverId: null,
 
-        clientId: null,
-
-        connected: false,
-
-        clients: new Set(),
-
-        lastSeen: Date.now(),
-
         buffer: ''
     };
-
 
     socket.setNoDelay(true);
 
@@ -396,25 +359,25 @@ function CreateConnection(socket) {
         10000
     );
 
-
     socket.on(
         'data',
         data => {
 
             connection.buffer +=
-                data.toString('utf8');
-
+                data.toString(
+                    'utf8'
+                );
 
             while (true) {
 
                 const pos =
-                    connection.buffer.indexOf('\n');
-
+                    connection.buffer.indexOf(
+                        '\n'
+                    );
 
                 if (pos < 0) {
                     break;
                 }
-
 
                 let line =
                     connection.buffer.substring(
@@ -422,12 +385,10 @@ function CreateConnection(socket) {
                         pos
                     );
 
-
                 connection.buffer =
                     connection.buffer.substring(
                         pos + 1
                     );
-
 
                 line =
                     line.replace(
@@ -435,10 +396,9 @@ function CreateConnection(socket) {
                         ''
                     );
 
-
-                // -----------------------------------
-                // 최초 명령으로 종류 판별
-                // -----------------------------------
+                // ==================================
+                // 최초 명령으로 타입 판별
+                // ==================================
 
                 if (!connection.type) {
 
@@ -450,9 +410,7 @@ function CreateConnection(socket) {
                         connection.type =
                             'server';
 
-                    }
-
-                    else if (
+                    } else if (
                         line ===
                         'CONNECT'
                     ) {
@@ -460,9 +418,7 @@ function CreateConnection(socket) {
                         connection.type =
                             'client';
 
-                    }
-
-                    else if (
+                    } else if (
                         line.startsWith(
                             'SEND|'
                         )
@@ -471,9 +427,7 @@ function CreateConnection(socket) {
                         connection.type =
                             'client';
 
-                    }
-
-                    else {
+                    } else {
 
                         SendLine(
                             socket,
@@ -483,7 +437,6 @@ function CreateConnection(socket) {
                         continue;
                     }
                 }
-
 
                 if (
                     connection.type ===
@@ -495,24 +448,24 @@ function CreateConnection(socket) {
                         line
                     );
 
-                }
-
-                else {
+                } else {
 
                     HandleClientLine(
                         connection,
                         line
                     );
                 }
-
             }
         }
     );
 
-
     socket.on(
         'close',
         () => {
+
+            // ========================================
+            // 서버 연결만 제거
+            // ========================================
 
             if (
                 connection.type ===
@@ -522,47 +475,21 @@ function CreateConnection(socket) {
                 RemoveServer(
                     connection
                 );
-
             }
 
-            else if (
-                connection.type ===
-                'client'
-            ) {
-
-                if (
-                    connection.serverId
-                ) {
-
-                    const server =
-                        servers.get(
-                            connection.serverId
-                        );
-
-                    if (server) {
-
-                        server.clients.delete(
-                            connection.clientId
-                        );
-
-                    }
-                }
-
-
-                RemoveClient(
-                    connection
-                );
-            }
+            // ========================================
+            // CLIENT는 여기서 삭제하지 않는다.
+            //
+            // CONNECT TCP가 끝나도 CLIENT-ID를
+            // 계속 유지한다.
+            // ========================================
         }
     );
-
 
     socket.on(
         'error',
         () => {
-
-            // 오류 메시지는 사용자 화면에 출력하지 않음
-
+            // 화면 출력 없음
         }
     );
 }
@@ -570,14 +497,11 @@ function CreateConnection(socket) {
 const server =
     net.createServer(
         socket => {
-
             CreateConnection(
                 socket
             );
-
         }
     );
-
 
 server.listen(
     PORT,
@@ -585,21 +509,35 @@ server.listen(
     () => {
 
         console.log(
-            'PURE TCP RELAY SERVER'
+            '================================'
         );
 
         console.log(
-            'PORT: ' +
+            '       PURE TCP RELAY'
+        );
+
+        console.log(
+            '================================'
+        );
+
+        console.log(
+            'Port: ' +
             PORT
         );
 
+        console.log(
+            'Protocol: RAW TCP'
+        );
+
+        console.log(
+            '================================'
+        );
     }
 );
 
-
-// ----------------------------------------------------
-// 서버 상태 확인
-// ----------------------------------------------------
+// ================================================
+// WinSockServer 상태 체크
+// ================================================
 
 setInterval(
     () => {
@@ -607,42 +545,39 @@ setInterval(
         const now =
             Date.now();
 
-
         for (
-            const server
+            const connection
             of servers.values()
         ) {
 
             if (
-                server.socket.destroyed
+                connection.socket.destroyed
             ) {
 
                 RemoveServer(
-                    server
+                    connection
                 );
 
                 continue;
             }
-
 
             if (
                 now -
-                server.lastSeen >
+                connection.lastSeen >
                 30000
             ) {
 
-                server.socket.destroy();
+                connection.socket.destroy();
 
                 RemoveServer(
-                    server
+                    connection
                 );
 
                 continue;
             }
 
-
             SendLine(
-                server.socket,
+                connection.socket,
                 'PING'
             );
         }
