@@ -1,10 +1,9 @@
 {
-  "name": "relay-server",
-  "version": "3.0.0",
-  "description": "Pure TCP Relay Server",
+  "name": "pure-tcp-relay",
+  "version": "2.0.0",
+  "description": "Pure TCP Relay",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
-  },
-  "dependencies": {}
+  }
 }
