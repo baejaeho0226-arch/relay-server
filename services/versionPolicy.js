@@ -60,7 +60,7 @@ const {
 const {
     NotifyServerUnauthorized
 } = require(
-    './notifications'
+    '../relay/notifications'
 );
 
 const {
