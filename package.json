@@ -1,7 +1,7 @@
 {
   "name": "pure-tcp-relay",
-  "version": "2.0.0",
-  "description": "Pure TCP Relay",
+  "version": "2.1.0",
+  "description": "Pure TCP Relay with License & Admin Management",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
