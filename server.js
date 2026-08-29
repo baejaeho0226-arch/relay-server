@@ -5,6 +5,7 @@ const path = require('path');
 
 const HOST = '0.0.0.0';
 const PORT = Number(process.env.PORT || 3000);
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'ADMIN-SECRET-KEY-1234';
 
 const IDENTITY_FILE = path.join(__dirname, 'relay-identities.json');
 
@@ -13,9 +14,18 @@ const clients = new Map();
 
 const serverIdentities = new Map();
 const clientIdentities = new Map();
+const licenses = new Map();
+
+function RandomHex(bytes) {
+    return crypto.randomBytes(bytes).toString('hex').toUpperCase();
+}
 
 function RandomID() {
-    return crypto.randomBytes(8).toString('hex').toUpperCase();
+    return RandomHex(8);
+}
+
+function RandomLicenseKey() {
+    return 'LICENSE-' + RandomHex(10);
 }
 
 function NormalizeID(id) {
@@ -40,34 +50,24 @@ function NormalizeID(id) {
     return id;
 }
 
-function GetAllUsedIDs() {
-    const used = new Set();
-
-    for (const id of serverIdentities.values()) {
-        if (id) {
-            used.add(id);
-        }
+function NormalizeLicenseKey(key) {
+    if (typeof key !== 'string') {
+        return '';
     }
 
-    for (const value of clientIdentities.values()) {
-        if (value && value.id) {
-            used.add(value.id);
-        }
-    }
-
-    return used;
+    return key.trim().toUpperCase();
 }
 
-function MakeUniqueID() {
-    const used = GetAllUsedIDs();
+function SanitizeMemo(memo) {
+    if (typeof memo !== 'string') {
+        return '';
+    }
 
-    let id;
-
-    do {
-        id = RandomID();
-    } while (used.has(id));
-
-    return id;
+    return memo
+        .replace(/\r/g, ' ')
+        .replace(/\n/g, ' ')
+        .replace(/\|/g, ' ')
+        .trim();
 }
 
 function SendLine(socket, text) {
@@ -85,9 +85,10 @@ function SendLine(socket, text) {
 
 function SaveIdentities() {
     const data = {
-        version: 4,
+        version: 5,
         servers: Object.fromEntries(serverIdentities),
-        clients: Object.fromEntries(clientIdentities)
+        clients: Object.fromEntries(clientIdentities),
+        licenses: Object.fromEntries(licenses)
     };
 
     const temp = IDENTITY_FILE + '.tmp';
@@ -130,7 +131,7 @@ function LoadIdentities() {
             )
         );
 
-        const used = new Set();
+        const usedIDs = new Set();
 
         if (
             data.servers &&
@@ -154,9 +155,9 @@ function LoadIdentities() {
                     continue;
                 }
 
-                if (used.has(id)) {
+                if (usedIDs.has(id)) {
                     console.error(
-                        'DUPLICATE SERVER ID:',
+                        'DUPLICATE SERVER ID IGNORED:',
                         id
                     );
 
@@ -168,7 +169,7 @@ function LoadIdentities() {
                     id
                 );
 
-                used.add(id);
+                usedIDs.add(id);
             }
         }
 
@@ -196,29 +197,25 @@ function LoadIdentities() {
 
                 const id = NormalizeID(rawId);
 
-                if (
-                    !key ||
-                    !id ||
-                    typeof value.serverId !== 'string'
-                ) {
-                    continue;
-                }
-
-                if (used.has(id)) {
-                    console.error(
-                        'DUPLICATE CLIENT ID:',
-                        id
-                    );
-
-                    continue;
-                }
-
                 const serverId =
                     NormalizeID(
                         value.serverId
                     );
 
-                if (!serverId) {
+                if (
+                    !key ||
+                    !id ||
+                    !serverId
+                ) {
+                    continue;
+                }
+
+                if (usedIDs.has(id)) {
+                    console.error(
+                        'DUPLICATE CLIENT ID IGNORED:',
+                        id
+                    );
+
                     continue;
                 }
 
@@ -230,7 +227,60 @@ function LoadIdentities() {
                     }
                 );
 
-                used.add(id);
+                usedIDs.add(id);
+            }
+        }
+
+        if (
+            data.licenses &&
+            typeof data.licenses === 'object'
+        ) {
+            for (
+                const [rawKey, value]
+                of Object.entries(data.licenses)
+            ) {
+                if (
+                    !value ||
+                    typeof value !== 'object'
+                ) {
+                    continue;
+                }
+
+                const key =
+                    NormalizeLicenseKey(
+                        rawKey
+                    );
+
+                if (!key) {
+                    continue;
+                }
+
+                const expiresAt =
+                    Number(value.expiresAt);
+
+                if (
+                    !Number.isFinite(expiresAt) ||
+                    expiresAt <= 0
+                ) {
+                    continue;
+                }
+
+                licenses.set(
+                    key,
+                    {
+                        createdAt:
+                            Number(value.createdAt) || Date.now(),
+                        expiresAt,
+                        boundClient:
+                            NormalizeID(
+                                value.boundClient || ''
+                            ),
+                        memo:
+                            SanitizeMemo(
+                                value.memo || ''
+                            )
+                    }
+                );
             }
         }
 
@@ -241,7 +291,9 @@ function LoadIdentities() {
             serverIdentities.size +
             ' servers, ' +
             clientIdentities.size +
-            ' clients'
+            ' clients, ' +
+            licenses.size +
+            ' licenses'
         );
     } catch (error) {
         console.error(
@@ -251,8 +303,51 @@ function LoadIdentities() {
     }
 }
 
+function GetAllUsedIDs() {
+    const used = new Set();
+
+    for (
+        const id
+        of serverIdentities.values()
+    ) {
+        if (id) {
+            used.add(id);
+        }
+    }
+
+    for (
+        const value
+        of clientIdentities.values()
+    ) {
+        if (
+            value &&
+            value.id
+        ) {
+            used.add(value.id);
+        }
+    }
+
+    return used;
+}
+
+function MakeUniqueID() {
+    const used =
+        GetAllUsedIDs();
+
+    let id;
+
+    do {
+        id = RandomID();
+    } while (
+        used.has(id)
+    );
+
+    return id;
+}
+
 function GetOnlineServer(serverId) {
-    const server = servers.get(serverId);
+    const server =
+        servers.get(serverId);
 
     if (!server) {
         return null;
@@ -301,11 +396,36 @@ function FindClientDeviceByID(clientId) {
     return null;
 }
 
+function GetSavedClientByID(clientId) {
+    clientId =
+        NormalizeID(clientId);
+
+    if (!clientId) {
+        return null;
+    }
+
+    for (
+        const value
+        of clientIdentities.values()
+    ) {
+        if (
+            value &&
+            value.id === clientId
+        ) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
 function RegisterServer(connection, deviceKey) {
     deviceKey = deviceKey.trim();
 
     let serverId =
-        serverIdentities.get(deviceKey);
+        serverIdentities.get(
+            deviceKey
+        );
 
     if (!serverId) {
         serverId = MakeUniqueID();
@@ -326,7 +446,9 @@ function RegisterServer(connection, deviceKey) {
     }
 
     const owner =
-        FindServerDeviceByID(serverId);
+        FindServerDeviceByID(
+            serverId
+        );
 
     if (
         owner &&
@@ -379,6 +501,32 @@ function RegisterServer(connection, deviceKey) {
         connection
     );
 
+    for (
+        const client
+        of clients.values()
+    ) {
+        if (
+            client.serverId !== serverId
+        ) {
+            continue;
+        }
+
+        connection.clients.add(
+            client.clientId
+        );
+
+        if (
+            IsClientLicensed(
+                client.clientId
+            )
+        ) {
+            NotifyServerAuthorized(
+                client.clientId,
+                serverId
+            );
+        }
+    }
+
     SendLine(
         connection.socket,
         'REGISTERED|' + serverId
@@ -392,7 +540,10 @@ function RegisterServer(connection, deviceKey) {
     return true;
 }
 
-function HandleServerLine(connection, line) {
+function HandleServerLine(
+    connection,
+    line
+) {
     line = line.trim();
 
     if (!line) {
@@ -437,7 +588,9 @@ function HandleServerLine(connection, line) {
         return;
     }
 
-    if (line === 'PONG') {
+    if (
+        line === 'PONG'
+    ) {
         connection.lastSeen =
             Date.now();
 
@@ -447,95 +600,6 @@ function HandleServerLine(connection, line) {
     SendLine(
         connection.socket,
         'ERROR|UNKNOWN_COMMAND'
-    );
-}
-
-function GetSavedClientByID(clientId) {
-    clientId =
-        NormalizeID(clientId);
-
-    if (!clientId) {
-        return null;
-    }
-
-    for (
-        const saved
-        of clientIdentities.values()
-    ) {
-        if (
-            saved &&
-            saved.id === clientId
-        ) {
-            return saved;
-        }
-    }
-
-    return null;
-}
-
-function AttachClient(connection, saved) {
-    const old =
-        clients.get(saved.id);
-
-    if (
-        old &&
-        old !== connection &&
-        old.socket &&
-        !old.socket.destroyed
-    ) {
-        const oldServer =
-            GetOnlineServer(
-                old.serverId
-            );
-
-        if (oldServer) {
-            oldServer.clients.delete(
-                saved.id
-            );
-        }
-
-        SendLine(
-            old.socket,
-            'ERROR|REPLACED'
-        );
-
-        old.socket.destroy();
-    }
-
-    connection.clientId =
-        saved.id;
-
-    connection.serverId =
-        saved.serverId;
-
-    connection.connected =
-        true;
-
-    connection.lastSeen =
-        Date.now();
-
-    clients.set(
-        saved.id,
-        connection
-    );
-
-    const server =
-        GetOnlineServer(
-            saved.serverId
-        );
-
-    if (server) {
-        server.clients.add(
-            saved.id
-        );
-    }
-
-    SendLine(
-        connection.socket,
-        'CONNECTED|' +
-        saved.id +
-        '|' +
-        saved.serverId
     );
 }
 
@@ -579,6 +643,84 @@ function CreateNewClientIdentity(
     return saved;
 }
 
+function AttachClient(
+    connection,
+    saved
+) {
+    const old =
+        clients.get(saved.id);
+
+    if (
+        old &&
+        old !== connection &&
+        old.socket &&
+        !old.socket.destroyed
+    ) {
+        const oldServer =
+            GetOnlineServer(
+                old.serverId
+            );
+
+        if (oldServer) {
+            oldServer.clients.delete(
+                saved.id
+            );
+        }
+
+        SendLine(
+            old.socket,
+            'ERROR|REPLACED'
+        );
+
+        old.socket.destroy();
+    }
+
+    connection.clientId =
+        saved.id;
+
+    connection.serverId =
+        saved.serverId;
+
+    connection.connected =
+        true;
+
+    connection.lastSeen =
+        Date.now();
+
+    connection.licenseAuthorized =
+        false;
+
+    connection.licenseKey =
+        null;
+
+    connection.licenseExpiresAt =
+        0;
+
+    clients.set(
+        saved.id,
+        connection
+    );
+
+    const server =
+        GetOnlineServer(
+            saved.serverId
+        );
+
+    if (server) {
+        server.clients.add(
+            saved.id
+        );
+    }
+
+    SendLine(
+        connection.socket,
+        'CONNECTED|' +
+        saved.id +
+        '|' +
+        saved.serverId
+    );
+}
+
 function HandleClientConnect(
     connection,
     deviceKey
@@ -589,12 +731,11 @@ function HandleClientConnect(
         );
 
     if (saved) {
-        const server =
-            GetOnlineServer(
+        if (
+            !GetOnlineServer(
                 saved.serverId
-            );
-
-        if (!server) {
+            )
+        ) {
             SendLine(
                 connection.socket,
                 'ERROR|SERVER_OFFLINE'
@@ -602,36 +743,356 @@ function HandleClientConnect(
 
             return;
         }
+    } else {
+        const server =
+            GetAvailableServer();
 
-        AttachClient(
-            connection,
-            saved
-        );
+        if (!server) {
+            SendLine(
+                connection.socket,
+                'ERROR|NO_SERVER'
+            );
 
-        return;
+            return;
+        }
+
+        saved =
+            CreateNewClientIdentity(
+                deviceKey,
+                server.serverId
+            );
     }
-
-    const server =
-        GetAvailableServer();
-
-    if (!server) {
-        SendLine(
-            connection.socket,
-            'ERROR|NO_SERVER'
-        );
-
-        return;
-    }
-
-    saved =
-        CreateNewClientIdentity(
-            deviceKey,
-            server.serverId
-        );
 
     AttachClient(
         connection,
         saved
+    );
+}
+
+function GetAvailableServer() {
+    const list = [];
+
+    for (
+        const server
+        of servers.values()
+    ) {
+        if (!server.registered) {
+            continue;
+        }
+
+        if (
+            !server.socket ||
+            server.socket.destroyed
+        ) {
+            continue;
+        }
+
+        list.push(server);
+    }
+
+    if (list.length === 0) {
+        return null;
+    }
+
+    list.sort(
+        (a, b) =>
+            a.clients.size -
+            b.clients.size
+    );
+
+    return list[0];
+}
+
+function FindLicense(
+    licenseKey
+) {
+    licenseKey =
+        NormalizeLicenseKey(
+            licenseKey
+        );
+
+    if (!licenseKey) {
+        return null;
+    }
+
+    return licenses.get(
+        licenseKey
+    ) || null;
+}
+
+function IsLicenseActive(
+    licenseKey
+) {
+    const license =
+        FindLicense(
+            licenseKey
+        );
+
+    if (!license) {
+        return false;
+    }
+
+    if (
+        Date.now() >=
+        license.expiresAt
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+function GetClientActiveLicense(
+    clientId
+) {
+    clientId =
+        NormalizeID(clientId);
+
+    if (!clientId) {
+        return null;
+    }
+
+    const now =
+        Date.now();
+
+    for (
+        const [key, license]
+        of licenses.entries()
+    ) {
+        if (
+            !license ||
+            !license.boundClient
+        ) {
+            continue;
+        }
+
+        if (
+            license.boundClient !==
+            clientId
+        ) {
+            continue;
+        }
+
+        if (
+            now >=
+            license.expiresAt
+        ) {
+            continue;
+        }
+
+        return {
+            key,
+            license
+        };
+    }
+
+    return null;
+}
+
+function IsClientLicensed(
+    clientId
+) {
+    return !!GetClientActiveLicense(
+        clientId
+    );
+}
+
+function NotifyServerAuthorized(
+    clientId,
+    serverId
+) {
+    const server =
+        GetOnlineServer(
+            serverId
+        );
+
+    if (!server) {
+        return;
+    }
+
+    const active =
+        GetClientActiveLicense(
+            clientId
+        );
+
+    if (!active) {
+        return;
+    }
+
+    SendLine(
+        server.socket,
+        'CLIENT_AUTHORIZED|' +
+        clientId +
+        '|' +
+        active.license.expiresAt
+    );
+}
+
+function NotifyServerUnauthorized(
+    clientId,
+    reason
+) {
+    const saved =
+        GetSavedClientByID(
+            clientId
+        );
+
+    if (!saved) {
+        return;
+    }
+
+    const server =
+        GetOnlineServer(
+            saved.serverId
+        );
+
+    if (!server) {
+        return;
+    }
+
+    SendLine(
+        server.socket,
+        'CLIENT_UNAUTHORIZED|' +
+        clientId +
+        '|' +
+        reason
+    );
+}
+
+function AuthorizeClientConnection(
+    connection,
+    licenseKey
+) {
+    licenseKey =
+        NormalizeLicenseKey(
+            licenseKey
+        );
+
+    if (
+        !connection.connected ||
+        !connection.clientId
+    ) {
+        SendLine(
+            connection.socket,
+            'LICENSE_ERROR|CLIENT_NOT_CONNECTED'
+        );
+
+        return;
+    }
+
+    if (!licenseKey) {
+        SendLine(
+            connection.socket,
+            'LICENSE_ERROR|INVALID_KEY'
+        );
+
+        return;
+    }
+
+    const license =
+        FindLicense(
+            licenseKey
+        );
+
+    if (!license) {
+        connection.licenseAuthorized =
+            false;
+
+        SendLine(
+            connection.socket,
+            'LICENSE_ERROR|INVALID_KEY'
+        );
+
+        NotifyServerUnauthorized(
+            connection.clientId,
+            'INVALID_KEY'
+        );
+
+        return;
+    }
+
+    if (
+        Date.now() >=
+        license.expiresAt
+    ) {
+        connection.licenseAuthorized =
+            false;
+
+        SendLine(
+            connection.socket,
+            'LICENSE_ERROR|EXPIRED'
+        );
+
+        NotifyServerUnauthorized(
+            connection.clientId,
+            'EXPIRED'
+        );
+
+        return;
+    }
+
+    if (
+        license.boundClient &&
+        license.boundClient !==
+        connection.clientId
+    ) {
+        connection.licenseAuthorized =
+            false;
+
+        SendLine(
+            connection.socket,
+            'LICENSE_ERROR|BOUND_OTHER'
+        );
+
+        NotifyServerUnauthorized(
+            connection.clientId,
+            'BOUND_OTHER'
+        );
+
+        return;
+    }
+
+    if (!license.boundClient) {
+        license.boundClient =
+            connection.clientId;
+
+        SaveIdentities();
+
+        console.log(
+            'LICENSE BOUND: ' +
+            licenseKey +
+            ' -> CLIENT ' +
+            connection.clientId
+        );
+    }
+
+    connection.licenseAuthorized =
+        true;
+
+    connection.licenseKey =
+        licenseKey;
+
+    connection.licenseExpiresAt =
+        license.expiresAt;
+
+    SendLine(
+        connection.socket,
+        'LICENSE_OK|' +
+        licenseKey +
+        '|' +
+        license.expiresAt
+    );
+
+    NotifyServerAuthorized(
+        connection.clientId,
+        connection.serverId
+    );
+
+    console.log(
+        'CLIENT LICENSE OK: ' +
+        connection.clientId +
+        ' -> ' +
+        licenseKey
     );
 }
 
@@ -668,7 +1129,9 @@ function HandleClientSend(
         return;
     }
 
-    if (!/^-?\d+$/.test(number)) {
+    if (
+        !/^-?\d+$/.test(number)
+    ) {
         SendLine(
             connection.socket,
             'ERROR|NUMBER_ONLY'
@@ -678,11 +1141,44 @@ function HandleClientSend(
     }
 
     if (
-        connection.clientId !== clientId
+        connection.clientId !==
+        clientId
     ) {
         SendLine(
             connection.socket,
             'ERROR|CLIENT_NOT_OWNER'
+        );
+
+        return;
+    }
+
+    if (
+        !IsClientLicensed(
+            clientId
+        )
+    ) {
+        connection.licenseAuthorized =
+            false;
+
+        NotifyServerUnauthorized(
+            clientId,
+            'LICENSE_REQUIRED'
+        );
+
+        SendLine(
+            connection.socket,
+            'ERROR|LICENSE_REQUIRED'
+        );
+
+        return;
+    }
+
+    if (
+        !connection.licenseAuthorized
+    ) {
+        SendLine(
+            connection.socket,
+            'ERROR|LICENSE_REQUIRED'
         );
 
         return;
@@ -778,6 +1274,52 @@ function HandleClientLine(
         return;
     }
 
+    if (
+        line.startsWith('LICENSE_AUTH|')
+    ) {
+        const parts =
+            line.split('|');
+
+        if (parts.length < 2) {
+            SendLine(
+                connection.socket,
+                'LICENSE_ERROR|INVALID_KEY'
+            );
+
+            return;
+        }
+
+        const licenseKey =
+            parts[1].trim();
+
+        const requestedClientId =
+            parts.length >= 3
+                ? NormalizeID(
+                    parts[2].trim()
+                )
+                : '';
+
+        if (
+            requestedClientId &&
+            requestedClientId !==
+            connection.clientId
+        ) {
+            SendLine(
+                connection.socket,
+                'LICENSE_ERROR|CLIENT_NOT_OWNER'
+            );
+
+            return;
+        }
+
+        AuthorizeClientConnection(
+            connection,
+            licenseKey
+        );
+
+        return;
+    }
+
     if (line === 'PONG') {
         connection.lastSeen =
             Date.now();
@@ -785,7 +1327,9 @@ function HandleClientLine(
         return;
     }
 
-    if (line.startsWith('SEND|')) {
+    if (
+        line.startsWith('SEND|')
+    ) {
         HandleClientSend(
             connection,
             line
@@ -798,6 +1342,478 @@ function HandleClientLine(
         connection.socket,
         'ERROR|UNKNOWN_COMMAND'
     );
+}
+
+function CreateLicense(
+    days,
+    memo
+) {
+    const now =
+        Date.now();
+
+    const expiresAt =
+        now +
+        days *
+        24 *
+        60 *
+        60 *
+        1000;
+
+    let key;
+
+    do {
+        key =
+            RandomLicenseKey();
+    } while (
+        licenses.has(key)
+    );
+
+    licenses.set(
+        key,
+        {
+            createdAt: now,
+            expiresAt,
+            boundClient: '',
+            memo: SanitizeMemo(memo)
+        }
+    );
+
+    SaveIdentities();
+
+    return {
+        key,
+        expiresAt
+    };
+}
+
+function GetLicenseStatus(
+    license
+) {
+    if (!license) {
+        return 'UNKNOWN';
+    }
+
+    if (
+        Date.now() >=
+        license.expiresAt
+    ) {
+        return 'EXPIRED';
+    }
+
+    return 'ACTIVE';
+}
+
+function HandleAdminAuth(
+    connection,
+    line
+) {
+    const parts =
+        line.split('|');
+
+    const secret =
+        parts.length >= 2
+            ? parts.slice(1).join('|')
+            : '';
+
+    if (
+        secret !== ADMIN_SECRET
+    ) {
+        connection.adminAuthenticated =
+            false;
+
+        SendLine(
+            connection.socket,
+            'ADMIN_ERROR|AUTH_FAILED'
+        );
+
+        return false;
+    }
+
+    connection.adminAuthenticated =
+        true;
+
+    connection.lastSeen =
+        Date.now();
+
+    SendLine(
+        connection.socket,
+        'ADMIN_OK'
+    );
+
+    return true;
+}
+
+function HandleAdminLine(
+    connection,
+    line
+) {
+    line = line.trim();
+
+    if (!line) {
+        return;
+    }
+
+    if (
+        line.startsWith('ADMIN_AUTH|')
+    ) {
+        HandleAdminAuth(
+            connection,
+            line
+        );
+
+        return;
+    }
+
+    if (!connection.adminAuthenticated) {
+        SendLine(
+            connection.socket,
+            'ADMIN_ERROR|NOT_AUTHORIZED'
+        );
+
+        return;
+    }
+
+    connection.lastSeen =
+        Date.now();
+
+    if (
+        line.startsWith('LIC_CREATE|')
+    ) {
+        const parts =
+            line.split('|');
+
+        const days =
+            Number(
+                parts[1]
+            );
+
+        const memo =
+            parts.length >= 3
+                ? parts.slice(2).join('|')
+                : '';
+
+        if (
+            !Number.isInteger(days) ||
+            days <= 0
+        ) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|INVALID_DAYS'
+            );
+
+            return;
+        }
+
+        if (days > 36500) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|DAYS_TOO_LARGE'
+            );
+
+            return;
+        }
+
+        const created =
+            CreateLicense(
+                days,
+                memo
+            );
+
+        SendLine(
+            connection.socket,
+            'LIC_OK|' +
+            created.key +
+            '|' +
+            created.expiresAt
+        );
+
+        return;
+    }
+
+    if (line === 'LIC_LIST') {
+        for (
+            const [key, license]
+            of licenses.entries()
+        ) {
+            SendLine(
+                connection.socket,
+                'LIC_ITEM|' +
+                key +
+                '|' +
+                GetLicenseStatus(license) +
+                '|' +
+                license.expiresAt +
+                '|' +
+                (license.boundClient || '') +
+                '|' +
+                SanitizeMemo(
+                    license.memo || ''
+                )
+            );
+        }
+
+        SendLine(
+            connection.socket,
+            'END_LIST'
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith('LIC_EXTEND|')
+    ) {
+        const parts =
+            line.split('|');
+
+        const key =
+            NormalizeLicenseKey(
+                parts[1] || ''
+            );
+
+        const days =
+            Number(
+                parts[2]
+            );
+
+        if (!key) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|INVALID_KEY'
+            );
+
+            return;
+        }
+
+        if (
+            !Number.isInteger(days) ||
+            days <= 0 ||
+            days > 36500
+        ) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|INVALID_DAYS'
+            );
+
+            return;
+        }
+
+        const license =
+            licenses.get(key);
+
+        if (!license) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|NOT_FOUND'
+            );
+
+            return;
+        }
+
+        const base =
+            Math.max(
+                Date.now(),
+                license.expiresAt
+            );
+
+        license.expiresAt =
+            base +
+            days *
+            24 *
+            60 *
+            60 *
+            1000;
+
+        SaveIdentities();
+
+        if (
+            license.boundClient
+        ) {
+            const client =
+                clients.get(
+                    license.boundClient
+                );
+
+            if (
+                client &&
+                client.licenseKey === key
+            ) {
+                client.licenseAuthorized =
+                    Date.now() <
+                    license.expiresAt;
+
+                client.licenseExpiresAt =
+                    license.expiresAt;
+
+                if (
+                    client.licenseAuthorized
+                ) {
+                    SendLine(
+                        client.socket,
+                        'LICENSE_OK|' +
+                        key +
+                        '|' +
+                        license.expiresAt
+                    );
+
+                    NotifyServerAuthorized(
+                        client.clientId,
+                        client.serverId
+                    );
+                }
+            }
+        }
+
+        SendLine(
+            connection.socket,
+            'LIC_EXTEND_OK|' +
+            key +
+            '|' +
+            license.expiresAt
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith('LIC_DELETE|')
+    ) {
+        const parts =
+            line.split('|');
+
+        const key =
+            NormalizeLicenseKey(
+                parts[1] || ''
+            );
+
+        if (!key) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|INVALID_KEY'
+            );
+
+            return;
+        }
+
+        const license =
+            licenses.get(key);
+
+        if (!license) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|NOT_FOUND'
+            );
+
+            return;
+        }
+
+        const boundClient =
+            license.boundClient;
+
+        licenses.delete(key);
+
+        SaveIdentities();
+
+        if (boundClient) {
+            const client =
+                clients.get(
+                    boundClient
+                );
+
+            if (
+                client &&
+                client.licenseKey === key
+            ) {
+                client.licenseAuthorized =
+                    false;
+
+                client.licenseKey =
+                    null;
+
+                client.licenseExpiresAt =
+                    0;
+
+                SendLine(
+                    client.socket,
+                    'LICENSE_ERROR|REVOKED'
+                );
+
+                NotifyServerUnauthorized(
+                    boundClient,
+                    'REVOKED'
+                );
+            }
+        }
+
+        SendLine(
+            connection.socket,
+            'LIC_DELETE_OK|' +
+            key
+        );
+
+        return;
+    }
+
+    SendLine(
+        connection.socket,
+        'ADMIN_ERROR|UNKNOWN_COMMAND'
+    );
+}
+
+function ValidateClientLicenseConnection(
+    connection
+) {
+    if (
+        !connection.connected ||
+        !connection.clientId
+    ) {
+        return;
+    }
+
+    if (
+        !connection.licenseAuthorized
+    ) {
+        return;
+    }
+
+    const active =
+        GetClientActiveLicense(
+            connection.clientId
+        );
+
+    if (!active) {
+        connection.licenseAuthorized =
+            false;
+
+        connection.licenseKey =
+            null;
+
+        connection.licenseExpiresAt =
+            0;
+
+        SendLine(
+            connection.socket,
+            'LICENSE_ERROR|EXPIRED'
+        );
+
+        NotifyServerUnauthorized(
+            connection.clientId,
+            'EXPIRED'
+        );
+
+        return;
+    }
+
+    if (
+        connection.licenseKey !==
+        active.key
+    ) {
+        connection.licenseKey =
+            active.key;
+    }
+
+    connection.licenseExpiresAt =
+        active.license.expiresAt;
 }
 
 function DisconnectConnection(
@@ -849,6 +1865,8 @@ function DisconnectConnection(
                 );
             }
         }
+
+        return;
     }
 }
 
@@ -858,9 +1876,13 @@ function CreateConnection(socket) {
         type: null,
         registered: false,
         connected: false,
+        adminAuthenticated: false,
         identityKey: null,
         serverId: null,
         clientId: null,
+        licenseAuthorized: false,
+        licenseKey: null,
+        licenseExpiresAt: 0,
         lastSeen: Date.now(),
         clients: new Set(),
         buffer: ''
@@ -881,9 +1903,7 @@ function CreateConnection(socket) {
 
             while (true) {
                 const pos =
-                    connection.buffer.indexOf(
-                        '\n'
-                    );
+                    connection.buffer.indexOf('\n');
 
                 if (pos < 0) {
                     break;
@@ -916,10 +1936,16 @@ function CreateConnection(socket) {
                     } else if (
                         line === 'CONNECT' ||
                         line.startsWith('CONNECT|') ||
+                        line.startsWith('LICENSE_AUTH|') ||
                         line.startsWith('SEND|')
                     ) {
                         connection.type =
                             'client';
+                    } else if (
+                        line.startsWith('ADMIN_AUTH|')
+                    ) {
+                        connection.type =
+                            'admin';
                     } else {
                         SendLine(
                             socket,
@@ -938,8 +1964,16 @@ function CreateConnection(socket) {
                         connection,
                         line
                     );
-                } else {
+                } else if (
+                    connection.type ===
+                    'client'
+                ) {
                     HandleClientLine(
+                        connection,
+                        line
+                    );
+                } else {
+                    HandleAdminLine(
                         connection,
                         line
                     );
@@ -963,49 +1997,14 @@ function CreateConnection(socket) {
     );
 }
 
-function GetAvailableServer() {
-    const list = [];
-
-    for (
-        const server
-        of servers.values()
-    ) {
-        if (!server.registered) {
-            continue;
-        }
-
-        if (
-            !server.socket ||
-            server.socket.destroyed
-        ) {
-            continue;
-        }
-
-        list.push(server);
-    }
-
-    if (list.length === 0) {
-        return null;
-    }
-
-    list.sort(
-        (a, b) => {
-            return (
-                a.clients.size -
-                b.clients.size
-            );
-        }
-    );
-
-    return list[0];
-}
-
 LoadIdentities();
 
 const server =
     net.createServer(
         socket => {
-            CreateConnection(socket);
+            CreateConnection(
+                socket
+            );
         }
     );
 
@@ -1048,15 +2047,19 @@ server.listen(
         );
 
         console.log(
+            'License Storage: SERVER'
+        );
+
+        console.log(
             'ID Format: 16 HEX'
         );
 
         console.log(
-            'Device Identity: SERVER'
+            'Client/Server Binding: FIXED'
         );
 
         console.log(
-            'Client/Server Binding: FIXED'
+            'License Binding: CLIENT'
         );
 
         console.log(
@@ -1133,6 +2136,10 @@ setInterval(
 
                 continue;
             }
+
+            ValidateClientLicenseConnection(
+                connection
+            );
 
             SendLine(
                 connection.socket,
