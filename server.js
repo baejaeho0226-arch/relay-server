@@ -24,6 +24,21 @@ function RandomID(prefix) {
     return prefix + crypto.randomBytes(8).toString('hex').toUpperCase();
 }
 
+function GenerateLicenseKey(length = 16) {
+    const Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += Chars.charAt(Math.floor(Math.random() * Chars.length));
+    }
+    return result;
+}
+
+function AddDays(dateStr, days) {
+    const date = dateStr ? new Date(dateStr) : new Date();
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0];
+}
+
 function MakeUniqueID(prefix, identityMap) {
     let id;
     do {
@@ -220,7 +235,7 @@ function AttachClient(connection, saved) {
 function VerifyLicense(licenseKey, clientId) {
     const lic = licenses.get(licenseKey);
     if (!lic) return { valid: false, reason: 'LICENSE_NOT_FOUND' };
-    if (lic.status !== 'ACTIVE') return { valid: false, reason: 'LICENSE_INACTIVE' };
+    if (lic.status !== 'ACTIVE' && lic.status !== 'UNUSED') return { valid: false, reason: 'LICENSE_INACTIVE' };
 
     const now = new Date();
     const expire = new Date(lic.expireDate);
@@ -228,6 +243,7 @@ function VerifyLicense(licenseKey, clientId) {
 
     if (!lic.clientId) {
         lic.clientId = clientId;
+        lic.status = 'USED';
         const saved = GetSavedClientByID(clientId);
         if (saved) lic.serverId = saved.serverId;
         SaveLicenses();
@@ -350,6 +366,7 @@ function HandleClientLine(connection, line) {
     SendLine(connection.socket, 'ERROR|UNKNOWN_COMMAND');
 }
 
+// Delphi uAdminManager 프로토콜과 일치하도록 처리하는 핸들러
 function HandleAdminLine(connection, line) {
     line = line.trim();
     if (line === '') return;
@@ -357,50 +374,72 @@ function HandleAdminLine(connection, line) {
     const parts = line.split('|');
     const cmd = parts[0];
 
+    // 1. ADMIN_CREATE_LICENSE|개수|기간일수
     if (cmd === 'ADMIN_CREATE_LICENSE') {
-        // ADMIN_CREATE_LICENSE|KEY|YYYY-MM-DD
-        const key = parts[1];
-        const expireDate = parts[2];
-        licenses.set(key, { key, serverId: null, clientId: null, expireDate, status: 'ACTIVE' });
+        const count = parts.length >= 2 ? parseInt(parts[1], 10) || 1 : 1;
+        const days = parts.length >= 3 ? parseInt(parts[2], 10) || 30 : 30;
+
+        let responseText = `ADMIN_OK|CREATED|${count}\n`;
+
+        for (let i = 0; i < count; i++) {
+            const key = GenerateLicenseKey(16);
+            const expireDate = AddDays(null, days);
+            const licenseItem = {
+                key,
+                serverId: null,
+                clientId: null,
+                expireDate,
+                status: 'UNUSED'
+            };
+            licenses.set(key, licenseItem);
+            responseText += `${key}|${expireDate}|UNUSED` + (i < count - 1 ? '\n' : '');
+            BroadcastLog('ADMIN', `License Created: ${key} (Expires: ${expireDate})`);
+        }
         SaveLicenses();
-        SendLine(connection.socket, 'ADMIN_OK|LICENSE_CREATED');
-        BroadcastLog('ADMIN', `License Created: ${key} (Expires: ${expireDate})`);
+        SendLine(connection.socket, responseText);
         return;
     }
 
+    // 2. ADMIN_REVOKE_LICENSE|키
     if (cmd === 'ADMIN_REVOKE_LICENSE') {
-        // ADMIN_REVOKE_LICENSE|KEY
-        const key = parts[1];
+        const key = parts[1] ? parts[1].trim() : '';
         if (licenses.has(key)) {
             licenses.delete(key);
             SaveLicenses();
-            SendLine(connection.socket, 'ADMIN_OK|LICENSE_REVOKED');
+            SendLine(connection.socket, 'ADMIN_OK|REVOKED|' + key);
             BroadcastLog('ADMIN', `License Revoked: ${key}`);
         } else {
-            SendLine(connection.socket, 'ERROR|LICENSE_NOT_FOUND');
+            SendLine(connection.socket, 'ERROR|KEY_NOT_FOUND');
         }
         return;
     }
 
+    // 3. ADMIN_EXTEND_LICENSE|키|연장일수
     if (cmd === 'ADMIN_EXTEND_LICENSE') {
-        // ADMIN_EXTEND_LICENSE|KEY|YYYY-MM-DD
-        const key = parts[1];
-        const newExpire = parts[2];
+        const key = parts[1] ? parts[1].trim() : '';
+        const days = parts.length >= 3 ? parseInt(parts[2], 10) || 30 : 30;
+
         const lic = licenses.get(key);
         if (lic) {
-            lic.expireDate = newExpire;
+            lic.expireDate = AddDays(lic.expireDate, days);
             SaveLicenses();
-            SendLine(connection.socket, 'ADMIN_OK|LICENSE_EXTENDED');
-            BroadcastLog('ADMIN', `License Extended: ${key} -> ${newExpire}`);
+            SendLine(connection.socket, `ADMIN_OK|EXTENDED|${key}|${lic.expireDate}`);
+            BroadcastLog('ADMIN', `License Extended: ${key} -> ${lic.expireDate}`);
         } else {
-            SendLine(connection.socket, 'ERROR|LICENSE_NOT_FOUND');
+            SendLine(connection.socket, 'ERROR|KEY_NOT_FOUND');
         }
         return;
     }
 
+    // 4. ADMIN_LIST_LICENSES
     if (cmd === 'ADMIN_LIST_LICENSES') {
         const list = Array.from(licenses.values());
-        SendLine(connection.socket, 'ADMIN_LICENSES|' + JSON.stringify(list));
+        let responseText = `ADMIN_OK|LIST_COUNT|${list.length}\n`;
+        list.forEach((lic, idx) => {
+            const statusStr = (lic.status === 'USED' || lic.clientId) ? 'USED' : 'UNUSED';
+            responseText += `${lic.key}|${lic.expireDate}|${statusStr}` + (idx < list.length - 1 ? '\n' : '');
+        });
+        SendLine(connection.socket, responseText);
         return;
     }
 
@@ -462,12 +501,14 @@ function CreateConnection(socket) {
             if (!connection.type) {
                 if (line === 'REGISTER' || line.startsWith('REGISTER|')) {
                     connection.type = 'server';
-                } else if (line === 'ADMIN_AUTH') {
+                } else if (line === 'ADMIN_AUTH' || line.startsWith('ADMIN_')) {
                     connection.type = 'admin';
                     admins.add(socket);
-                    SendLine(socket, 'ADMIN_OK|AUTHENTICATED');
-                    BroadcastLog('ADMIN', 'Admin Connected');
-                    continue;
+                    if (line === 'ADMIN_AUTH') {
+                        SendLine(socket, 'ADMIN_OK|AUTHENTICATED');
+                        BroadcastLog('ADMIN', 'Admin Connected');
+                        continue;
+                    }
                 } else if (line === 'CONNECT' || line.startsWith('CONNECT|') || line.startsWith('SEND|') || line.startsWith('VERIFY_LICENSE|')) {
                     connection.type = 'client';
                 } else {
@@ -505,7 +546,7 @@ server.on('error', error => {
 
 server.listen(PORT, HOST, () => {
     console.log('================================');
-    console.log('   PURE TCP RELAY WITH ADMIN    ');
+    console.log('    PURE TCP RELAY WITH ADMIN    ');
     console.log('================================');
     console.log('Port: ' + PORT);
     console.log('Protocol: RAW TCP');
