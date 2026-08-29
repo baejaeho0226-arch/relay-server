@@ -1,9 +1,20 @@
 {
-  "name": "pure-tcp-relay",
-  "version": "2.0.0",
-  "description": "Pure TCP Relay",
+  "name": "tcp-relay-license-server",
+  "version": "1.0.0",
+  "description": "TCP Relay and License Verification Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "keywords": [
+    "tcp",
+    "relay",
+    "winsock",
+    "license"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
