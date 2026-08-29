@@ -1,9 +1,13 @@
 {
   "name": "pure-tcp-relay",
-  "version": "2.0.0",
-  "description": "Pure TCP Relay",
+  "version": "5.0.0",
+  "description": "Pure TCP Relay vNext with persistent identities, licensing, ACK, admin controls, monitoring and recovery",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
