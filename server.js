@@ -6,8 +6,8 @@ const path = require('path');
 const HOST = '0.0.0.0';
 const PORT = Number(process.env.PORT || 3000);
 
-const SERVER_ID_PREFIX = 'SERVER-';
-const CLIENT_ID_PREFIX = 'CLIENT-';
+const SERVER_ID_PREFIX = '';
+const CLIENT_ID_PREFIX = '';
 
 const IDENTITY_FILE = path.join(__dirname, 'relay-identities.json');
 
@@ -387,7 +387,7 @@ server.on('error', error => {
 
 server.listen(PORT, HOST, () => {
     console.log('================================');
-    console.log('       PURE TCP RELAY');
+    console.log('        PURE TCP RELAY');
     console.log('================================');
     console.log('Port: ' + PORT);
     console.log('Protocol: RAW TCP');
