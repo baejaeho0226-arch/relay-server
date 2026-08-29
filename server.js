@@ -1,25 +1,21 @@
 const net = require('net');
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 
 const HOST = '0.0.0.0';
 const PORT = Number(process.env.PORT || 33802);
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234'; // 관리자 암호
-const MAX_BUFFER_SIZE = 1024 * 1024;
-
-const CLIENT_ID_PREFIX = 'CLIENT-';
-const IDENTITY_FILE = path.join(__dirname, 'relay-identities.json');
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
 const DB_FILE = path.join(__dirname, 'relay-logs.db');
 
 const db = new sqlite3.Database(DB_FILE, (err) => {
     if (err) console.error('DB Open Error:', err.message);
-    else console.log('[DB] SQLite 데이터베이스 연결 성공:', DB_FILE);
+    else console.log('[DB] SQLite 데이터베이스 연결 성공');
 });
 
+// DB 테이블 생성 (HWID 기반 고정 ID 매핑 포함)
 db.serialize(() => {
-    // 라이선스 관리 테이블
+    // 1. 라이선스 관리
     db.run(`
         CREATE TABLE IF NOT EXISTS licenses (
             license_key TEXT PRIMARY KEY,
@@ -30,74 +26,55 @@ db.serialize(() => {
         )
     `);
 
-    // 전송 로그 테이블
+    // 2. 기기 HWID 매핑 (고정 ID 보장)
     db.run(`
-        CREATE TABLE IF NOT EXISTS transmission_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            event_type TEXT NOT NULL,
-            server_id TEXT,
-            client_id TEXT,
-            encrypted_payload TEXT,
-            decrypted_payload TEXT,
-            status TEXT,
-            client_ip TEXT
+        CREATE TABLE IF NOT EXISTS device_mappings (
+            hwid TEXT PRIMARY KEY,
+            assigned_id TEXT NOT NULL,
+            device_type TEXT NOT NULL
         )
     `);
 });
 
-function DecryptXOR(base64Str, key) {
-    try {
-        const buf = Buffer.from(base64Str, 'base64');
-        const keyBuf = Buffer.from(key, 'utf8');
-        const result = Buffer.alloc(buf.length);
-        for (let i = 0; i < buf.length; i++) {
-            result[i] = buf[i] ^ keyBuf[i % keyBuf.length];
-        }
-        return result.toString('utf8');
-    } catch (_) {
-        return '[DECRYPTION_FAILED]';
-    }
-}
-
 const servers = new Map();
 const clients = new Map();
-const serverIdentities = new Map();
-const clientIdentities = new Map();
-
-function GenerateLicenseKey() {
-    const raw = crypto.randomBytes(4).toString('hex').toUpperCase();
-    return `LIC-${raw.substring(0, 4)}-${raw.substring(4, 8)}`;
-}
 
 function SendLine(socket, text) {
     if (!socket || socket.destroyed) return false;
     try {
         socket.write(text + '\n');
         return true;
-    } catch (err) {
+    } catch (_) {
         return false;
     }
 }
 
-function LoadIdentities() {
-    try {
-        if (!fs.existsSync(IDENTITY_FILE)) return;
-        const data = JSON.parse(fs.readFileSync(IDENTITY_FILE, 'utf8'));
-        if (data.servers) {
-            for (const [k, v] of Object.entries(data.servers)) {
-                serverIdentities.set(k, v);
-            }
-        }
-    } catch (e) {}
+function GenerateLicenseKey() {
+    return 'LIC-' + crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
-function SaveIdentities() {
-    try {
-        const data = { servers: Object.fromEntries(serverIdentities) };
-        fs.writeFileSync(IDENTITY_FILE + '.tmp', JSON.stringify(data, null, 2), 'utf8');
-        fs.renameSync(IDENTITY_FILE + '.tmp', IDENTITY_FILE);
-    } catch (e) {}
+// HWID에 해당하는 고정 ID를 DB에서 조회하거나 새로 생성
+function GetOrCreateAssignedID(hwid, type, callback) {
+    db.get(`SELECT assigned_id FROM device_mappings WHERE hwid = ?`, [hwid], (err, row) => {
+        if (err) return callback(err, null);
+        if (row) return callback(null, row.assigned_id);
+
+        const prefix = type === 'SERVER' ? 'SERVER-' : 'CLIENT-';
+        const newId = prefix + crypto.randomBytes(4).toString('hex').toUpperCase();
+
+        db.run(`INSERT INTO device_mappings (hwid, assigned_id, device_type) VALUES (?, ?, ?)`, [hwid, newId, type], (err2) => {
+            if (err2) return callback(err2, null);
+            return callback(null, newId);
+        });
+    });
+}
+
+function ValidateLicense(licenseKey, callback) {
+    db.get(`SELECT * FROM licenses WHERE license_key = ? AND is_active = 1`, [licenseKey], (err, row) => {
+        if (err || !row) return callback(false, 'INVALID_LICENSE');
+        if (new Date() > new Date(row.expires_at)) return callback(false, 'EXPIRED_LICENSE');
+        return callback(true, 'OK', row);
+    });
 }
 
 function GetOnlineServer() {
@@ -107,19 +84,7 @@ function GetOnlineServer() {
     return null;
 }
 
-// 라이선스 검증 함수 (만료 여부 및 활성 상태 체크)
-function ValidateLicense(licenseKey, callback) {
-    const query = `SELECT * FROM licenses WHERE license_key = ? AND is_active = 1`;
-    db.get(query, [licenseKey], (err, row) => {
-        if (err || !row) return callback(false, 'INVALID_LICENSE');
-        const now = new Date();
-        const expireDate = new Date(row.expires_at);
-        if (now > expireDate) return callback(false, 'EXPIRED_LICENSE');
-        return callback(true, 'OK', row);
-    });
-}
-
-// 관리자 명령어 처리
+// 관리자 패킷 처리
 function HandleAdminLine(connection, line) {
     if (line.startsWith('ADMIN_LOGIN|')) {
         const pass = line.split('|')[1];
@@ -137,7 +102,6 @@ function HandleAdminLine(connection, line) {
         return;
     }
 
-    // 라이선스 신규 발급 (일수, 메모)
     if (line.startsWith('ADMIN_GENERATE|')) {
         const parts = line.split('|');
         const days = parseInt(parts[1] || '30', 10);
@@ -155,7 +119,6 @@ function HandleAdminLine(connection, line) {
         return;
     }
 
-    // 라이선스 삭제/폐기
     if (line.startsWith('ADMIN_DELETE|')) {
         const key = line.split('|')[1];
         db.run(`UPDATE licenses SET is_active = 0 WHERE license_key = ?`, [key], (err) => {
@@ -165,22 +128,15 @@ function HandleAdminLine(connection, line) {
         return;
     }
 
-    // 전체 라이선스 목록 및 접속 상태 조회
     if (line === 'ADMIN_LIST') {
         db.all(`SELECT * FROM licenses ORDER BY created_at DESC`, [], (err, rows) => {
-            if (err) {
-                SendLine(connection.socket, 'ERROR|DB_ERROR');
-                return;
-            }
-
+            if (err) return SendLine(connection.socket, 'ERROR|DB_ERROR');
             const now = new Date();
             const result = rows.map(r => {
-                const exp = new Date(r.expires_at);
                 let status = '정상';
                 if (r.is_active === 0) status = '폐기됨';
-                else if (now > exp) status = '만료됨';
+                else if (now > new Date(r.expires_at)) status = '만료됨';
 
-                // 해당 라이선스로 현재 접속 중인 클라이언트 수 계산
                 let activeClients = 0;
                 for (const c of clients.values()) {
                     if (c.licenseKey === r.license_key && c.connected) activeClients++;
@@ -195,41 +151,44 @@ function HandleAdminLine(connection, line) {
                     active_clients: activeClients
                 };
             });
-
             SendLine(connection.socket, 'ADMIN_LIST_DATA|' + JSON.stringify(result));
         });
         return;
     }
 }
 
+// 클라이언트 패킷 처리
 function HandleClientLine(connection, line) {
-    line = line.trim();
-    if (!line) return;
-
     if (line.startsWith('CONNECT|')) {
         const parts = line.split('|');
-        const identityKey = parts[1] ? parts[1].trim() : '';
+        const hwid = parts[1] ? parts[1].trim() : '';
         const licenseKey = parts[2] ? parts[2].trim() : '';
 
-        ValidateLicense(licenseKey, (isValid, reason, licenseData) => {
+        ValidateLicense(licenseKey, (isValid, reason) => {
             if (!isValid) {
                 SendLine(connection.socket, `ERROR|${reason}`);
                 return;
             }
 
-            const server = GetOnlineServer();
-            if (!server) {
+            const targetServer = GetOnlineServer();
+            if (!targetServer) {
                 SendLine(connection.socket, 'ERROR|SERVER_OFFLINE');
                 return;
             }
 
-            const clientId = CLIENT_ID_PREFIX + crypto.randomBytes(4).toString('hex').toUpperCase();
-            connection.clientId = clientId;
-            connection.licenseKey = licenseKey;
-            connection.connected = true;
-            clients.set(clientId, connection);
+            GetOrCreateAssignedID(hwid, 'CLIENT', (err, clientId) => {
+                if (err || !clientId) {
+                    SendLine(connection.socket, 'ERROR|ID_ASSIGN_FAILED');
+                    return;
+                }
 
-            SendLine(connection.socket, `CONNECTED|${clientId}|${server.serverId}`);
+                connection.clientId = clientId;
+                connection.licenseKey = licenseKey;
+                connection.connected = true;
+                clients.set(clientId, connection);
+
+                SendLine(connection.socket, `CONNECTED|${clientId}|${targetServer.serverId}`);
+            });
         });
         return;
     }
@@ -240,40 +199,24 @@ function HandleClientLine(connection, line) {
 
         const clientId = parts[1].trim();
         const encPayload = parts[2].trim();
+        const targetServer = GetOnlineServer();
 
-        const server = GetOnlineServer();
-        if (!server) {
+        if (!targetServer) {
             SendLine(connection.socket, 'ERROR|SERVER_OFFLINE');
             return;
         }
 
-        const decPayload = DecryptXOR(encPayload, connection.licenseKey);
-        const relayMsg = `NUMBER|${clientId}|${encPayload}`;
-
-        if (SendLine(server.socket, relayMsg)) {
+        if (SendLine(targetServer.socket, `NUMBER|${clientId}|${encPayload}`)) {
             SendLine(connection.socket, 'SENT|OK');
         } else {
             SendLine(connection.socket, 'ERROR|RELAY_FAILED');
         }
         return;
     }
-
-    if (line === 'PONG') {
-        connection.lastSeen = Date.now();
-        return;
-    }
 }
 
-LoadIdentities();
-
 const server = net.createServer(socket => {
-    const connection = {
-        socket,
-        type: null,
-        remoteIp: socket.remoteAddress,
-        lastSeen: Date.now(),
-        buffer: ''
-    };
+    const connection = { socket, type: null, buffer: '' };
 
     socket.setNoDelay(true);
     socket.setKeepAlive(true, 10000);
@@ -298,10 +241,15 @@ const server = net.createServer(socket => {
                 HandleAdminLine(connection, line);
             } else if (connection.type === 'server') {
                 if (line.startsWith('REGISTER|')) {
-                    connection.serverId = 'SERVER-MASTER';
-                    connection.registered = true;
-                    servers.set('SERVER-MASTER', connection);
-                    SendLine(socket, 'REGISTERED|SERVER-MASTER|OK');
+                    const hwid = line.split('|')[1];
+                    GetOrCreateAssignedID(hwid, 'SERVER', (err, serverId) => {
+                        if (!err && serverId) {
+                            connection.serverId = serverId;
+                            connection.registered = true;
+                            servers.set(serverId, connection);
+                            SendLine(socket, `REGISTERED|${serverId}|OK`);
+                        }
+                    });
                 }
             } else if (connection.type === 'client') {
                 HandleClientLine(connection, line);
@@ -311,12 +259,10 @@ const server = net.createServer(socket => {
 
     socket.on('close', () => {
         if (connection.clientId) clients.delete(connection.clientId);
+        if (connection.serverId) servers.delete(connection.serverId);
     });
 });
 
 server.listen(PORT, HOST, () => {
-    console.log(`========================================`);
-    console.log(` PURE TCP RELAY v4.0 (License Admin Enabled)`);
-    console.log(` Listening on ${HOST}:${PORT}`);
-    console.log(`========================================`);
+    console.log(`[Relay Server] Started on ${HOST}:${PORT}`);
 });
