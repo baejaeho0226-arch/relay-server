@@ -10,6 +10,7 @@ const IDENTITY_FILE = path.join(__dirname, 'relay-identities.json');
 
 const servers = new Map();
 const clients = new Map();
+
 const serverIdentities = new Map();
 const clientIdentities = new Map();
 
@@ -17,21 +18,54 @@ function RandomID() {
     return crypto.randomBytes(8).toString('hex').toUpperCase();
 }
 
-function MakeUniqueID(identityMap, usedIds) {
+function NormalizeID(id) {
+    if (typeof id !== 'string') {
+        return '';
+    }
+
+    id = id.trim().toUpperCase();
+
+    if (id.startsWith('SERVER-')) {
+        id = id.substring(7);
+    }
+
+    if (id.startsWith('CLIENT-')) {
+        id = id.substring(7);
+    }
+
+    if (!/^[0-9A-F]{16}$/.test(id)) {
+        return '';
+    }
+
+    return id;
+}
+
+function GetAllUsedIDs() {
+    const used = new Set();
+
+    for (const id of serverIdentities.values()) {
+        if (id) {
+            used.add(id);
+        }
+    }
+
+    for (const value of clientIdentities.values()) {
+        if (value && value.id) {
+            used.add(value.id);
+        }
+    }
+
+    return used;
+}
+
+function MakeUniqueID() {
+    const used = GetAllUsedIDs();
+
     let id;
 
     do {
         id = RandomID();
-    } while (
-        usedIds.has(id) ||
-        [...identityMap.values()].some(value => {
-            if (typeof value === 'string') {
-                return value === id;
-            }
-
-            return value && value.id === id;
-        })
-    );
+    } while (used.has(id));
 
     return id;
 }
@@ -59,31 +93,59 @@ function LoadIdentities() {
             fs.readFileSync(IDENTITY_FILE, 'utf8')
         );
 
+        const used = new Set();
+
         if (data.servers && typeof data.servers === 'object') {
-            for (const [deviceKey, serverId] of Object.entries(data.servers)) {
+            for (const [deviceKey, rawId] of Object.entries(data.servers)) {
                 if (
-                    typeof deviceKey === 'string' &&
-                    typeof serverId === 'string' &&
-                    deviceKey &&
-                    serverId
+                    typeof deviceKey !== 'string' ||
+                    typeof rawId !== 'string' ||
+                    deviceKey.trim() === ''
                 ) {
-                    serverIdentities.set(deviceKey, serverId);
+                    continue;
                 }
+
+                const serverId = NormalizeID(rawId);
+
+                if (serverId === '') {
+                    continue;
+                }
+
+                if (used.has(serverId)) {
+                    console.error(
+                        'DUPLICATE SERVER ID IGNORED:',
+                        serverId
+                    );
+
+                    continue;
+                }
+
+                serverIdentities.set(
+                    deviceKey.trim(),
+                    serverId
+                );
+
+                used.add(serverId);
             }
         }
 
         if (data.clients && typeof data.clients === 'object') {
             for (const [deviceKey, value] of Object.entries(data.clients)) {
-                if (!value || typeof value !== 'object') {
+                if (
+                    !value ||
+                    typeof value !== 'object'
+                ) {
                     continue;
                 }
 
-                const id =
+                const rawId =
                     typeof value.id === 'string'
                         ? value.id
                         : value.clientId;
 
-                if (typeof id !== 'string') {
+                const clientId = NormalizeID(rawId);
+
+                if (clientId === '') {
                     continue;
                 }
 
@@ -91,22 +153,55 @@ function LoadIdentities() {
                     continue;
                 }
 
-                clientIdentities.set(deviceKey, {
-                    id,
-                    serverId: value.serverId
-                });
+                if (used.has(clientId)) {
+                    console.error(
+                        'DUPLICATE CLIENT ID IGNORED:',
+                        clientId
+                    );
+
+                    continue;
+                }
+
+                clientIdentities.set(
+                    deviceKey.trim(),
+                    {
+                        id: clientId,
+                        serverId: value.serverId.trim()
+                    }
+                );
+
+                used.add(clientId);
             }
         }
+
+        SaveIdentities();
     } catch (error) {
-        console.error('IDENTITY LOAD ERROR:', error.message);
+        console.error(
+            'IDENTITY LOAD ERROR:',
+            error.message
+        );
     }
 }
 
 function SaveIdentities() {
+    const serversData = {};
+    const clientsData = {};
+
+    for (const [deviceKey, serverId] of serverIdentities.entries()) {
+        serversData[deviceKey] = serverId;
+    }
+
+    for (const [deviceKey, value] of clientIdentities.entries()) {
+        clientsData[deviceKey] = {
+            id: value.id,
+            serverId: value.serverId
+        };
+    }
+
     const data = {
-        version: 2,
-        servers: Object.fromEntries(serverIdentities),
-        clients: Object.fromEntries(clientIdentities)
+        version: 3,
+        servers: serversData,
+        clients: clientsData
     };
 
     const temp = IDENTITY_FILE + '.tmp';
@@ -118,9 +213,15 @@ function SaveIdentities() {
             'utf8'
         );
 
-        fs.renameSync(temp, IDENTITY_FILE);
+        fs.renameSync(
+            temp,
+            IDENTITY_FILE
+        );
     } catch (error) {
-        console.error('IDENTITY SAVE ERROR:', error.message);
+        console.error(
+            'IDENTITY SAVE ERROR:',
+            error.message
+        );
 
         try {
             if (fs.existsSync(temp)) {
@@ -167,29 +268,41 @@ function GetAvailableServer() {
         return null;
     }
 
-    list.sort((a, b) => a.clients.size - b.clients.size);
+    list.sort((a, b) => {
+        return a.clients.size - b.clients.size;
+    });
 
     return list[0];
 }
 
-function GetUsedServerIds() {
-    return new Set(serverIdentities.values());
+function IsKnownServerID(serverId) {
+    for (const savedId of serverIdentities.values()) {
+        if (savedId === serverId) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
-function GetUsedClientIds() {
-    return new Set(
-        [...clientIdentities.values()].map(value => value.id)
-    );
+function FindServerDeviceByID(serverId) {
+    for (const [deviceKey, savedId] of serverIdentities.entries()) {
+        if (savedId === serverId) {
+            return deviceKey;
+        }
+    }
+
+    return null;
 }
 
 function RegisterServer(connection, deviceKey) {
-    let serverId = serverIdentities.get(deviceKey);
+    deviceKey = deviceKey.trim();
+
+    let serverId =
+        serverIdentities.get(deviceKey);
 
     if (!serverId) {
-        serverId = MakeUniqueID(
-            serverIdentities,
-            GetUsedServerIds()
-        );
+        serverId = MakeUniqueID();
 
         serverIdentities.set(
             deviceKey,
@@ -199,7 +312,23 @@ function RegisterServer(connection, deviceKey) {
         SaveIdentities();
     }
 
-    const old = servers.get(serverId);
+    const existingOwner =
+        FindServerDeviceByID(serverId);
+
+    if (
+        existingOwner &&
+        existingOwner !== deviceKey
+    ) {
+        SendLine(
+            connection.socket,
+            'ERROR|SERVER_ID_CONFLICT'
+        );
+
+        return false;
+    }
+
+    const old =
+        servers.get(serverId);
 
     if (
         old &&
@@ -231,6 +360,8 @@ function RegisterServer(connection, deviceKey) {
         connection.socket,
         'REGISTERED|' + serverId
     );
+
+    return true;
 }
 
 function HandleServerLine(connection, line) {
@@ -254,6 +385,7 @@ function HandleServerLine(connection, line) {
         }
 
         const parts = line.split('|');
+
         const deviceKey =
             parts.length >= 2
                 ? parts[1].trim()
@@ -288,6 +420,12 @@ function HandleServerLine(connection, line) {
 }
 
 function GetSavedClientByID(clientId) {
+    clientId = NormalizeID(clientId);
+
+    if (!clientId) {
+        return null;
+    }
+
     for (const saved of clientIdentities.values()) {
         if (saved.id === clientId) {
             return saved;
@@ -298,7 +436,8 @@ function GetSavedClientByID(clientId) {
 }
 
 function AttachClient(connection, saved) {
-    const old = clients.get(saved.id);
+    const old =
+        clients.get(saved.id);
 
     if (
         old &&
@@ -306,6 +445,15 @@ function AttachClient(connection, saved) {
         old.socket &&
         !old.socket.destroyed
     ) {
+        const oldServer =
+            GetOnlineServer(old.serverId);
+
+        if (oldServer) {
+            oldServer.clients.delete(
+                saved.id
+            );
+        }
+
         SendLine(
             old.socket,
             'ERROR|REPLACED'
@@ -324,9 +472,8 @@ function AttachClient(connection, saved) {
         connection
     );
 
-    const server = GetOnlineServer(
-        saved.serverId
-    );
+    const server =
+        GetOnlineServer(saved.serverId);
 
     if (server) {
         server.clients.add(
@@ -355,6 +502,7 @@ function HandleClientLine(connection, line) {
         line.startsWith('CONNECT|')
     ) {
         const parts = line.split('|');
+
         const deviceKey =
             parts.length >= 2
                 ? parts[1].trim()
@@ -373,7 +521,43 @@ function HandleClientLine(connection, line) {
             clientIdentities.get(deviceKey);
 
         if (saved) {
-            if (!GetOnlineServer(saved.serverId)) {
+            let server =
+                GetOnlineServer(saved.serverId);
+
+            if (!server) {
+                const knownServer =
+                    IsKnownServerID(
+                        saved.serverId
+                    );
+
+                if (!knownServer) {
+                    const replacement =
+                        GetAvailableServer();
+
+                    if (!replacement) {
+                        SendLine(
+                            connection.socket,
+                            'ERROR|NO_SERVER'
+                        );
+
+                        return;
+                    }
+
+                    saved.serverId =
+                        replacement.serverId;
+
+                    clientIdentities.set(
+                        deviceKey,
+                        saved
+                    );
+
+                    SaveIdentities();
+
+                    server = replacement;
+                }
+            }
+
+            if (!server) {
                 SendLine(
                     connection.socket,
                     'ERROR|SERVER_OFFLINE'
@@ -395,10 +579,7 @@ function HandleClientLine(connection, line) {
             }
 
             saved = {
-                id: MakeUniqueID(
-                    clientIdentities,
-                    GetUsedClientIds()
-                ),
+                id: MakeUniqueID(),
                 serverId: server.serverId
             };
 
@@ -436,7 +617,7 @@ function HandleClientLine(connection, line) {
         }
 
         const clientId =
-            parts[1].trim();
+            NormalizeID(parts[1].trim());
 
         const number =
             parts[2].trim();
@@ -444,7 +625,7 @@ function HandleClientLine(connection, line) {
         if (!clientId) {
             SendLine(
                 connection.socket,
-                'ERROR|CLIENT_ID_EMPTY'
+                'ERROR|CLIENT_ID_INVALID'
             );
 
             return;
@@ -547,6 +728,19 @@ function DisconnectConnection(connection) {
             clients.delete(
                 connection.clientId
             );
+        }
+
+        if (connection.clientId && connection.serverId) {
+            const server =
+                GetOnlineServer(
+                    connection.serverId
+                );
+
+            if (server) {
+                server.clients.delete(
+                    connection.clientId
+                );
+            }
         }
     }
 }
@@ -692,7 +886,11 @@ server.listen(
         );
 
         console.log(
-            'ID Format: RANDOM HEX ONLY'
+            'ID Format: 16 HEX'
+        );
+
+        console.log(
+            'Device Identity: SERVER SIDE'
         );
 
         console.log(
