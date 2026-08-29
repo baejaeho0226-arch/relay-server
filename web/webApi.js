@@ -334,7 +334,6 @@ async function HandleApiRequest(req, res, session) {
         const id = NormalizeID(DecodePart(match[1]));
         const action = match[2];
         if (!ServerExists(id)) { ApiError(res, 404, 'SERVER_NOT_FOUND'); return; }
-        if (action === 'disable' && !RequireConfirm(res, body, 'DISABLE')) return;
 
         if (action === 'kick') {
             const until = Now() + SERVER_KICK_BLOCK_MS;
@@ -392,7 +391,6 @@ async function HandleApiRequest(req, res, session) {
         const id = NormalizeID(DecodePart(match[1]));
         const action = match[2];
         if (!ClientExists(id)) { ApiError(res, 404, 'CLIENT_NOT_FOUND'); return; }
-        if (action === 'disable' && !RequireConfirm(res, body, 'DISABLE')) return;
 
         if (action === 'kick') {
             const until = Now() + CLIENT_KICK_BLOCK_MS;

@@ -425,9 +425,8 @@ async function serverAction(action, id) {
     const v = await openModal({ title: 'Drain ON', message: `${id}에 신규 Client 배정을 중지합니다. 기존 Client는 유지됩니다.`, confirmLabel: '적용' });
     if (!v) return;
   } else if (action === 'disable') {
-    const v = await openModal({ title: 'Server Disable', message: `${id} 서버를 비활성화하고 현재 연결을 종료합니다. DISABLE을 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: 'Disable' });
+    const v = await openModal({ title: 'Server Disable', message: `${id} 서버를 비활성화하고 현재 연결을 종료합니다. 계속하시겠습니까?`, danger: true, confirmLabel: 'Disable' });
     if (!v) return;
-    body = v;
   }
 
   await api(`/api/servers/${encodedId}/${action}`, { method: 'POST', body });
@@ -472,9 +471,8 @@ ONLINE이며 Drain/Disable/Kick 상태가 아닌 Server만 표시됩니다.`, fi
     const v = await openModal({ title: 'Client Kick', message: `${id} 연결을 끊고 60초 동안 재접속을 차단합니다.`, confirmLabel: 'Kick' });
     if (!v) return;
   } else if (action === 'disable') {
-    const v = await openModal({ title: 'Client Disable', message: `${id} Client를 비활성화하고 현재 연결을 종료합니다. DISABLE을 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: 'Disable' });
+    const v = await openModal({ title: 'Client Disable', message: `${id} Client를 비활성화하고 현재 연결을 종료합니다. 계속하시겠습니까?`, danger: true, confirmLabel: 'Disable' });
     if (!v) return;
-    body = v;
   }
 
   await api(`/api/clients/${encodedId}/${action}`, { method: 'POST', body });

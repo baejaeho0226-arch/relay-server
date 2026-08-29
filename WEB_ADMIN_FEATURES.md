@@ -37,3 +37,9 @@
 ## Legacy TCP Admin
 
 기본 비활성화. `ENABLE_LEGACY_TCP_ADMIN=1`일 때만 예전 TCP Admin 프로토콜이 열림.
+
+
+## Disable confirmation update
+- Server/Client Disable uses a normal confirmation modal only.
+- No typed DISABLE string is required.
+- Static HTML/JS/CSS is served with Cache-Control: no-store to avoid stale browser code after Railway deploys.

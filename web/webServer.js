@@ -51,7 +51,7 @@ function ServeFile(req, res, fileName) {
     res.writeHead(200, {
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Content-Length': stat.size,
-        'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=300'
+        'Cache-Control': 'no-store'
     });
     fs.createReadStream(full).pipe(res);
 }
