@@ -49,10 +49,15 @@ function SessionCookie(req, token, maxAgeSeconds) {
     return parts.join('; ');
 }
 
+function GetWebSecret(role) {
+    if (role === 'admin') return String(process.env.ADMIN_SECRET || '').trim();
+    if (role === 'operator') return String(process.env.OPERATOR_SECRET || '').trim();
+    if (role === 'viewer') return String(process.env.VIEWER_SECRET || '').trim();
+    return '';
+}
+
 function IsWebCredentialConfigured(role) {
-    const secret = String(config.ADMIN_CREDENTIALS[role] || '');
-    if (!secret) return false;
-    return true;
+    return GetWebSecret(role).length > 0;
 }
 
 function CreateSession(req, role) {
@@ -80,8 +85,8 @@ function Login(req, role, password) {
         return { ok: false, status: 403, code: 'ROLE_NOT_CONFIGURED' };
     }
 
-    const expected = String(config.ADMIN_CREDENTIALS[role] || '');
-    const supplied = String(password || '');
+    const expected = GetWebSecret(role);
+    const supplied = String(password || '').trim();
     if (!ConstantTimeEqual(expected, supplied)) {
         LogEvent('WEB_ADMIN_AUTH_FAILED', `${role} / ${ip}`);
         return { ok: false, status: 401, code: 'AUTH_FAILED' };

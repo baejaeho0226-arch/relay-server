@@ -495,7 +495,7 @@ async function licenseAction(action, key) {
   } else if (action === 'transfer') {
     const v = await openModal({ title: 'License Transfer', message: key, fields: [{ name: 'clientId', label: '대상 CLIENT-ID' }], confirmLabel: '이전' }); if (!v) return; body = v;
   } else if (action === 'delete') {
-    const v = await openModal({ title: 'License Delete', message: `${key}\n삭제하려면 DELETE를 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: '삭제' }); if (!v) return; body = v;
+    const v = await openModal({ title: 'License Delete', message: `${key}\n이 License를 삭제합니다. 삭제 후에는 복구할 수 없습니다.`, danger: true, confirmLabel: '삭제' }); if (!v) return;
   } else {
     const v = await openModal({ title: `License ${action}`, message: `${key}\n계속하시겠습니까?`, danger: action === 'reissue', confirmLabel: '실행' }); if (!v) return;
   }
@@ -510,9 +510,13 @@ async function bulkLicense() {
   if (!keys.length) { toast('선택된 License가 없습니다.', true); return; }
   const options = [{ value: 'extend', label: 'Extend' }, { value: 'unbind', label: 'Unbind' }, { value: 'suspend', label: 'Suspend' }, { value: 'resume', label: 'Resume' }];
   if (roleIsAdmin()) options.push({ value: 'delete', label: 'Delete' });
-  const v = await openModal({ title: `선택 License ${keys.length}개`, fields: [{ name: 'action', label: '작업', type: 'select', options }, { name: 'days', label: '연장 일수(Extend만)', type: 'number', value: '30' }, { name: 'confirmText', label: 'Delete일 때 DELETE 입력' }], confirmLabel: '실행' });
+  const v = await openModal({ title: `선택 License ${keys.length}개`, fields: [{ name: 'action', label: '작업', type: 'select', options }, { name: 'days', label: '연장 일수(Extend만)', type: 'number', value: '30' }], confirmLabel: '계속' });
   if (!v) return;
-  const r = await api('/api/licenses/bulk', { method: 'POST', body: { action: v.action, keys, days: Number(v.days), confirmText: v.confirmText } });
+  if (v.action === 'delete') {
+    const confirmed = await openModal({ title: 'Bulk License Delete', message: `선택한 License ${keys.length}개를 삭제합니다. 삭제 후에는 복구할 수 없습니다.`, danger: true, confirmLabel: '모두 삭제' });
+    if (!confirmed) return;
+  }
+  const r = await api('/api/licenses/bulk', { method: 'POST', body: { action: v.action, keys, days: Number(v.days) } });
   toast(`${r.success}/${r.total} 처리 완료`); selectedLicenses.clear(); renderLicenses();
 }
 

@@ -465,7 +465,7 @@ async function HandleApiRequest(req, res, session) {
         const keys = Array.isArray(body.keys) ? body.keys.map(NormalizeLicenseKey).filter(Boolean).slice(0, MAX_BULK_KEYS) : [];
         if (!keys.length) { ApiError(res, 400, 'NO_KEYS'); return; }
         if (action === 'delete') {
-            if (!RequireAdmin(res, session) || !RequireConfirm(res, body, 'DELETE')) return;
+            if (!RequireAdmin(res, session)) return;
         } else {
             const permission = { extend: 'EXTEND', unbind: 'UNBIND', suspend: 'SUSPEND', resume: 'RESUME' }[action];
             if (!permission || !RequireOperation(res, session, permission)) return;
@@ -498,7 +498,6 @@ async function HandleApiRequest(req, res, session) {
             const permission = { extend: 'EXTEND', unbind: 'UNBIND', suspend: 'SUSPEND', resume: 'RESUME', transfer: 'TRANSFER' }[action];
             if (!RequireOperation(res, session, permission)) return;
         }
-        if (action === 'delete' && !RequireConfirm(res, body, 'DELETE')) return;
 
         if (action === 'extend') {
             const days = Number(body.days);
