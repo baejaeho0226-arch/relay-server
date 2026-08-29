@@ -83,125 +83,11 @@ function SendLine(socket, text) {
     }
 }
 
-function LoadIdentities() {
-    try {
-        if (!fs.existsSync(IDENTITY_FILE)) {
-            return;
-        }
-
-        const data = JSON.parse(
-            fs.readFileSync(IDENTITY_FILE, 'utf8')
-        );
-
-        const used = new Set();
-
-        if (data.servers && typeof data.servers === 'object') {
-            for (const [deviceKey, rawId] of Object.entries(data.servers)) {
-                if (
-                    typeof deviceKey !== 'string' ||
-                    typeof rawId !== 'string' ||
-                    deviceKey.trim() === ''
-                ) {
-                    continue;
-                }
-
-                const serverId = NormalizeID(rawId);
-
-                if (serverId === '') {
-                    continue;
-                }
-
-                if (used.has(serverId)) {
-                    console.error(
-                        'DUPLICATE SERVER ID IGNORED:',
-                        serverId
-                    );
-
-                    continue;
-                }
-
-                serverIdentities.set(
-                    deviceKey.trim(),
-                    serverId
-                );
-
-                used.add(serverId);
-            }
-        }
-
-        if (data.clients && typeof data.clients === 'object') {
-            for (const [deviceKey, value] of Object.entries(data.clients)) {
-                if (
-                    !value ||
-                    typeof value !== 'object'
-                ) {
-                    continue;
-                }
-
-                const rawId =
-                    typeof value.id === 'string'
-                        ? value.id
-                        : value.clientId;
-
-                const clientId = NormalizeID(rawId);
-
-                if (clientId === '') {
-                    continue;
-                }
-
-                if (typeof value.serverId !== 'string') {
-                    continue;
-                }
-
-                if (used.has(clientId)) {
-                    console.error(
-                        'DUPLICATE CLIENT ID IGNORED:',
-                        clientId
-                    );
-
-                    continue;
-                }
-
-                clientIdentities.set(
-                    deviceKey.trim(),
-                    {
-                        id: clientId,
-                        serverId: value.serverId.trim()
-                    }
-                );
-
-                used.add(clientId);
-            }
-        }
-
-        SaveIdentities();
-    } catch (error) {
-        console.error(
-            'IDENTITY LOAD ERROR:',
-            error.message
-        );
-    }
-}
-
 function SaveIdentities() {
-    const serversData = {};
-    const clientsData = {};
-
-    for (const [deviceKey, serverId] of serverIdentities.entries()) {
-        serversData[deviceKey] = serverId;
-    }
-
-    for (const [deviceKey, value] of clientIdentities.entries()) {
-        clientsData[deviceKey] = {
-            id: value.id,
-            serverId: value.serverId
-        };
-    }
-
     const data = {
-        version: 3,
-        servers: serversData,
-        clients: clientsData
+        version: 4,
+        servers: Object.fromEntries(serverIdentities),
+        clients: Object.fromEntries(clientIdentities)
     };
 
     const temp = IDENTITY_FILE + '.tmp';
@@ -231,6 +117,140 @@ function SaveIdentities() {
     }
 }
 
+function LoadIdentities() {
+    try {
+        if (!fs.existsSync(IDENTITY_FILE)) {
+            return;
+        }
+
+        const data = JSON.parse(
+            fs.readFileSync(
+                IDENTITY_FILE,
+                'utf8'
+            )
+        );
+
+        const used = new Set();
+
+        if (
+            data.servers &&
+            typeof data.servers === 'object'
+        ) {
+            for (
+                const [deviceKey, rawId]
+                of Object.entries(data.servers)
+            ) {
+                if (
+                    typeof deviceKey !== 'string' ||
+                    typeof rawId !== 'string'
+                ) {
+                    continue;
+                }
+
+                const key = deviceKey.trim();
+                const id = NormalizeID(rawId);
+
+                if (!key || !id) {
+                    continue;
+                }
+
+                if (used.has(id)) {
+                    console.error(
+                        'DUPLICATE SERVER ID:',
+                        id
+                    );
+
+                    continue;
+                }
+
+                serverIdentities.set(
+                    key,
+                    id
+                );
+
+                used.add(id);
+            }
+        }
+
+        if (
+            data.clients &&
+            typeof data.clients === 'object'
+        ) {
+            for (
+                const [deviceKey, value]
+                of Object.entries(data.clients)
+            ) {
+                if (
+                    !value ||
+                    typeof value !== 'object'
+                ) {
+                    continue;
+                }
+
+                const key = deviceKey.trim();
+
+                const rawId =
+                    typeof value.id === 'string'
+                        ? value.id
+                        : value.clientId;
+
+                const id = NormalizeID(rawId);
+
+                if (
+                    !key ||
+                    !id ||
+                    typeof value.serverId !== 'string'
+                ) {
+                    continue;
+                }
+
+                if (used.has(id)) {
+                    console.error(
+                        'DUPLICATE CLIENT ID:',
+                        id
+                    );
+
+                    continue;
+                }
+
+                const serverId =
+                    NormalizeID(
+                        value.serverId
+                    );
+
+                if (!serverId) {
+                    continue;
+                }
+
+                clientIdentities.set(
+                    key,
+                    {
+                        id,
+                        serverId
+                    }
+                );
+
+                used.add(id);
+            }
+        }
+
+        SaveIdentities();
+
+        console.log(
+            'IDENTITIES LOADED: ' +
+            serverIdentities.size +
+            ' servers, ' +
+            clientIdentities.size +
+            ' clients'
+        );
+    } catch (error) {
+        console.error(
+            'IDENTITY LOAD ERROR:',
+            error.message
+        );
+    }
+}
+
 function GetOnlineServer(serverId) {
     const server = servers.get(serverId);
 
@@ -242,52 +262,38 @@ function GetOnlineServer(serverId) {
         return null;
     }
 
-    if (!server.socket || server.socket.destroyed) {
+    if (
+        !server.socket ||
+        server.socket.destroyed
+    ) {
         return null;
     }
 
     return server;
 }
 
-function GetAvailableServer() {
-    const list = [];
-
-    for (const server of servers.values()) {
-        if (!server.registered) {
-            continue;
-        }
-
-        if (!server.socket || server.socket.destroyed) {
-            continue;
-        }
-
-        list.push(server);
-    }
-
-    if (list.length === 0) {
-        return null;
-    }
-
-    list.sort((a, b) => {
-        return a.clients.size - b.clients.size;
-    });
-
-    return list[0];
-}
-
-function IsKnownServerID(serverId) {
-    for (const savedId of serverIdentities.values()) {
-        if (savedId === serverId) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 function FindServerDeviceByID(serverId) {
-    for (const [deviceKey, savedId] of serverIdentities.entries()) {
-        if (savedId === serverId) {
+    for (
+        const [deviceKey, id]
+        of serverIdentities.entries()
+    ) {
+        if (id === serverId) {
+            return deviceKey;
+        }
+    }
+
+    return null;
+}
+
+function FindClientDeviceByID(clientId) {
+    for (
+        const [deviceKey, value]
+        of clientIdentities.entries()
+    ) {
+        if (
+            value &&
+            value.id === clientId
+        ) {
             return deviceKey;
         }
     }
@@ -310,14 +316,21 @@ function RegisterServer(connection, deviceKey) {
         );
 
         SaveIdentities();
+
+        console.log(
+            'NEW SERVER ID: ' +
+            serverId +
+            ' -> ' +
+            deviceKey
+        );
     }
 
-    const existingOwner =
+    const owner =
         FindServerDeviceByID(serverId);
 
     if (
-        existingOwner &&
-        existingOwner !== deviceKey
+        owner &&
+        owner !== deviceKey
     ) {
         SendLine(
             connection.socket,
@@ -344,12 +357,22 @@ function RegisterServer(connection, deviceKey) {
         old.socket.destroy();
     }
 
-    connection.identityKey = deviceKey;
-    connection.serverId = serverId;
-    connection.registered = true;
-    connection.lastSeen = Date.now();
-    connection.clients =
-        connection.clients || new Set();
+    connection.identityKey =
+        deviceKey;
+
+    connection.serverId =
+        serverId;
+
+    connection.registered =
+        true;
+
+    connection.lastSeen =
+        Date.now();
+
+    if (!connection.clients) {
+        connection.clients =
+            new Set();
+    }
 
     servers.set(
         serverId,
@@ -361,13 +384,18 @@ function RegisterServer(connection, deviceKey) {
         'REGISTERED|' + serverId
     );
 
+    console.log(
+        'SERVER ONLINE: ' +
+        serverId
+    );
+
     return true;
 }
 
 function HandleServerLine(connection, line) {
     line = line.trim();
 
-    if (line === '') {
+    if (!line) {
         return;
     }
 
@@ -384,7 +412,8 @@ function HandleServerLine(connection, line) {
             return;
         }
 
-        const parts = line.split('|');
+        const parts =
+            line.split('|');
 
         const deviceKey =
             parts.length >= 2
@@ -409,7 +438,9 @@ function HandleServerLine(connection, line) {
     }
 
     if (line === 'PONG') {
-        connection.lastSeen = Date.now();
+        connection.lastSeen =
+            Date.now();
+
         return;
     }
 
@@ -420,14 +451,21 @@ function HandleServerLine(connection, line) {
 }
 
 function GetSavedClientByID(clientId) {
-    clientId = NormalizeID(clientId);
+    clientId =
+        NormalizeID(clientId);
 
     if (!clientId) {
         return null;
     }
 
-    for (const saved of clientIdentities.values()) {
-        if (saved.id === clientId) {
+    for (
+        const saved
+        of clientIdentities.values()
+    ) {
+        if (
+            saved &&
+            saved.id === clientId
+        ) {
             return saved;
         }
     }
@@ -446,7 +484,9 @@ function AttachClient(connection, saved) {
         !old.socket.destroyed
     ) {
         const oldServer =
-            GetOnlineServer(old.serverId);
+            GetOnlineServer(
+                old.serverId
+            );
 
         if (oldServer) {
             oldServer.clients.delete(
@@ -462,10 +502,17 @@ function AttachClient(connection, saved) {
         old.socket.destroy();
     }
 
-    connection.clientId = saved.id;
-    connection.serverId = saved.serverId;
-    connection.connected = true;
-    connection.lastSeen = Date.now();
+    connection.clientId =
+        saved.id;
+
+    connection.serverId =
+        saved.serverId;
+
+    connection.connected =
+        true;
+
+    connection.lastSeen =
+        Date.now();
 
     clients.set(
         saved.id,
@@ -473,7 +520,9 @@ function AttachClient(connection, saved) {
     );
 
     const server =
-        GetOnlineServer(saved.serverId);
+        GetOnlineServer(
+            saved.serverId
+        );
 
     if (server) {
         server.clients.add(
@@ -490,10 +539,213 @@ function AttachClient(connection, saved) {
     );
 }
 
-function HandleClientLine(connection, line) {
+function CreateNewClientIdentity(
+    deviceKey,
+    serverId
+) {
+    const existing =
+        clientIdentities.get(
+            deviceKey
+        );
+
+    if (existing) {
+        return existing;
+    }
+
+    const clientId =
+        MakeUniqueID();
+
+    const saved = {
+        id: clientId,
+        serverId
+    };
+
+    clientIdentities.set(
+        deviceKey,
+        saved
+    );
+
+    SaveIdentities();
+
+    console.log(
+        'NEW CLIENT ID: ' +
+        clientId +
+        ' -> ' +
+        deviceKey +
+        ' -> SERVER ' +
+        serverId
+    );
+
+    return saved;
+}
+
+function HandleClientConnect(
+    connection,
+    deviceKey
+) {
+    let saved =
+        clientIdentities.get(
+            deviceKey
+        );
+
+    if (saved) {
+        const server =
+            GetOnlineServer(
+                saved.serverId
+            );
+
+        if (!server) {
+            SendLine(
+                connection.socket,
+                'ERROR|SERVER_OFFLINE'
+            );
+
+            return;
+        }
+
+        AttachClient(
+            connection,
+            saved
+        );
+
+        return;
+    }
+
+    const server =
+        GetAvailableServer();
+
+    if (!server) {
+        SendLine(
+            connection.socket,
+            'ERROR|NO_SERVER'
+        );
+
+        return;
+    }
+
+    saved =
+        CreateNewClientIdentity(
+            deviceKey,
+            server.serverId
+        );
+
+    AttachClient(
+        connection,
+        saved
+    );
+}
+
+function HandleClientSend(
+    connection,
+    line
+) {
+    const parts =
+        line.split('|');
+
+    if (parts.length !== 3) {
+        SendLine(
+            connection.socket,
+            'ERROR|INVALID_SEND'
+        );
+
+        return;
+    }
+
+    const clientId =
+        NormalizeID(
+            parts[1].trim()
+        );
+
+    const number =
+        parts[2].trim();
+
+    if (!clientId) {
+        SendLine(
+            connection.socket,
+            'ERROR|CLIENT_ID_INVALID'
+        );
+
+        return;
+    }
+
+    if (!/^-?\d+$/.test(number)) {
+        SendLine(
+            connection.socket,
+            'ERROR|NUMBER_ONLY'
+        );
+
+        return;
+    }
+
+    if (
+        connection.clientId !== clientId
+    ) {
+        SendLine(
+            connection.socket,
+            'ERROR|CLIENT_NOT_OWNER'
+        );
+
+        return;
+    }
+
+    const saved =
+        GetSavedClientByID(
+            clientId
+        );
+
+    if (!saved) {
+        SendLine(
+            connection.socket,
+            'ERROR|CLIENT_NOT_FOUND'
+        );
+
+        return;
+    }
+
+    const server =
+        GetOnlineServer(
+            saved.serverId
+        );
+
+    if (!server) {
+        SendLine(
+            connection.socket,
+            'ERROR|SERVER_OFFLINE'
+        );
+
+        return;
+    }
+
+    if (
+        !SendLine(
+            server.socket,
+            'NUMBER|' +
+            clientId +
+            '|' +
+            number
+        )
+    ) {
+        SendLine(
+            connection.socket,
+            'ERROR|SERVER_SEND_FAILED'
+        );
+
+        return;
+    }
+
+    SendLine(
+        connection.socket,
+        'SENT|OK'
+    );
+}
+
+function HandleClientLine(
+    connection,
+    line
+) {
     line = line.trim();
 
-    if (line === '') {
+    if (!line) {
         return;
     }
 
@@ -501,7 +753,8 @@ function HandleClientLine(connection, line) {
         line === 'CONNECT' ||
         line.startsWith('CONNECT|')
     ) {
-        const parts = line.split('|');
+        const parts =
+            line.split('|');
 
         const deviceKey =
             parts.length >= 2
@@ -517,184 +770,25 @@ function HandleClientLine(connection, line) {
             return;
         }
 
-        let saved =
-            clientIdentities.get(deviceKey);
-
-        if (saved) {
-            let server =
-                GetOnlineServer(saved.serverId);
-
-            if (!server) {
-                const knownServer =
-                    IsKnownServerID(
-                        saved.serverId
-                    );
-
-                if (!knownServer) {
-                    const replacement =
-                        GetAvailableServer();
-
-                    if (!replacement) {
-                        SendLine(
-                            connection.socket,
-                            'ERROR|NO_SERVER'
-                        );
-
-                        return;
-                    }
-
-                    saved.serverId =
-                        replacement.serverId;
-
-                    clientIdentities.set(
-                        deviceKey,
-                        saved
-                    );
-
-                    SaveIdentities();
-
-                    server = replacement;
-                }
-            }
-
-            if (!server) {
-                SendLine(
-                    connection.socket,
-                    'ERROR|SERVER_OFFLINE'
-                );
-
-                return;
-            }
-        } else {
-            const server =
-                GetAvailableServer();
-
-            if (!server) {
-                SendLine(
-                    connection.socket,
-                    'ERROR|NO_SERVER'
-                );
-
-                return;
-            }
-
-            saved = {
-                id: MakeUniqueID(),
-                serverId: server.serverId
-            };
-
-            clientIdentities.set(
-                deviceKey,
-                saved
-            );
-
-            SaveIdentities();
-        }
-
-        AttachClient(
+        HandleClientConnect(
             connection,
-            saved
+            deviceKey
         );
 
         return;
     }
 
     if (line === 'PONG') {
-        connection.lastSeen = Date.now();
+        connection.lastSeen =
+            Date.now();
+
         return;
     }
 
     if (line.startsWith('SEND|')) {
-        const parts = line.split('|');
-
-        if (parts.length !== 3) {
-            SendLine(
-                connection.socket,
-                'ERROR|INVALID_SEND'
-            );
-
-            return;
-        }
-
-        const clientId =
-            NormalizeID(parts[1].trim());
-
-        const number =
-            parts[2].trim();
-
-        if (!clientId) {
-            SendLine(
-                connection.socket,
-                'ERROR|CLIENT_ID_INVALID'
-            );
-
-            return;
-        }
-
-        if (!/^-?\d+$/.test(number)) {
-            SendLine(
-                connection.socket,
-                'ERROR|NUMBER_ONLY'
-            );
-
-            return;
-        }
-
-        const saved =
-            GetSavedClientByID(clientId);
-
-        if (!saved) {
-            SendLine(
-                connection.socket,
-                'ERROR|CLIENT_NOT_FOUND'
-            );
-
-            return;
-        }
-
-        if (connection.clientId !== clientId) {
-            SendLine(
-                connection.socket,
-                'ERROR|CLIENT_NOT_OWNER'
-            );
-
-            return;
-        }
-
-        const server =
-            GetOnlineServer(
-                saved.serverId
-            );
-
-        if (!server) {
-            SendLine(
-                connection.socket,
-                'ERROR|SERVER_OFFLINE'
-            );
-
-            return;
-        }
-
-        if (
-            !SendLine(
-                server.socket,
-                'NUMBER|' +
-                clientId +
-                '|' +
-                number
-            )
-        ) {
-            SendLine(
-                connection.socket,
-                'ERROR|SERVER_SEND_FAILED'
-            );
-
-            return;
-        }
-
-        SendLine(
-            connection.socket,
-            'SENT|OK'
+        HandleClientSend(
+            connection,
+            line
         );
 
         return;
@@ -706,11 +800,17 @@ function HandleClientLine(connection, line) {
     );
 }
 
-function DisconnectConnection(connection) {
-    if (connection.type === 'server') {
+function DisconnectConnection(
+    connection
+) {
+    if (
+        connection.type === 'server'
+    ) {
         if (
             connection.serverId &&
-            servers.get(connection.serverId) === connection
+            servers.get(
+                connection.serverId
+            ) === connection
         ) {
             servers.delete(
                 connection.serverId
@@ -720,17 +820,24 @@ function DisconnectConnection(connection) {
         return;
     }
 
-    if (connection.type === 'client') {
+    if (
+        connection.type === 'client'
+    ) {
         if (
             connection.clientId &&
-            clients.get(connection.clientId) === connection
+            clients.get(
+                connection.clientId
+            ) === connection
         ) {
             clients.delete(
                 connection.clientId
             );
         }
 
-        if (connection.clientId && connection.serverId) {
+        if (
+            connection.clientId &&
+            connection.serverId
+        ) {
             const server =
                 GetOnlineServer(
                     connection.serverId
@@ -760,92 +867,147 @@ function CreateConnection(socket) {
     };
 
     socket.setNoDelay(true);
+
     socket.setKeepAlive(
         true,
         10000
     );
 
-    socket.on('data', data => {
-        connection.buffer +=
-            data.toString('utf8');
+    socket.on(
+        'data',
+        data => {
+            connection.buffer +=
+                data.toString('utf8');
 
-        while (true) {
-            const pos =
-                connection.buffer.indexOf('\n');
-
-            if (pos < 0) {
-                break;
-            }
-
-            let line =
-                connection.buffer.substring(
-                    0,
-                    pos
-                );
-
-            connection.buffer =
-                connection.buffer.substring(
-                    pos + 1
-                );
-
-            line =
-                line.replace(
-                    /\r$/,
-                    ''
-                );
-
-            if (!connection.type) {
-                if (
-                    line === 'REGISTER' ||
-                    line.startsWith('REGISTER|')
-                ) {
-                    connection.type = 'server';
-                } else if (
-                    line === 'CONNECT' ||
-                    line.startsWith('CONNECT|') ||
-                    line.startsWith('SEND|')
-                ) {
-                    connection.type = 'client';
-                } else {
-                    SendLine(
-                        socket,
-                        'ERROR|UNKNOWN_COMMAND'
+            while (true) {
+                const pos =
+                    connection.buffer.indexOf(
+                        '\n'
                     );
 
-                    continue;
+                if (pos < 0) {
+                    break;
+                }
+
+                let line =
+                    connection.buffer.substring(
+                        0,
+                        pos
+                    );
+
+                connection.buffer =
+                    connection.buffer.substring(
+                        pos + 1
+                    );
+
+                line =
+                    line.replace(
+                        /\r$/,
+                        ''
+                    );
+
+                if (!connection.type) {
+                    if (
+                        line === 'REGISTER' ||
+                        line.startsWith('REGISTER|')
+                    ) {
+                        connection.type =
+                            'server';
+                    } else if (
+                        line === 'CONNECT' ||
+                        line.startsWith('CONNECT|') ||
+                        line.startsWith('SEND|')
+                    ) {
+                        connection.type =
+                            'client';
+                    } else {
+                        SendLine(
+                            socket,
+                            'ERROR|UNKNOWN_COMMAND'
+                        );
+
+                        continue;
+                    }
+                }
+
+                if (
+                    connection.type ===
+                    'server'
+                ) {
+                    HandleServerLine(
+                        connection,
+                        line
+                    );
+                } else {
+                    HandleClientLine(
+                        connection,
+                        line
+                    );
                 }
             }
-
-            if (connection.type === 'server') {
-                HandleServerLine(
-                    connection,
-                    line
-                );
-            } else {
-                HandleClientLine(
-                    connection,
-                    line
-                );
-            }
         }
-    });
+    );
 
-    socket.on('close', () => {
-        DisconnectConnection(
-            connection
-        );
-    });
+    socket.on(
+        'close',
+        () => {
+            DisconnectConnection(
+                connection
+            );
+        }
+    );
 
-    socket.on('error', () => {});
+    socket.on(
+        'error',
+        () => {}
+    );
+}
+
+function GetAvailableServer() {
+    const list = [];
+
+    for (
+        const server
+        of servers.values()
+    ) {
+        if (!server.registered) {
+            continue;
+        }
+
+        if (
+            !server.socket ||
+            server.socket.destroyed
+        ) {
+            continue;
+        }
+
+        list.push(server);
+    }
+
+    if (list.length === 0) {
+        return null;
+    }
+
+    list.sort(
+        (a, b) => {
+            return (
+                a.clients.size -
+                b.clients.size
+            );
+        }
+    );
+
+    return list[0];
 }
 
 LoadIdentities();
 
-const server = net.createServer(
-    socket => {
-        CreateConnection(socket);
-    }
-);
+const server =
+    net.createServer(
+        socket => {
+            CreateConnection(socket);
+        }
+    );
 
 server.on(
     'error',
@@ -890,7 +1052,11 @@ server.listen(
         );
 
         console.log(
-            'Device Identity: SERVER SIDE'
+            'Device Identity: SERVER'
+        );
+
+        console.log(
+            'Client/Server Binding: FIXED'
         );
 
         console.log(
@@ -899,66 +1065,80 @@ server.listen(
     }
 );
 
-setInterval(() => {
-    const now = Date.now();
+setInterval(
+    () => {
+        const now =
+            Date.now();
 
-    for (const connection of servers.values()) {
-        if (
-            !connection.socket ||
-            connection.socket.destroyed
+        for (
+            const connection
+            of servers.values()
         ) {
-            DisconnectConnection(
-                connection
-            );
+            if (
+                !connection.socket ||
+                connection.socket.destroyed
+            ) {
+                DisconnectConnection(
+                    connection
+                );
 
-            continue;
+                continue;
+            }
+
+            if (
+                now -
+                connection.lastSeen >
+                30000
+            ) {
+                connection.socket.destroy();
+
+                DisconnectConnection(
+                    connection
+                );
+
+                continue;
+            }
+
+            SendLine(
+                connection.socket,
+                'PING'
+            );
         }
 
-        if (
-            now - connection.lastSeen > 30000
+        for (
+            const connection
+            of clients.values()
         ) {
-            connection.socket.destroy();
+            if (
+                !connection.socket ||
+                connection.socket.destroyed
+            ) {
+                DisconnectConnection(
+                    connection
+                );
 
-            DisconnectConnection(
-                connection
+                continue;
+            }
+
+            if (
+                now -
+                connection.lastSeen >
+                30000
+            ) {
+                connection.socket.destroy();
+
+                DisconnectConnection(
+                    connection
+                );
+
+                continue;
+            }
+
+            SendLine(
+                connection.socket,
+                'PING'
             );
-
-            continue;
         }
-
-        SendLine(
-            connection.socket,
-            'PING'
-        );
-    }
-
-    for (const connection of clients.values()) {
-        if (
-            !connection.socket ||
-            connection.socket.destroyed
-        ) {
-            DisconnectConnection(
-                connection
-            );
-
-            continue;
-        }
-
-        if (
-            now - connection.lastSeen > 30000
-        ) {
-            connection.socket.destroy();
-
-            DisconnectConnection(
-                connection
-            );
-
-            continue;
-        }
-
-        SendLine(
-            connection.socket,
-            'PING'
-        );
-    }
-}, 10000);
+    },
+    10000
+);
