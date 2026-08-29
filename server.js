@@ -1,5 +1,22 @@
 'use strict';
 
+process.on('uncaughtException', error => {
+    console.error('================================');
+    console.error('UNCAUGHT EXCEPTION');
+    console.error('================================');
+    console.error(error);
+    console.error(error && error.stack ? error.stack : '');
+    console.error('================================');
+});
+
+process.on('unhandledRejection', reason => {
+    console.error('================================');
+    console.error('UNHANDLED REJECTION');
+    console.error('================================');
+    console.error(reason);
+    console.error('================================');
+});
+
 const net =
     require(
         'net'
