@@ -16,16 +16,13 @@ const serverIdentities = new Map();
 const clientIdentities = new Map();
 const licenses = new Map();
 
-function RandomHex(bytes) {
-    return crypto.randomBytes(bytes).toString('hex').toUpperCase();
-}
-
 function RandomID() {
-    return RandomHex(8);
+    return crypto.randomBytes(8).toString('hex').toUpperCase();
 }
 
 function RandomLicenseKey() {
-    return 'LICENSE-' + RandomHex(10);
+    return 'LICENSE-' +
+        crypto.randomBytes(10).toString('hex').toUpperCase();
 }
 
 function NormalizeID(id) {
@@ -83,9 +80,39 @@ function SendLine(socket, text) {
     }
 }
 
+function GetAllUsedIDs() {
+    const used = new Set();
+
+    for (const id of serverIdentities.values()) {
+        if (id) {
+            used.add(id);
+        }
+    }
+
+    for (const value of clientIdentities.values()) {
+        if (value && value.id) {
+            used.add(value.id);
+        }
+    }
+
+    return used;
+}
+
+function MakeUniqueID() {
+    const used = GetAllUsedIDs();
+
+    let id;
+
+    do {
+        id = RandomID();
+    } while (used.has(id));
+
+    return id;
+}
+
 function SaveIdentities() {
     const data = {
-        version: 5,
+        version: 6,
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
         licenses: Object.fromEntries(licenses)
@@ -195,7 +222,8 @@ function LoadIdentities() {
                         ? value.id
                         : value.clientId;
 
-                const id = NormalizeID(rawId);
+                const id =
+                    NormalizeID(rawId);
 
                 const serverId =
                     NormalizeID(
@@ -258,6 +286,9 @@ function LoadIdentities() {
                 const expiresAt =
                     Number(value.expiresAt);
 
+                const createdAt =
+                    Number(value.createdAt);
+
                 if (
                     !Number.isFinite(expiresAt) ||
                     expiresAt <= 0
@@ -269,7 +300,10 @@ function LoadIdentities() {
                     key,
                     {
                         createdAt:
-                            Number(value.createdAt) || Date.now(),
+                            Number.isFinite(createdAt) &&
+                            createdAt > 0
+                                ? createdAt
+                                : Date.now(),
                         expiresAt,
                         boundClient:
                             NormalizeID(
@@ -301,48 +335,6 @@ function LoadIdentities() {
             error.message
         );
     }
-}
-
-function GetAllUsedIDs() {
-    const used = new Set();
-
-    for (
-        const id
-        of serverIdentities.values()
-    ) {
-        if (id) {
-            used.add(id);
-        }
-    }
-
-    for (
-        const value
-        of clientIdentities.values()
-    ) {
-        if (
-            value &&
-            value.id
-        ) {
-            used.add(value.id);
-        }
-    }
-
-    return used;
-}
-
-function MakeUniqueID() {
-    const used =
-        GetAllUsedIDs();
-
-    let id;
-
-    do {
-        id = RandomID();
-    } while (
-        used.has(id)
-    );
-
-    return id;
 }
 
 function GetOnlineServer(serverId) {
@@ -380,22 +372,6 @@ function FindServerDeviceByID(serverId) {
     return null;
 }
 
-function FindClientDeviceByID(clientId) {
-    for (
-        const [deviceKey, value]
-        of clientIdentities.entries()
-    ) {
-        if (
-            value &&
-            value.id === clientId
-        ) {
-            return deviceKey;
-        }
-    }
-
-    return null;
-}
-
 function GetSavedClientByID(clientId) {
     clientId =
         NormalizeID(clientId);
@@ -419,8 +395,12 @@ function GetSavedClientByID(clientId) {
     return null;
 }
 
-function RegisterServer(connection, deviceKey) {
-    deviceKey = deviceKey.trim();
+function RegisterServer(
+    connection,
+    deviceKey
+) {
+    deviceKey =
+        deviceKey.trim();
 
     let serverId =
         serverIdentities.get(
@@ -428,7 +408,8 @@ function RegisterServer(connection, deviceKey) {
         );
 
     if (!serverId) {
-        serverId = MakeUniqueID();
+        serverId =
+            MakeUniqueID();
 
         serverIdentities.set(
             deviceKey,
@@ -463,7 +444,9 @@ function RegisterServer(connection, deviceKey) {
     }
 
     const old =
-        servers.get(serverId);
+        servers.get(
+            serverId
+        );
 
     if (
         old &&
@@ -501,12 +484,19 @@ function RegisterServer(connection, deviceKey) {
         connection
     );
 
+    SendLine(
+        connection.socket,
+        'REGISTERED|' +
+        serverId
+    );
+
     for (
         const client
         of clients.values()
     ) {
         if (
-            client.serverId !== serverId
+            client.serverId !==
+            serverId
         ) {
             continue;
         }
@@ -527,11 +517,6 @@ function RegisterServer(connection, deviceKey) {
         }
     }
 
-    SendLine(
-        connection.socket,
-        'REGISTERED|' + serverId
-    );
-
     console.log(
         'SERVER ONLINE: ' +
         serverId
@@ -544,7 +529,8 @@ function HandleServerLine(
     connection,
     line
 ) {
-    line = line.trim();
+    line =
+        line.trim();
 
     if (!line) {
         return;
@@ -588,9 +574,7 @@ function HandleServerLine(
         return;
     }
 
-    if (
-        line === 'PONG'
-    ) {
+    if (line === 'PONG') {
         connection.lastSeen =
             Date.now();
 
@@ -616,11 +600,8 @@ function CreateNewClientIdentity(
         return existing;
     }
 
-    const clientId =
-        MakeUniqueID();
-
     const saved = {
-        id: clientId,
+        id: MakeUniqueID(),
         serverId
     };
 
@@ -633,7 +614,7 @@ function CreateNewClientIdentity(
 
     console.log(
         'NEW CLIENT ID: ' +
-        clientId +
+        saved.id +
         ' -> ' +
         deviceKey +
         ' -> SERVER ' +
@@ -648,7 +629,9 @@ function AttachClient(
     saved
 ) {
     const old =
-        clients.get(saved.id);
+        clients.get(
+            saved.id
+        );
 
     if (
         old &&
@@ -684,9 +667,6 @@ function AttachClient(
     connection.connected =
         true;
 
-    connection.lastSeen =
-        Date.now();
-
     connection.licenseAuthorized =
         false;
 
@@ -695,6 +675,9 @@ function AttachClient(
 
     connection.licenseExpiresAt =
         0;
+
+    connection.lastSeen =
+        Date.now();
 
     clients.set(
         saved.id,
@@ -820,26 +803,25 @@ function FindLicense(
     ) || null;
 }
 
-function IsLicenseActive(
-    licenseKey
+function GetLicenseStatus(
+    license
 ) {
-    const license =
-        FindLicense(
-            licenseKey
-        );
-
     if (!license) {
-        return false;
+        return 'UNKNOWN';
     }
 
     if (
         Date.now() >=
         license.expiresAt
     ) {
-        return false;
+        return 'EXPIRED';
     }
 
-    return true;
+    if (license.boundClient) {
+        return 'BOUND';
+    }
+
+    return 'AVAILABLE';
 }
 
 function GetClientActiveLicense(
@@ -998,6 +980,12 @@ function AuthorizeClientConnection(
         connection.licenseAuthorized =
             false;
 
+        connection.licenseKey =
+            null;
+
+        connection.licenseExpiresAt =
+            0;
+
         SendLine(
             connection.socket,
             'LICENSE_ERROR|INVALID_KEY'
@@ -1017,6 +1005,12 @@ function AuthorizeClientConnection(
     ) {
         connection.licenseAuthorized =
             false;
+
+        connection.licenseKey =
+            null;
+
+        connection.licenseExpiresAt =
+            0;
 
         SendLine(
             connection.socket,
@@ -1039,14 +1033,15 @@ function AuthorizeClientConnection(
         connection.licenseAuthorized =
             false;
 
+        connection.licenseKey =
+            null;
+
+        connection.licenseExpiresAt =
+            0;
+
         SendLine(
             connection.socket,
             'LICENSE_ERROR|BOUND_OTHER'
-        );
-
-        NotifyServerUnauthorized(
-            connection.clientId,
-            'BOUND_OTHER'
         );
 
         return;
@@ -1087,13 +1082,6 @@ function AuthorizeClientConnection(
         connection.clientId,
         connection.serverId
     );
-
-    console.log(
-        'CLIENT LICENSE OK: ' +
-        connection.clientId +
-        ' -> ' +
-        licenseKey
-    );
 }
 
 function HandleClientSend(
@@ -1129,9 +1117,7 @@ function HandleClientSend(
         return;
     }
 
-    if (
-        !/^-?\d+$/.test(number)
-    ) {
+    if (!/^-?\d+$/.test(number)) {
         SendLine(
             connection.socket,
             'ERROR|NUMBER_ONLY'
@@ -1152,13 +1138,20 @@ function HandleClientSend(
         return;
     }
 
-    if (
-        !IsClientLicensed(
+    const active =
+        GetClientActiveLicense(
             clientId
-        )
-    ) {
+        );
+
+    if (!active) {
         connection.licenseAuthorized =
             false;
+
+        connection.licenseKey =
+            null;
+
+        connection.licenseExpiresAt =
+            0;
 
         NotifyServerUnauthorized(
             clientId,
@@ -1174,14 +1167,30 @@ function HandleClientSend(
     }
 
     if (
-        !connection.licenseAuthorized
+        !connection.licenseAuthorized ||
+        connection.licenseKey !== active.key
     ) {
+        connection.licenseAuthorized =
+            true;
+
+        connection.licenseKey =
+            active.key;
+
+        connection.licenseExpiresAt =
+            active.license.expiresAt;
+
         SendLine(
             connection.socket,
-            'ERROR|LICENSE_REQUIRED'
+            'LICENSE_OK|' +
+            active.key +
+            '|' +
+            active.license.expiresAt
         );
 
-        return;
+        NotifyServerAuthorized(
+            clientId,
+            connection.serverId
+        );
     }
 
     const saved =
@@ -1239,7 +1248,8 @@ function HandleClientLine(
     connection,
     line
 ) {
-    line = line.trim();
+    line =
+        line.trim();
 
     if (!line) {
         return;
@@ -1386,23 +1396,6 @@ function CreateLicense(
     };
 }
 
-function GetLicenseStatus(
-    license
-) {
-    if (!license) {
-        return 'UNKNOWN';
-    }
-
-    if (
-        Date.now() >=
-        license.expiresAt
-    ) {
-        return 'EXPIRED';
-    }
-
-    return 'ACTIVE';
-}
-
 function HandleAdminAuth(
     connection,
     line
@@ -1426,7 +1419,7 @@ function HandleAdminAuth(
             'ADMIN_ERROR|AUTH_FAILED'
         );
 
-        return false;
+        return;
     }
 
     connection.adminAuthenticated =
@@ -1439,15 +1432,14 @@ function HandleAdminAuth(
         connection.socket,
         'ADMIN_OK'
     );
-
-    return true;
 }
 
 function HandleAdminLine(
     connection,
     line
 ) {
-    line = line.trim();
+    line =
+        line.trim();
 
     if (!line) {
         return;
@@ -1464,7 +1456,9 @@ function HandleAdminLine(
         return;
     }
 
-    if (!connection.adminAuthenticated) {
+    if (
+        !connection.adminAuthenticated
+    ) {
         SendLine(
             connection.socket,
             'ADMIN_ERROR|NOT_AUTHORIZED'
@@ -1639,28 +1633,23 @@ function HandleAdminLine(
                 client.licenseKey === key
             ) {
                 client.licenseAuthorized =
-                    Date.now() <
-                    license.expiresAt;
+                    true;
 
                 client.licenseExpiresAt =
                     license.expiresAt;
 
-                if (
-                    client.licenseAuthorized
-                ) {
-                    SendLine(
-                        client.socket,
-                        'LICENSE_OK|' +
-                        key +
-                        '|' +
-                        license.expiresAt
-                    );
+                SendLine(
+                    client.socket,
+                    'LICENSE_OK|' +
+                    key +
+                    '|' +
+                    license.expiresAt
+                );
 
-                    NotifyServerAuthorized(
-                        client.clientId,
-                        client.serverId
-                    );
-                }
+                NotifyServerAuthorized(
+                    client.clientId,
+                    client.serverId
+                );
             }
         }
 
@@ -1770,50 +1759,64 @@ function ValidateClientLicenseConnection(
         return;
     }
 
-    if (
-        !connection.licenseAuthorized
-    ) {
-        return;
-    }
-
     const active =
         GetClientActiveLicense(
             connection.clientId
         );
 
     if (!active) {
-        connection.licenseAuthorized =
-            false;
+        if (
+            connection.licenseAuthorized
+        ) {
+            connection.licenseAuthorized =
+                false;
 
-        connection.licenseKey =
-            null;
+            connection.licenseKey =
+                null;
 
-        connection.licenseExpiresAt =
-            0;
+            connection.licenseExpiresAt =
+                0;
 
-        SendLine(
-            connection.socket,
-            'LICENSE_ERROR|EXPIRED'
-        );
+            SendLine(
+                connection.socket,
+                'LICENSE_ERROR|EXPIRED'
+            );
 
-        NotifyServerUnauthorized(
-            connection.clientId,
-            'EXPIRED'
-        );
+            NotifyServerUnauthorized(
+                connection.clientId,
+                'EXPIRED'
+            );
+        }
 
         return;
     }
 
     if (
-        connection.licenseKey !==
-        active.key
+        !connection.licenseAuthorized ||
+        connection.licenseKey !== active.key
     ) {
+        connection.licenseAuthorized =
+            true;
+
         connection.licenseKey =
             active.key;
-    }
 
-    connection.licenseExpiresAt =
-        active.license.expiresAt;
+        connection.licenseExpiresAt =
+            active.license.expiresAt;
+
+        SendLine(
+            connection.socket,
+            'LICENSE_OK|' +
+            active.key +
+            '|' +
+            active.license.expiresAt
+        );
+
+        NotifyServerAuthorized(
+            connection.clientId,
+            connection.serverId
+        );
+    }
 }
 
 function DisconnectConnection(
@@ -1865,8 +1868,6 @@ function DisconnectConnection(
                 );
             }
         }
-
-        return;
     }
 }
 
@@ -2055,11 +2056,11 @@ server.listen(
         );
 
         console.log(
-            'Client/Server Binding: FIXED'
+            'License Binding: CLIENT'
         );
 
         console.log(
-            'License Binding: CLIENT'
+            'Client/Server Binding: FIXED'
         );
 
         console.log(
