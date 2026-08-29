@@ -1,180 +1,430 @@
 const net = require('net');
-const sqlite3 = require('sqlite3').verbose();
+const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 
-const PORT = process.env.PORT || 33802;
-const DB_PATH = path.join(__dirname, 'database.sqlite');
+const HOST = '0.0.0.0';
+const PORT = Number(process.env.PORT || 3000);
 
-// DB 초기화
-const db = new sqlite3.Database(DB_PATH, (err) => {
-  if (err) console.error('DB 연결 실패:', err.message);
-  else console.log('SQLite DB 연결 성공');
-});
+const SERVER_ID_PREFIX = 'SERVER-';
+const CLIENT_ID_PREFIX = 'CLIENT-';
 
-// 테이블 생성
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS licenses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      license_key TEXT UNIQUE NOT NULL,
-      expires_at TEXT NOT NULL,
-      status TEXT DEFAULT 'UNUSED',
-      client_id TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      used_at DATETIME
-    )
-  `);
-});
+const IDENTITY_FILE = path.join(__dirname, 'relay-identities.json');
 
-// 세션 관리 Map
-const clients = new Map(); // ClientKey -> { socket, clientId, serverId }
-const servers = new Map(); // ServerKey -> { socket, serverId }
+const servers = new Map();
+const clients = new Map();
+const serverIdentities = new Map();
+const clientIdentities = new Map();
 
-let clientCounter = 1000;
-let serverCounter = 5000;
-
-// 라이선스 키 정규화 함수 (하이픈 제거 후 XXXX-XXXX-XXXX-XXXX 형식으로 변환)
-function normalizeLicenseKey(key) {
-  const clean = key.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-  if (clean.length !== 16) return clean; // 16자리가 아니면 원본 정제값 반환
-  return `${clean.slice(0, 4)}-${clean.slice(4, 8)}-${clean.slice(8, 12)}-${clean.slice(12, 16)}`;
+function RandomID(prefix) {
+    return prefix + crypto.randomBytes(8).toString('hex').toUpperCase();
 }
 
-const server = net.createServer((socket) => {
-  let entityType = null; // 'CLIENT' | 'SERVER'
-  let entityKey = null;
+function MakeUniqueID(prefix, identityMap) {
+    let id;
+    do {
+        id = RandomID(prefix);
+    } while ([...identityMap.values()].some(value => {
+        if (typeof value === 'string') return value === id;
+        return value && value.clientId === id;
+    }));
+    return id;
+}
 
-  socket.on('data', (chunk) => {
-    const lines = chunk.toString('utf8').split('\n');
-    for (let rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) continue;
-
-      // 1. 하트비트 PING
-      if (line === 'PING') {
-        socket.write('PONG\n');
-        continue;
-      }
-      if (line === 'PONG') continue;
-
-      // 2. WinSockServer 등록 (REGISTER|SERVERKEY-...)
-      if (line.startsWith('REGISTER|')) {
-        const parts = line.split('|');
-        if (parts.length >= 2) {
-          entityKey = parts[1].trim();
-          entityType = 'SERVER';
-          
-          let serverId = `SRV-${++serverCounter}`;
-          servers.set(entityKey, { socket, serverId });
-          
-          socket.write(`REGISTERED|${serverId}\n`);
-          console.log(`[SERVER REG] Key: ${entityKey} -> Assigned ID: ${serverId}`);
-        }
-        continue;
-      }
-
-      // 3. ApkWinSock 연결 (CONNECT|CLIENTKEY-...)
-      if (line.startsWith('CONNECT|')) {
-        const parts = line.split('|');
-        if (parts.length >= 2) {
-          entityKey = parts[1].trim();
-          entityType = 'CLIENT';
-
-          let clientId = `CLI-${++clientCounter}`;
-          // 현재 연결된 첫 번째 WinSockServer에 매핑 (단일 서버 구조)
-          let assignedServerId = 'NONE';
-          if (servers.size > 0) {
-            assignedServerId = Array.from(servers.values())[0].serverId;
-          }
-
-          clients.set(entityKey, { socket, clientId, serverId: assignedServerId });
-          socket.write(`CONNECTED|${clientId}|${assignedServerId}\n`);
-          console.log(`[CLIENT CON] Key: ${entityKey} -> ClientID: ${clientId}, ServerID: ${assignedServerId}`);
-        }
-        continue;
-      }
-
-      // 4. 라이선스 검증 (VERIFY_LICENSE|ClientID|LicenseKey)
-      if (line.startsWith('VERIFY_LICENSE|')) {
-        const parts = line.split('|');
-        if (parts.length >= 3) {
-          const clientId = parts[1].trim();
-          const inputKey = parts[2].trim();
-          const formattedKey = normalizeLicenseKey(inputKey);
-
-          // 하이픈 포함 또는 미포함 키 모두 DB에서 검색 가능하도록 처리
-          const rawCleanKey = inputKey.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-
-          const sql = `
-            SELECT * FROM licenses 
-            WHERE (UPPER(REPLACE(license_key, '-', '')) = ? OR UPPER(license_key) = ?)
-              AND status IN ('UNUSED', 'ACTIVE')
-          `;
-
-          db.get(sql, [rawCleanKey, formattedKey], (err, row) => {
-            if (err) {
-              socket.write(`ERROR|DB_ERROR|${err.message}\n`);
-              return;
-            }
-
-            if (!row) {
-              socket.write(`ERROR|LICENSE_NOT_FOUND\n`);
-              console.log(`[LICENSE FAIL] Invalid Key: ${inputKey} (Clean: ${rawCleanKey})`);
-              return;
-            }
-
-            // 만료일 체크 (YYYY-MM-DD)
-            const today = new Date().toISOString().split('T')[0];
-            if (row.expires_at < today) {
-              socket.write(`ERROR|LICENSE_EXPIRED|${row.expires_at}\n`);
-              return;
-            }
-
-            // 미사용 키일 경우 ACTIVE 처리
-            if (row.status === 'UNUSED') {
-              const updateSql = `UPDATE licenses SET status = 'ACTIVE', client_id = ?, used_at = DATETIME('now') WHERE id = ?`;
-              db.run(updateSql, [clientId, row.id]);
-            }
-
-            socket.write(`LICENSE_OK|${row.expires_at}\n`);
-            console.log(`[LICENSE SUCCESS] Key: ${row.license_key} -> Client: ${clientId}`);
-          });
-        }
-        continue;
-      }
-
-      // 5. 데이터 전송 (SEND|ClientID|Number)
-      if (line.startsWith('SEND|')) {
-        const parts = line.split('|');
-        if (parts.length >= 3) {
-          const clientId = parts[1].trim();
-          const numberVal = parts[2].trim();
-
-          // 연결된 WinSockServer로 전송
-          let targetServer = Array.from(servers.values())[0];
-          if (targetServer && targetServer.socket) {
-            targetServer.socket.write(`NUMBER|${clientId}|${numberVal}\n`);
-            socket.write(`SENT|OK\n`);
-            console.log(`[DATA RELAY] Client ${clientId} -> Server ${targetServer.serverId}: ${numberVal}`);
-          } else {
-            socket.write(`ERROR|NO_SERVER_AVAILABLE\n`);
-          }
-        }
-        continue;
-      }
+function SendLine(socket, text) {
+    if (!socket || socket.destroyed) return false;
+    try {
+        socket.write(text + '\n');
+        return true;
+    } catch (_) {
+        return false;
     }
-  });
+}
 
-  socket.on('close', () => {
-    if (entityType === 'CLIENT' && entityKey) clients.delete(entityKey);
-    if (entityType === 'SERVER' && entityKey) servers.delete(entityKey);
-  });
+function LoadIdentities() {
+    try {
+        if (!fs.existsSync(IDENTITY_FILE)) return;
 
-  socket.on('error', (err) => {
-    console.error(`[SOCKET ERROR] ${err.message}`);
-  });
+        const data = JSON.parse(fs.readFileSync(IDENTITY_FILE, 'utf8'));
+
+        if (data.servers && typeof data.servers === 'object') {
+            for (const [key, id] of Object.entries(data.servers)) {
+                if (typeof key === 'string' && typeof id === 'string') {
+                    serverIdentities.set(key, id);
+                }
+            }
+        }
+
+        if (data.clients && typeof data.clients === 'object') {
+            for (const [key, value] of Object.entries(data.clients)) {
+                if (!value || typeof value !== 'object') continue;
+                if (typeof value.clientId !== 'string') continue;
+                if (typeof value.serverId !== 'string') continue;
+                clientIdentities.set(key, {
+                    clientId: value.clientId,
+                    serverId: value.serverId
+                });
+            }
+        }
+    } catch (error) {
+        console.error('IDENTITY LOAD ERROR:', error.message);
+    }
+}
+
+function SaveIdentities() {
+    const data = {
+        version: 1,
+        servers: Object.fromEntries(serverIdentities),
+        clients: Object.fromEntries(clientIdentities)
+    };
+
+    const temp = IDENTITY_FILE + '.tmp';
+
+    try {
+        fs.writeFileSync(temp, JSON.stringify(data, null, 2), 'utf8');
+        fs.renameSync(temp, IDENTITY_FILE);
+    } catch (error) {
+        console.error('IDENTITY SAVE ERROR:', error.message);
+        try {
+            if (fs.existsSync(temp)) fs.unlinkSync(temp);
+        } catch (_) {}
+    }
+}
+
+function GetOnlineServer(serverId) {
+    const server = servers.get(serverId);
+
+    if (!server) return null;
+    if (!server.registered) return null;
+    if (!server.socket || server.socket.destroyed) return null;
+
+    return server;
+}
+
+function GetAvailableServer() {
+    const list = [];
+
+    for (const server of servers.values()) {
+        if (!server.registered) continue;
+        if (!server.socket || server.socket.destroyed) continue;
+        list.push(server);
+    }
+
+    if (list.length === 0) return null;
+
+    list.sort((a, b) => a.clients.size - b.clients.size);
+    return list[0];
+}
+
+function RegisterServer(connection, identityKey) {
+    let serverId = serverIdentities.get(identityKey);
+
+    if (!serverId) {
+        serverId = MakeUniqueID(SERVER_ID_PREFIX, serverIdentities);
+        serverIdentities.set(identityKey, serverId);
+        SaveIdentities();
+    }
+
+    const old = servers.get(serverId);
+
+    if (old && old !== connection && old.socket && !old.socket.destroyed) {
+        SendLine(old.socket, 'ERROR|REPLACED');
+        old.socket.destroy();
+    }
+
+    connection.identityKey = identityKey;
+    connection.serverId = serverId;
+    connection.registered = true;
+    connection.lastSeen = Date.now();
+    connection.clients = connection.clients || new Set();
+
+    servers.set(serverId, connection);
+
+    SendLine(connection.socket, 'REGISTERED|' + serverId);
+}
+
+function HandleServerLine(connection, line) {
+    line = line.trim();
+    if (line === '') return;
+
+    if (line === 'REGISTER' || line.startsWith('REGISTER|')) {
+        if (connection.registered) {
+            SendLine(connection.socket, 'ERROR|ALREADY_REGISTERED');
+            return;
+        }
+
+        const parts = line.split('|');
+        const identityKey = parts.length >= 2 ? parts[1].trim() : '';
+
+        if (!identityKey) {
+            SendLine(connection.socket, 'ERROR|SERVER_KEY_REQUIRED');
+            return;
+        }
+
+        RegisterServer(connection, identityKey);
+        return;
+    }
+
+    if (line === 'PONG') {
+        connection.lastSeen = Date.now();
+        return;
+    }
+
+    SendLine(connection.socket, 'ERROR|UNKNOWN_COMMAND');
+}
+
+function GetSavedClientByID(clientId) {
+    for (const saved of clientIdentities.values()) {
+        if (saved.clientId === clientId) return saved;
+    }
+    return null;
+}
+
+function AttachClient(connection, saved) {
+    const old = clients.get(saved.clientId);
+
+    if (old && old !== connection && old.socket && !old.socket.destroyed) {
+        SendLine(old.socket, 'ERROR|REPLACED');
+        old.socket.destroy();
+    }
+
+    connection.clientId = saved.clientId;
+    connection.serverId = saved.serverId;
+    connection.connected = true;
+    connection.lastSeen = Date.now();
+
+    clients.set(saved.clientId, connection);
+
+    const server = GetOnlineServer(saved.serverId);
+    if (server) server.clients.add(saved.clientId);
+
+    SendLine(
+        connection.socket,
+        'CONNECTED|' + saved.clientId + '|' + saved.serverId
+    );
+}
+
+function HandleClientLine(connection, line) {
+    line = line.trim();
+    if (line === '') return;
+
+    if (line === 'CONNECT' || line.startsWith('CONNECT|')) {
+        const parts = line.split('|');
+        const identityKey = parts.length >= 2 ? parts[1].trim() : '';
+
+        if (!identityKey) {
+            SendLine(connection.socket, 'ERROR|CLIENT_KEY_REQUIRED');
+            return;
+        }
+
+        let saved = clientIdentities.get(identityKey);
+
+        if (saved) {
+            if (!GetOnlineServer(saved.serverId)) {
+                SendLine(connection.socket, 'ERROR|SERVER_OFFLINE');
+                return;
+            }
+        } else {
+            const server = GetAvailableServer();
+
+            if (!server) {
+                SendLine(connection.socket, 'ERROR|NO_SERVER');
+                return;
+            }
+
+            saved = {
+                clientId: MakeUniqueID(CLIENT_ID_PREFIX, clientIdentities),
+                serverId: server.serverId
+            };
+
+            clientIdentities.set(identityKey, saved);
+            SaveIdentities();
+        }
+
+        AttachClient(connection, saved);
+        return;
+    }
+
+    if (line === 'PONG') {
+        connection.lastSeen = Date.now();
+        return;
+    }
+
+    if (line.startsWith('SEND|')) {
+        const parts = line.split('|');
+
+        if (parts.length !== 3) {
+            SendLine(connection.socket, 'ERROR|INVALID_SEND');
+            return;
+        }
+
+        const clientId = parts[1].trim();
+        const number = parts[2].trim();
+
+        if (!clientId) {
+            SendLine(connection.socket, 'ERROR|CLIENT_ID_EMPTY');
+            return;
+        }
+
+        if (!/^-?\d+$/.test(number)) {
+            SendLine(connection.socket, 'ERROR|NUMBER_ONLY');
+            return;
+        }
+
+        const saved = GetSavedClientByID(clientId);
+
+        if (!saved) {
+            SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND');
+            return;
+        }
+
+        if (connection.clientId !== clientId) {
+            SendLine(connection.socket, 'ERROR|CLIENT_NOT_OWNER');
+            return;
+        }
+
+        const server = GetOnlineServer(saved.serverId);
+
+        if (!server) {
+            SendLine(connection.socket, 'ERROR|SERVER_OFFLINE');
+            return;
+        }
+
+        if (!SendLine(server.socket, 'NUMBER|' + clientId + '|' + number)) {
+            SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED');
+            return;
+        }
+
+        SendLine(connection.socket, 'SENT|OK');
+        return;
+    }
+
+    SendLine(connection.socket, 'ERROR|UNKNOWN_COMMAND');
+}
+
+function DisconnectConnection(connection) {
+    if (connection.type === 'server') {
+        if (connection.serverId && servers.get(connection.serverId) === connection) {
+            servers.delete(connection.serverId);
+        }
+        return;
+    }
+
+    if (connection.type === 'client') {
+        if (connection.clientId && clients.get(connection.clientId) === connection) {
+            clients.delete(connection.clientId);
+        }
+    }
+}
+
+function CreateConnection(socket) {
+    const connection = {
+        socket,
+        type: null,
+        registered: false,
+        connected: false,
+        identityKey: null,
+        serverId: null,
+        clientId: null,
+        lastSeen: Date.now(),
+        clients: new Set(),
+        buffer: ''
+    };
+
+    socket.setNoDelay(true);
+    socket.setKeepAlive(true, 10000);
+
+    socket.on('data', data => {
+        connection.buffer += data.toString('utf8');
+
+        while (true) {
+            const pos = connection.buffer.indexOf('\n');
+            if (pos < 0) break;
+
+            let line = connection.buffer.substring(0, pos);
+            connection.buffer = connection.buffer.substring(pos + 1);
+            line = line.replace(/\r$/, '');
+
+            if (!connection.type) {
+                if (line === 'REGISTER' || line.startsWith('REGISTER|')) {
+                    connection.type = 'server';
+                } else if (
+                    line === 'CONNECT' ||
+                    line.startsWith('CONNECT|') ||
+                    line.startsWith('SEND|')
+                ) {
+                    connection.type = 'client';
+                } else {
+                    SendLine(socket, 'ERROR|UNKNOWN_COMMAND');
+                    continue;
+                }
+            }
+
+            if (connection.type === 'server') {
+                HandleServerLine(connection, line);
+            } else {
+                HandleClientLine(connection, line);
+            }
+        }
+    });
+
+    socket.on('close', () => {
+        DisconnectConnection(connection);
+    });
+
+    socket.on('error', () => {});
+}
+
+LoadIdentities();
+
+const server = net.createServer(socket => {
+    CreateConnection(socket);
 });
 
-server.listen(PORT, () => {
-  console.log(`Relay Server running on port ${PORT}`);
+server.on('error', error => {
+    console.error('SERVER ERROR:', error.message);
 });
+
+server.listen(PORT, HOST, () => {
+    console.log('================================');
+    console.log('       PURE TCP RELAY');
+    console.log('================================');
+    console.log('Port: ' + PORT);
+    console.log('Protocol: RAW TCP');
+    console.log('Identity Storage: SERVER');
+    console.log('================================');
+});
+
+setInterval(() => {
+    const now = Date.now();
+
+    for (const connection of servers.values()) {
+        if (!connection.socket || connection.socket.destroyed) {
+            DisconnectConnection(connection);
+            continue;
+        }
+
+        if (now - connection.lastSeen > 30000) {
+            connection.socket.destroy();
+            DisconnectConnection(connection);
+            continue;
+        }
+
+        SendLine(connection.socket, 'PING');
+    }
+
+    for (const connection of clients.values()) {
+        if (!connection.socket || connection.socket.destroyed) {
+            DisconnectConnection(connection);
+            continue;
+        }
+
+        if (now - connection.lastSeen > 30000) {
+            connection.socket.destroy();
+            DisconnectConnection(connection);
+            continue;
+        }
+
+        SendLine(connection.socket, 'PING');
+    }
+}, 10000);
