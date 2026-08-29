@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const HOST = '0.0.0.0';
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 33802);
 
 const SERVER_ID_PREFIX = 'SERVER-';
 const CLIENT_ID_PREFIX = 'CLIENT-';
@@ -13,11 +13,16 @@ const IDENTITY_FILE = path.join(__dirname, 'relay-identities.json');
 
 const servers = new Map();
 const clients = new Map();
-const serverIdentities = new Map();
-const clientIdentities = new Map();
+const serverIdentities = new Map(); // key -> { serverId, licenseKey }
+const clientIdentities = new Map(); // key -> { clientId, serverId }
 
 function RandomID(prefix) {
     return prefix + crypto.randomBytes(8).toString('hex').toUpperCase();
+}
+
+function GenerateLicenseKey() {
+    const raw = crypto.randomBytes(4).toString('hex').toUpperCase();
+    return `LIC-${raw.substring(0, 4)}-${raw.substring(4, 8)}`;
 }
 
 function MakeUniqueID(prefix, identityMap) {
@@ -26,7 +31,10 @@ function MakeUniqueID(prefix, identityMap) {
         id = RandomID(prefix);
     } while ([...identityMap.values()].some(value => {
         if (typeof value === 'string') return value === id;
-        return value && value.clientId === id;
+        if (value && typeof value === 'object') {
+            return value.serverId === id || value.clientId === id;
+        }
+        return false;
     }));
     return id;
 }
@@ -48,9 +56,14 @@ function LoadIdentities() {
         const data = JSON.parse(fs.readFileSync(IDENTITY_FILE, 'utf8'));
 
         if (data.servers && typeof data.servers === 'object') {
-            for (const [key, id] of Object.entries(data.servers)) {
-                if (typeof key === 'string' && typeof id === 'string') {
-                    serverIdentities.set(key, id);
+            for (const [key, value] of Object.entries(data.servers)) {
+                if (typeof value === 'string') {
+                    serverIdentities.set(key, { serverId: value, licenseKey: GenerateLicenseKey() });
+                } else if (value && typeof value === 'object' && value.serverId) {
+                    serverIdentities.set(key, {
+                        serverId: value.serverId,
+                        licenseKey: value.licenseKey || GenerateLicenseKey()
+                    });
                 }
             }
         }
@@ -93,54 +106,54 @@ function SaveIdentities() {
 
 function GetOnlineServer(serverId) {
     const server = servers.get(serverId);
-
     if (!server) return null;
     if (!server.registered) return null;
     if (!server.socket || server.socket.destroyed) return null;
-
     return server;
 }
 
-function GetAvailableServer() {
-    const list = [];
-
-    for (const server of servers.values()) {
-        if (!server.registered) continue;
-        if (!server.socket || server.socket.destroyed) continue;
-        list.push(server);
+function FindServerByLicense(licenseKey) {
+    for (const [_, info] of serverIdentities.entries()) {
+        if (info.licenseKey === licenseKey) {
+            return info.serverId;
+        }
     }
-
-    if (list.length === 0) return null;
-
-    list.sort((a, b) => a.clients.size - b.clients.size);
-    return list[0];
+    return null;
 }
 
 function RegisterServer(connection, identityKey) {
-    let serverId = serverIdentities.get(identityKey);
+    let serverInfo = serverIdentities.get(identityKey);
 
-    if (!serverId) {
-        serverId = MakeUniqueID(SERVER_ID_PREFIX, serverIdentities);
-        serverIdentities.set(identityKey, serverId);
+    if (!serverInfo) {
+        const serverId = MakeUniqueID(SERVER_ID_PREFIX, serverIdentities);
+        const licenseKey = GenerateLicenseKey();
+        serverInfo = { serverId, licenseKey };
+        serverIdentities.set(identityKey, serverInfo);
         SaveIdentities();
     }
 
-    const old = servers.get(serverId);
-
+    const old = servers.get(serverInfo.serverId);
     if (old && old !== connection && old.socket && !old.socket.destroyed) {
         SendLine(old.socket, 'ERROR|REPLACED');
         old.socket.destroy();
     }
 
     connection.identityKey = identityKey;
-    connection.serverId = serverId;
+    connection.serverId = serverInfo.serverId;
+    connection.licenseKey = serverInfo.licenseKey;
     connection.registered = true;
     connection.lastSeen = Date.now();
     connection.clients = connection.clients || new Set();
 
-    servers.set(serverId, connection);
+    servers.set(serverInfo.serverId, connection);
 
-    SendLine(connection.socket, 'REGISTERED|' + serverId);
+    console.log(`========================================`);
+    console.log(`[SERVER REGISTERED] ID: ${serverInfo.serverId}`);
+    console.log(`[LICENSE ISSUED] 발급 라이선스: ${serverInfo.licenseKey}`);
+    console.log(`========================================`);
+
+    // WinSockServer로 등록 완료 및 발급된 라이선스 전송
+    SendLine(connection.socket, 'REGISTERED|' + serverInfo.serverId + '|' + serverInfo.licenseKey);
 }
 
 function HandleServerLine(connection, line) {
@@ -211,36 +224,47 @@ function HandleClientLine(connection, line) {
     if (line === 'CONNECT' || line.startsWith('CONNECT|')) {
         const parts = line.split('|');
         const identityKey = parts.length >= 2 ? parts[1].trim() : '';
+        const licenseKey = parts.length >= 3 ? parts[2].trim() : '';
 
         if (!identityKey) {
             SendLine(connection.socket, 'ERROR|CLIENT_KEY_REQUIRED');
             return;
         }
 
+        if (!licenseKey) {
+            SendLine(connection.socket, 'ERROR|LICENSE_REQUIRED');
+            return;
+        }
+
+        // 1. 서버 라이선스 검증
+        const targetServerId = FindServerByLicense(licenseKey);
+        if (!targetServerId) {
+            console.log(`[AUTH FAILED] 유효하지 않은 라이선스: ${licenseKey}`);
+            SendLine(connection.socket, 'ERROR|INVALID_LICENSE');
+            return;
+        }
+
+        // 2. 해당 서버의 온라인 여부 확인
+        if (!GetOnlineServer(targetServerId)) {
+            SendLine(connection.socket, 'ERROR|SERVER_OFFLINE');
+            return;
+        }
+
         let saved = clientIdentities.get(identityKey);
 
-        if (saved) {
-            if (!GetOnlineServer(saved.serverId)) {
-                SendLine(connection.socket, 'ERROR|SERVER_OFFLINE');
-                return;
-            }
-        } else {
-            const server = GetAvailableServer();
-
-            if (!server) {
-                SendLine(connection.socket, 'ERROR|NO_SERVER');
-                return;
-            }
-
+        if (!saved) {
             saved = {
                 clientId: MakeUniqueID(CLIENT_ID_PREFIX, clientIdentities),
-                serverId: server.serverId
+                serverId: targetServerId
             };
-
             clientIdentities.set(identityKey, saved);
+            SaveIdentities();
+        } else {
+            saved.serverId = targetServerId;
             SaveIdentities();
         }
 
+        console.log(`[AUTH SUCCESS] Client(${saved.clientId}) -> Target Server(${targetServerId})`);
         AttachClient(connection, saved);
         return;
     }
@@ -325,6 +349,7 @@ function CreateConnection(socket) {
         connected: false,
         identityKey: null,
         serverId: null,
+        licenseKey: null,
         clientId: null,
         lastSeen: Date.now(),
         clients: new Set(),
