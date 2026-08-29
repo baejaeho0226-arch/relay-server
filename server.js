@@ -6,14 +6,13 @@ const sqlite3 = require('sqlite3').verbose();
 
 const HOST = '0.0.0.0';
 const PORT = Number(process.env.PORT || 33802);
-const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB 버퍼 제한 (메모리 폭주 방지)
+const MAX_BUFFER_SIZE = 1024 * 1024;
 
 const SERVER_ID_PREFIX = 'SERVER-';
 const CLIENT_ID_PREFIX = 'CLIENT-';
 const IDENTITY_FILE = path.join(__dirname, 'relay-identities.json');
 const DB_FILE = path.join(__dirname, 'relay-logs.db');
 
-// SQLite DB 초기화
 const db = new sqlite3.Database(DB_FILE, (err) => {
     if (err) console.error('DB Open Error:', err.message);
     else console.log('[DB] SQLite 데이터베이스 연결 성공:', DB_FILE);
@@ -27,7 +26,6 @@ db.serialize(() => {
             event_type TEXT NOT NULL,
             server_id TEXT,
             client_id TEXT,
-            client_alias TEXT,
             encrypted_payload TEXT,
             decrypted_payload TEXT,
             status TEXT,
@@ -36,18 +34,17 @@ db.serialize(() => {
     `);
 });
 
-function LogToDB(eventType, serverId, clientId, clientAlias, encPayload, decPayload, status, clientIp) {
+function LogToDB(eventType, serverId, clientId, encPayload, decPayload, status, clientIp) {
     const query = `
         INSERT INTO transmission_logs 
-        (event_type, server_id, client_id, client_alias, encrypted_payload, decrypted_payload, status, client_ip)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (event_type, server_id, client_id, encrypted_payload, decrypted_payload, status, client_ip)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
-    db.run(query, [eventType, serverId, clientId, clientAlias, encPayload, decPayload, status, clientIp], (err) => {
+    db.run(query, [eventType, serverId, clientId, encPayload, decPayload, status, clientIp], (err) => {
         if (err) console.error('[DB INSERT ERROR]', err.message);
     });
 }
 
-// 암복호화 헬퍼 (XOR + Base64 - 플랫폼 종속성 없음)
 function DecryptXOR(base64Str, key) {
     try {
         const buf = Buffer.from(base64Str, 'base64');
@@ -165,7 +162,7 @@ function RegisterServer(connection, identityKey) {
     servers.set(serverInfo.serverId, connection);
 
     console.log(`[SERVER REG] ID: ${serverInfo.serverId} | License: ${serverInfo.licenseKey} | IP: ${connection.remoteIp}`);
-    LogToDB('SERVER_REGISTER', serverInfo.serverId, null, null, null, null, 'SUCCESS', connection.remoteIp);
+    LogToDB('SERVER_REGISTER', serverInfo.serverId, null, null, null, 'SUCCESS', connection.remoteIp);
 
     SendLine(connection.socket, `REGISTERED|${serverInfo.serverId}|${serverInfo.licenseKey}`);
 }
@@ -174,11 +171,11 @@ function HandleClientLine(connection, line) {
     line = line.trim();
     if (!line) return;
 
+    // 인증 패킷 규격: CONNECT|<HWID>|<LicenseKey>
     if (line.startsWith('CONNECT|')) {
         const parts = line.split('|');
         const identityKey = parts[1] ? parts[1].trim() : '';
         const licenseKey = parts[2] ? parts[2].trim() : '';
-        const clientAlias = parts[3] ? parts[3].trim() : 'MobileClient';
 
         if (!identityKey || !licenseKey) {
             SendLine(connection.socket, 'ERROR|INVALID_PARAMS');
@@ -187,41 +184,38 @@ function HandleClientLine(connection, line) {
 
         const targetServerId = FindServerByLicense(licenseKey);
         if (!targetServerId) {
-            LogToDB('AUTH_ATTEMPT', null, null, clientAlias, null, null, 'INVALID_LICENSE', connection.remoteIp);
+            LogToDB('AUTH_ATTEMPT', null, null, null, null, 'INVALID_LICENSE', connection.remoteIp);
             SendLine(connection.socket, 'ERROR|INVALID_LICENSE');
             return;
         }
 
         if (!GetOnlineServer(targetServerId)) {
-            LogToDB('AUTH_ATTEMPT', targetServerId, null, clientAlias, null, null, 'SERVER_OFFLINE', connection.remoteIp);
+            LogToDB('AUTH_ATTEMPT', targetServerId, null, null, null, 'SERVER_OFFLINE', connection.remoteIp);
             SendLine(connection.socket, 'ERROR|SERVER_OFFLINE');
             return;
         }
 
         let saved = clientIdentities.get(identityKey) || { clientId: MakeUniqueID(CLIENT_ID_PREFIX, clientIdentities), serverId: targetServerId };
         saved.serverId = targetServerId;
-        saved.alias = clientAlias;
         clientIdentities.set(identityKey, saved);
         SaveIdentities();
 
         connection.clientId = saved.clientId;
         connection.serverId = targetServerId;
-        connection.clientAlias = clientAlias;
         connection.connected = true;
         clients.set(saved.clientId, connection);
 
         const server = GetOnlineServer(targetServerId);
         if (server) server.clients.add(saved.clientId);
 
-        console.log(`[CLIENT AUTH] ID: ${saved.clientId} (${clientAlias}) -> Server: ${targetServerId}`);
-        LogToDB('CLIENT_AUTH', targetServerId, saved.clientId, clientAlias, null, null, 'SUCCESS', connection.remoteIp);
+        console.log(`[CLIENT AUTH] ID: ${saved.clientId} -> Server: ${targetServerId}`);
+        LogToDB('CLIENT_AUTH', targetServerId, saved.clientId, null, null, 'SUCCESS', connection.remoteIp);
 
         SendLine(connection.socket, `CONNECTED|${saved.clientId}|${targetServerId}`);
         return;
     }
 
     if (line.startsWith('SEND|')) {
-        // 형식: SEND|<clientId>|<encPayload>
         const parts = line.split('|');
         if (parts.length < 3) {
             SendLine(connection.socket, 'ERROR|INVALID_SEND');
@@ -242,16 +236,15 @@ function HandleClientLine(connection, line) {
             return;
         }
 
-        // 복호화 로그 기록 (라이선스 키를 비밀키로 사용)
         const decPayload = DecryptXOR(encPayload, server.licenseKey);
 
-        // 중계서버 -> WinSockServer로 전송 (SEND 패킷: NUMBER|<clientId>|<alias>|<encPayload>)
-        const relayMsg = `NUMBER|${clientId}|${connection.clientAlias}|${encPayload}`;
+        // 수신 서버로 패킷 전송 (별칭 제거 규격: NUMBER|<clientId>|<encPayload>)
+        const relayMsg = `NUMBER|${clientId}|${encPayload}`;
         if (SendLine(server.socket, relayMsg)) {
-            LogToDB('DATA_TRANSMISSION', connection.serverId, clientId, connection.clientAlias, encPayload, decPayload, 'DELIVERED', connection.remoteIp);
+            LogToDB('DATA_TRANSMISSION', connection.serverId, clientId, encPayload, decPayload, 'DELIVERED', connection.remoteIp);
             SendLine(connection.socket, 'SENT|OK');
         } else {
-            LogToDB('DATA_TRANSMISSION', connection.serverId, clientId, connection.clientAlias, encPayload, decPayload, 'FAILED', connection.remoteIp);
+            LogToDB('DATA_TRANSMISSION', connection.serverId, clientId, encPayload, decPayload, 'FAILED', connection.remoteIp);
             SendLine(connection.socket, 'ERROR|RELAY_FAILED');
         }
         return;
@@ -280,7 +273,6 @@ const server = net.createServer(socket => {
     socket.on('data', data => {
         connection.buffer += data.toString('utf8');
 
-        // 버퍼 폭주 공격 방지
         if (connection.buffer.length > MAX_BUFFER_SIZE) {
             console.error('[SECURITY] Buffer overflow detected from IP:', connection.remoteIp);
             socket.destroy();
@@ -308,7 +300,7 @@ const server = net.createServer(socket => {
                 }
             } catch (err) {
                 console.error('[PROTOCOL ERROR]', err.message);
-                LogToDB('ERROR', connection.serverId, connection.clientId, null, line, null, err.message, connection.remoteIp);
+                LogToDB('ERROR', connection.serverId, connection.clientId, line, null, err.message, connection.remoteIp);
             }
         }
     });
@@ -330,7 +322,6 @@ server.listen(PORT, HOST, () => {
     console.log(`========================================`);
 });
 
-// 하트비트 타임아웃 감시
 setInterval(() => {
     const now = Date.now();
     [...servers.values(), ...clients.values()].forEach(conn => {
