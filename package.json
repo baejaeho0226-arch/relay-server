@@ -1,20 +1,12 @@
 {
-  "name": "tcp-relay-license-server",
+  "name": "winsock-tcp-relay",
   "version": "1.0.0",
-  "description": "TCP Relay and License Verification Server",
+  "description": "WinSock RAW TCP Relay with License Verification",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": [
-    "tcp",
-    "relay",
-    "winsock",
-    "license"
-  ],
+  "keywords": ["delphi", "winsock", "tcp", "relay", "license"],
   "author": "",
-  "license": "ISC",
-  "engines": {
-    "node": ">=14.0.0"
-  }
+  "license": "ISC"
 }
