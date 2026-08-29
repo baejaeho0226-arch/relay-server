@@ -1,9 +1,12 @@
 {
   "name": "pure-tcp-relay",
-  "version": "2.0.0",
-  "description": "Pure TCP Relay",
+  "version": "3.0.0",
+  "description": "Pure TCP Relay with Multi-Client, Encryption, SQLite Logging & Enhanced Exception Handling",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.7"
   }
 }
