@@ -16,12 +16,39 @@ const IDENTITY_FILE =
         'relay-identities.json'
     );
 
+const BACKUP_DIR =
+    path.join(
+        __dirname,
+        'backups'
+    );
+
 const ADMIN_AUTH_WINDOW_SECONDS = 60;
-const ADMIN_SESSION_TIMEOUT = 10 * 60 * 1000;
-const REQUEST_HISTORY_TIMEOUT = 10 * 60 * 1000;
-const MAX_EVENT_LOG = 1000;
+
+const ADMIN_SESSION_TIMEOUT =
+    10 * 60 * 1000;
+
+const REQUEST_HISTORY_TIMEOUT =
+    10 * 60 * 1000;
+
+const MAX_EVENT_LOG = 2000;
+
+const AUTO_BACKUP_INTERVAL =
+    6 * 60 * 60 * 1000;
+
+const BACKUP_RETENTION = 30;
+
+const RATE_LIMIT_WINDOW =
+    1000;
+
+const RATE_LIMIT_MAX =
+    Number(
+        process.env.RATE_LIMIT_MAX || 30
+    );
+
+const MAX_SEARCH_RESULTS = 500;
 
 let serviceEnabled = true;
+let maintenanceMode = false;
 
 const servers = new Map();
 const clients = new Map();
@@ -31,6 +58,8 @@ const clientIdentities = new Map();
 const licenses = new Map();
 
 const requestHistory = new Map();
+const rateLimits = new Map();
+
 const events = [];
 
 function Now() {
@@ -40,6 +69,13 @@ function Now() {
 function RandomID() {
     return crypto
         .randomBytes(8)
+        .toString('hex')
+        .toUpperCase();
+}
+
+function RandomNonce() {
+    return crypto
+        .randomBytes(32)
         .toString('hex')
         .toUpperCase();
 }
@@ -54,29 +90,33 @@ function RandomLicenseKey() {
     );
 }
 
-function RandomNonce() {
-    return crypto
-        .randomBytes(32)
-        .toString('hex')
-        .toUpperCase();
-}
-
 function NormalizeID(id) {
     if (typeof id !== 'string') {
         return '';
     }
 
-    id = id.trim().toUpperCase();
+    id =
+        id
+            .trim()
+            .toUpperCase();
 
-    if (id.startsWith('SERVER-')) {
-        id = id.substring(7);
+    if (
+        id.startsWith('SERVER-')
+    ) {
+        id =
+            id.substring(7);
     }
 
-    if (id.startsWith('CLIENT-')) {
-        id = id.substring(7);
+    if (
+        id.startsWith('CLIENT-')
+    ) {
+        id =
+            id.substring(7);
     }
 
-    if (!/^[0-9A-F]{16}$/.test(id)) {
+    if (
+        !/^[0-9A-F]{16}$/.test(id)
+    ) {
         return '';
     }
 
@@ -88,7 +128,9 @@ function NormalizeLicenseKey(key) {
         return '';
     }
 
-    return key.trim().toUpperCase();
+    return key
+        .trim()
+        .toUpperCase();
 }
 
 function SanitizeMemo(memo) {
@@ -120,7 +162,10 @@ function LogEvent(type, detail) {
         detail: String(detail || '')
     });
 
-    while (events.length > MAX_EVENT_LOG) {
+    while (
+        events.length >
+        MAX_EVENT_LOG
+    ) {
         events.shift();
     }
 }
@@ -152,10 +197,16 @@ function ConstantTimeEqual(a, b) {
         return false;
     }
 
-    const aa = Buffer.from(a);
-    const bb = Buffer.from(b);
+    const aa =
+        Buffer.from(a);
 
-    if (aa.length !== bb.length) {
+    const bb =
+        Buffer.from(b);
+
+    if (
+        aa.length !==
+        bb.length
+    ) {
         return false;
     }
 
@@ -185,9 +236,13 @@ function MakeAdminHmac(
 }
 
 function GetAllUsedIDs() {
-    const used = new Set();
+    const used =
+        new Set();
 
-    for (const id of serverIdentities.values()) {
+    for (
+        const id
+        of serverIdentities.values()
+    ) {
         if (id) {
             used.add(id);
         }
@@ -215,7 +270,8 @@ function MakeUniqueID() {
     let id;
 
     do {
-        id = RandomID();
+        id =
+            RandomID();
     } while (
         used.has(id)
     );
@@ -223,11 +279,29 @@ function MakeUniqueID() {
     return id;
 }
 
-function SaveIdentities() {
-    const data = {
-        version: 11,
+function EnsureBackupDirectory() {
+    try {
+        fs.mkdirSync(
+            BACKUP_DIR,
+            {
+                recursive: true
+            }
+        );
+    } catch (error) {
+        console.error(
+            'BACKUP DIRECTORY ERROR:',
+            error.message
+        );
+    }
+}
+
+function BuildDatabaseObject() {
+    return {
+        version: 20,
 
         serviceEnabled,
+
+        maintenanceMode,
 
         servers:
             Object.fromEntries(
@@ -244,6 +318,11 @@ function SaveIdentities() {
                 licenses
             )
     };
+}
+
+function SaveIdentities() {
+    const data =
+        BuildDatabaseObject();
 
     const temp =
         IDENTITY_FILE +
@@ -280,6 +359,444 @@ function SaveIdentities() {
     }
 }
 
+function SaveBackup(
+    reason
+) {
+    EnsureBackupDirectory();
+
+    const stamp =
+        new Date(
+            Now()
+        )
+            .toISOString()
+            .replace(
+                /[:.]/g,
+                '-'
+            );
+
+    const fileName =
+        'relay-' +
+        stamp +
+        '-' +
+        String(
+            reason || 'backup'
+        )
+            .replace(
+                /[^A-Za-z0-9_-]/g,
+                '_'
+            ) +
+        '.json';
+
+    const filePath =
+        path.join(
+            BACKUP_DIR,
+            fileName
+        );
+
+    try {
+        fs.writeFileSync(
+            filePath,
+            JSON.stringify(
+                BuildDatabaseObject(),
+                null,
+                2
+            ),
+            'utf8'
+        );
+
+        LogEvent(
+            'BACKUP_CREATE',
+            fileName
+        );
+
+        return filePath;
+    } catch (error) {
+        console.error(
+            'BACKUP SAVE ERROR:',
+            error.message
+        );
+
+        return '';
+    }
+}
+
+function CleanupBackups() {
+    EnsureBackupDirectory();
+
+    try {
+        const files =
+            fs.readdirSync(
+                BACKUP_DIR
+            )
+                .filter(
+                    file =>
+                        file.endsWith('.json')
+                )
+                .map(
+                    file => ({
+                        file,
+                        time:
+                            fs.statSync(
+                                path.join(
+                                    BACKUP_DIR,
+                                    file
+                                )
+                            ).mtimeMs
+                    })
+                )
+                .sort(
+                    (a, b) =>
+                        b.time -
+                        a.time
+                );
+
+        for (
+            let i = BACKUP_RETENTION;
+            i < files.length;
+            i++
+        ) {
+            try {
+                fs.unlinkSync(
+                    path.join(
+                        BACKUP_DIR,
+                        files[i].file
+                    )
+                );
+            } catch (_) {}
+        }
+    } catch (error) {
+        console.error(
+            'BACKUP CLEANUP ERROR:',
+            error.message
+        );
+    }
+}
+
+function CreateAutoBackup() {
+    const file =
+        SaveBackup(
+            'auto'
+        );
+
+    CleanupBackups();
+
+    if (file) {
+        console.log(
+            'AUTO BACKUP:',
+            file
+        );
+    }
+}
+
+function RestoreBackupFile(
+    fileName
+) {
+    EnsureBackupDirectory();
+
+    const safeName =
+        path.basename(
+            fileName
+        );
+
+    const filePath =
+        path.join(
+            BACKUP_DIR,
+            safeName
+        );
+
+    if (
+        !fs.existsSync(
+            filePath
+        )
+    ) {
+        return {
+            ok: false,
+            reason: 'NOT_FOUND'
+        };
+    }
+
+    try {
+        const data =
+            JSON.parse(
+                fs.readFileSync(
+                    filePath,
+                    'utf8'
+                )
+            );
+
+        if (
+            !data ||
+            typeof data !== 'object'
+        ) {
+            return {
+                ok: false,
+                reason: 'INVALID_DATA'
+            };
+        }
+
+        const preRestoreBackup =
+            SaveBackup(
+                'pre_restore'
+            );
+
+        serverIdentities.clear();
+        clientIdentities.clear();
+        licenses.clear();
+
+        if (
+            data.servers &&
+            typeof data.servers ===
+            'object'
+        ) {
+            for (
+                const [
+                    key,
+                    value
+                ]
+                of Object.entries(
+                    data.servers
+                )
+            ) {
+                const id =
+                    NormalizeID(
+                        value
+                    );
+
+                if (
+                    key &&
+                    id
+                ) {
+                    serverIdentities.set(
+                        key,
+                        id
+                    );
+                }
+            }
+        }
+
+        if (
+            data.clients &&
+            typeof data.clients ===
+            'object'
+        ) {
+            for (
+                const [
+                    key,
+                    value
+                ]
+                of Object.entries(
+                    data.clients
+                )
+            ) {
+                if (
+                    !value ||
+                    typeof value !==
+                    'object'
+                ) {
+                    continue;
+                }
+
+                const id =
+                    NormalizeID(
+                        value.id ||
+                        value.clientId
+                    );
+
+                const serverId =
+                    NormalizeID(
+                        value.serverId
+                    );
+
+                if (
+                    !key ||
+                    !id ||
+                    !serverId
+                ) {
+                    continue;
+                }
+
+                clientIdentities.set(
+                    key,
+                    {
+                        id,
+                        serverId,
+                        createdAt:
+                            Number(
+                                value.createdAt
+                            ) || Now(),
+                        lastSeenAt:
+                            Number(
+                                value.lastSeenAt
+                            ) || 0,
+                        lastAuthAt:
+                            Number(
+                                value.lastAuthAt
+                            ) || 0,
+                        lastIP:
+                            String(
+                                value.lastIP ||
+                                ''
+                            ),
+                        authCount:
+                            Number(
+                                value.authCount
+                            ) || 0,
+                        sendCount:
+                            Number(
+                                value.sendCount
+                            ) || 0
+                    }
+                );
+            }
+        }
+
+        if (
+            data.licenses &&
+            typeof data.licenses ===
+            'object'
+        ) {
+            for (
+                const [
+                    rawKey,
+                    value
+                ]
+                of Object.entries(
+                    data.licenses
+                )
+            ) {
+                if (
+                    !value ||
+                    typeof value !==
+                    'object'
+                ) {
+                    continue;
+                }
+
+                const key =
+                    NormalizeLicenseKey(
+                        rawKey
+                    );
+
+                const expiresAt =
+                    Number(
+                        value.expiresAt
+                    );
+
+                if (
+                    !key ||
+                    !Number.isFinite(
+                        expiresAt
+                    )
+                ) {
+                    continue;
+                }
+
+                licenses.set(
+                    key,
+                    {
+                        createdAt:
+                            Number(
+                                value.createdAt
+                            ) || Now(),
+
+                        expiresAt,
+
+                        boundClient:
+                            NormalizeID(
+                                value.boundClient ||
+                                ''
+                            ),
+
+                        boundAt:
+                            Number(
+                                value.boundAt
+                            ) || 0,
+
+                        lastAuthAt:
+                            Number(
+                                value.lastAuthAt
+                            ) || 0,
+
+                        lastSeenAt:
+                            Number(
+                                value.lastSeenAt
+                            ) || 0,
+
+                        lastIP:
+                            String(
+                                value.lastIP ||
+                                ''
+                            ),
+
+                        authCount:
+                            Number(
+                                value.authCount
+                            ) || 0,
+
+                        sendCount:
+                            Number(
+                                value.sendCount
+                            ) || 0,
+
+                        suspended:
+                            Boolean(
+                                value.suspended
+                            ),
+
+                        memo:
+                            SanitizeMemo(
+                                value.memo ||
+                                ''
+                            )
+                    }
+                );
+            }
+        }
+
+        if (
+            typeof data.serviceEnabled ===
+            'boolean'
+        ) {
+            serviceEnabled =
+                data.serviceEnabled;
+        }
+
+        if (
+            typeof data.maintenanceMode ===
+            'boolean'
+        ) {
+            maintenanceMode =
+                data.maintenanceMode;
+        }
+
+        SaveIdentities();
+
+        LogEvent(
+            'BACKUP_RESTORE',
+            safeName
+        );
+
+        return {
+            ok: true,
+            reason: 'OK',
+            preRestoreBackup:
+                path.basename(
+                    preRestoreBackup
+                )
+        };
+    } catch (error) {
+        console.error(
+            'BACKUP RESTORE ERROR:',
+            error.message
+        );
+
+        return {
+            ok: false,
+            reason: 'RESTORE_FAILED'
+        };
+    }
+}
+
 function LoadIdentities() {
     try {
         if (
@@ -287,6 +804,7 @@ function LoadIdentities() {
                 IDENTITY_FILE
             )
         ) {
+            EnsureBackupDirectory();
             return;
         }
 
@@ -306,6 +824,14 @@ function LoadIdentities() {
                 data.serviceEnabled;
         }
 
+        if (
+            typeof data.maintenanceMode ===
+            'boolean'
+        ) {
+            maintenanceMode =
+                data.maintenanceMode;
+        }
+
         const usedIDs =
             new Set();
 
@@ -323,17 +849,10 @@ function LoadIdentities() {
                     data.servers
                 )
             ) {
-                if (
-                    typeof deviceKey !==
-                    'string' ||
-                    typeof rawId !==
-                    'string'
-                ) {
-                    continue;
-                }
-
                 const key =
-                    deviceKey.trim();
+                    String(
+                        deviceKey
+                    ).trim();
 
                 const id =
                     NormalizeID(
@@ -350,11 +869,6 @@ function LoadIdentities() {
                 if (
                     usedIDs.has(id)
                 ) {
-                    console.error(
-                        'DUPLICATE SERVER ID IGNORED:',
-                        id
-                    );
-
                     continue;
                 }
 
@@ -389,18 +903,10 @@ function LoadIdentities() {
                     continue;
                 }
 
-                const key =
-                    deviceKey.trim();
-
-                const rawId =
-                    typeof value.id ===
-                    'string'
-                        ? value.id
-                        : value.clientId;
-
                 const id =
                     NormalizeID(
-                        rawId
+                        value.id ||
+                        value.clientId
                     );
 
                 const serverId =
@@ -409,7 +915,7 @@ function LoadIdentities() {
                     );
 
                 if (
-                    !key ||
+                    !deviceKey ||
                     !id ||
                     !serverId
                 ) {
@@ -419,46 +925,35 @@ function LoadIdentities() {
                 if (
                     usedIDs.has(id)
                 ) {
-                    console.error(
-                        'DUPLICATE CLIENT ID IGNORED:',
-                        id
-                    );
-
                     continue;
                 }
 
                 clientIdentities.set(
-                    key,
+                    deviceKey,
                     {
                         id,
                         serverId,
-
                         createdAt:
                             Number(
                                 value.createdAt
                             ) || Now(),
-
                         lastSeenAt:
                             Number(
                                 value.lastSeenAt
                             ) || 0,
-
                         lastAuthAt:
                             Number(
                                 value.lastAuthAt
                             ) || 0,
-
                         lastIP:
                             String(
                                 value.lastIP ||
                                 ''
                             ),
-
                         authCount:
                             Number(
                                 value.authCount
                             ) || 0,
-
                         sendCount:
                             Number(
                                 value.sendCount
@@ -574,6 +1069,7 @@ function LoadIdentities() {
             }
         }
 
+        EnsureBackupDirectory();
         SaveIdentities();
 
         console.log(
@@ -590,6 +1086,8 @@ function LoadIdentities() {
             'IDENTITY LOAD ERROR:',
             error.message
         );
+
+        EnsureBackupDirectory();
     }
 }
 
@@ -669,22 +1167,114 @@ function GetSavedClientByID(
     return null;
 }
 
-function FindServerDeviceByID(
-    serverId
+function GetBoundLicense(
+    clientId
 ) {
+    clientId =
+        NormalizeID(
+            clientId
+        );
+
+    if (!clientId) {
+        return null;
+    }
+
     for (
-        const [
-            deviceKey,
-            id
-        ]
-        of serverIdentities.entries()
+        const license
+        of licenses.values()
     ) {
         if (
-            id ===
-            serverId
+            license &&
+            license.boundClient ===
+            clientId
         ) {
-            return deviceKey;
+            return license;
         }
+    }
+
+    return null;
+}
+
+function GetLicenseStatus(
+    license
+) {
+    if (!license) {
+        return 'UNKNOWN';
+    }
+
+    if (
+        license.suspended
+    ) {
+        return 'SUSPENDED';
+    }
+
+    if (
+        Now() >=
+        license.expiresAt
+    ) {
+        return 'EXPIRED';
+    }
+
+    if (
+        license.boundClient
+    ) {
+        return 'BOUND';
+    }
+
+    return 'AVAILABLE';
+}
+
+function GetClientActiveLicense(
+    clientId
+) {
+    clientId =
+        NormalizeID(
+            clientId
+        );
+
+    if (!clientId) {
+        return null;
+    }
+
+    if (
+        !serviceEnabled ||
+        maintenanceMode
+    ) {
+        return null;
+    }
+
+    for (
+        const [
+            key,
+            license
+        ]
+        of licenses.entries()
+    ) {
+        if (
+            !license ||
+            license.boundClient !==
+            clientId
+        ) {
+            continue;
+        }
+
+        if (
+            license.suspended
+        ) {
+            continue;
+        }
+
+        if (
+            Now() >=
+            license.expiresAt
+        ) {
+            continue;
+        }
+
+        return {
+            key,
+            license
+        };
     }
 
     return null;
@@ -755,27 +1345,8 @@ function RegisterServer(
 
         LogEvent(
             'SERVER_CREATE',
-            serverId +
-            ' -> ' +
-            deviceKey
-        );
-    }
-
-    const owner =
-        FindServerDeviceByID(
             serverId
         );
-
-    if (
-        owner &&
-        owner !== deviceKey
-    ) {
-        SendLine(
-            connection.socket,
-            'ERROR|SERVER_ID_CONFLICT'
-        );
-
-        return false;
     }
 
     const old =
@@ -874,9 +1445,7 @@ function HandleServerLine(
 
     if (
         line === 'REGISTER' ||
-        line.startsWith(
-            'REGISTER|'
-        )
+        line.startsWith('REGISTER|')
     ) {
         if (
             connection.registered
@@ -971,9 +1540,7 @@ function CreateNewClientIdentity(
 
     LogEvent(
         'CLIENT_CREATE',
-        saved.id +
-        ' -> ' +
-        deviceKey
+        saved.id
     );
 
     return saved;
@@ -1034,6 +1601,11 @@ function AttachClient(
     connection.lastSeen =
         Now();
 
+    clients.set(
+        saved.id,
+        connection
+    );
+
     saved.lastSeenAt =
         Now();
 
@@ -1043,11 +1615,6 @@ function AttachClient(
         );
 
     SaveIdentities();
-
-    clients.set(
-        saved.id,
-        connection
-    );
 
     const server =
         GetOnlineServer(
@@ -1082,6 +1649,15 @@ function HandleClientConnect(
         SendLine(
             connection.socket,
             'SERVICE_ERROR|DISABLED'
+        );
+
+        return;
+    }
+
+    if (maintenanceMode) {
+        SendLine(
+            connection.socket,
+            'SERVICE_ERROR|MAINTENANCE'
         );
 
         return;
@@ -1128,148 +1704,6 @@ function HandleClientConnect(
     AttachClient(
         connection,
         saved
-    );
-}
-
-function FindLicense(
-    licenseKey
-) {
-    licenseKey =
-        NormalizeLicenseKey(
-            licenseKey
-        );
-
-    if (!licenseKey) {
-        return null;
-    }
-
-    return (
-        licenses.get(
-            licenseKey
-        ) || null
-    );
-}
-
-function GetBoundLicense(
-    clientId
-) {
-    clientId =
-        NormalizeID(
-            clientId
-        );
-
-    if (!clientId) {
-        return null;
-    }
-
-    for (
-        const license
-        of licenses.values()
-    ) {
-        if (
-            license &&
-            license.boundClient ===
-            clientId
-        ) {
-            return license;
-        }
-    }
-
-    return null;
-}
-
-function GetLicenseStatus(
-    license
-) {
-    if (!license) {
-        return 'UNKNOWN';
-    }
-
-    if (license.suspended) {
-        return 'SUSPENDED';
-    }
-
-    if (
-        Now() >=
-        license.expiresAt
-    ) {
-        return 'EXPIRED';
-    }
-
-    if (license.boundClient) {
-        return 'BOUND';
-    }
-
-    return 'AVAILABLE';
-}
-
-function GetClientActiveLicense(
-    clientId
-) {
-    clientId =
-        NormalizeID(
-            clientId
-        );
-
-    if (!clientId) {
-        return null;
-    }
-
-    if (!serviceEnabled) {
-        return null;
-    }
-
-    const now =
-        Now();
-
-    for (
-        const [
-            key,
-            license
-        ]
-        of licenses.entries()
-    ) {
-        if (
-            !license ||
-            !license.boundClient
-        ) {
-            continue;
-        }
-
-        if (
-            license.boundClient !==
-            clientId
-        ) {
-            continue;
-        }
-
-        if (
-            license.suspended
-        ) {
-            continue;
-        }
-
-        if (
-            now >=
-            license.expiresAt
-        ) {
-            continue;
-        }
-
-        return {
-            key,
-            license
-        };
-    }
-
-    return null;
-}
-
-function IsClientLicensed(
-    clientId
-) {
-    return !!GetClientActiveLicense(
-        clientId
     );
 }
 
@@ -1328,12 +1762,13 @@ function NotifyServerUnauthorized(
 }
 
 function NotifyServerCurrentLicenseState(
-    connection,
-    targetServer
+    client,
+    server
 ) {
     if (
-        !connection ||
-        !connection.clientId
+        !client ||
+        !client.clientId ||
+        !server
     ) {
         return;
     }
@@ -1342,10 +1777,23 @@ function NotifyServerCurrentLicenseState(
         !serviceEnabled
     ) {
         SendLine(
-            targetServer.socket,
+            server.socket,
             'CLIENT_UNAUTHORIZED|' +
-            connection.clientId +
+            client.clientId +
             '|SERVICE_DISABLED'
+        );
+
+        return;
+    }
+
+    if (
+        maintenanceMode
+    ) {
+        SendLine(
+            server.socket,
+            'CLIENT_UNAUTHORIZED|' +
+            client.clientId +
+            '|MAINTENANCE'
         );
 
         return;
@@ -1353,22 +1801,22 @@ function NotifyServerCurrentLicenseState(
 
     const active =
         GetClientActiveLicense(
-            connection.clientId
+            client.clientId
         );
 
     if (active) {
         SendLine(
-            targetServer.socket,
+            server.socket,
             'CLIENT_AUTHORIZED|' +
-            connection.clientId +
+            client.clientId +
             '|' +
             active.license.expiresAt
         );
     } else {
         SendLine(
-            targetServer.socket,
+            server.socket,
             'CLIENT_UNAUTHORIZED|' +
-            connection.clientId +
+            client.clientId +
             '|LICENSE_REQUIRED'
         );
     }
@@ -1402,6 +1850,29 @@ function NotifyClientLicenseState(
         NotifyServerUnauthorized(
             connection.clientId,
             'SERVICE_DISABLED'
+        );
+
+        return;
+    }
+
+    if (maintenanceMode) {
+        connection.licenseAuthorized =
+            false;
+
+        connection.licenseKey =
+            null;
+
+        connection.licenseExpiresAt =
+            0;
+
+        SendLine(
+            connection.socket,
+            'SERVICE_ERROR|MAINTENANCE'
+        );
+
+        NotifyServerUnauthorized(
+            connection.clientId,
+            'MAINTENANCE'
         );
 
         return;
@@ -1512,6 +1983,15 @@ function AuthorizeClientConnection(
         return;
     }
 
+    if (maintenanceMode) {
+        SendLine(
+            connection.socket,
+            'SERVICE_ERROR|MAINTENANCE'
+        );
+
+        return;
+    }
+
     licenseKey =
         NormalizeLicenseKey(
             licenseKey
@@ -1548,7 +2028,9 @@ function AuthorizeClientConnection(
         return;
     }
 
-    if (license.suspended) {
+    if (
+        license.suspended
+    ) {
         SendLine(
             connection.socket,
             'LICENSE_ERROR|SUSPENDED'
@@ -1681,14 +2163,87 @@ function AuthorizeClientConnection(
     );
 }
 
+function IsRateLimited(
+    connection
+) {
+    const clientId =
+        connection.clientId ||
+        'IP:' +
+        SafeIP(
+            connection.socket
+        );
+
+    const now =
+        Now();
+
+    let state =
+        rateLimits.get(
+            clientId
+        );
+
+    if (
+        !state ||
+        now -
+        state.startedAt >=
+        RATE_LIMIT_WINDOW
+    ) {
+        state = {
+            startedAt: now,
+            count: 0
+        };
+
+        rateLimits.set(
+            clientId,
+            state
+        );
+    }
+
+    state.count++;
+
+    if (
+        state.count >
+        RATE_LIMIT_MAX
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
 function HandleClientSend(
     connection,
     line
 ) {
-    if (!serviceEnabled) {
+    if (
+        !serviceEnabled
+    ) {
         SendLine(
             connection.socket,
             'SERVICE_ERROR|DISABLED'
+        );
+
+        return;
+    }
+
+    if (
+        maintenanceMode
+    ) {
+        SendLine(
+            connection.socket,
+            'SERVICE_ERROR|MAINTENANCE'
+        );
+
+        return;
+    }
+
+    if (
+        IsRateLimited(
+            connection
+        )
+    ) {
+        SendLine(
+            connection.socket,
+            'ERROR|RATE_LIMIT'
         );
 
         return;
@@ -1861,15 +2416,6 @@ function HandleClientSend(
 
         return;
     }
-
-    connection.licenseAuthorized =
-        true;
-
-    connection.licenseKey =
-        active.key;
-
-    connection.licenseExpiresAt =
-        active.license.expiresAt;
 
     if (
         !SendLine(
@@ -2071,6 +2617,26 @@ function HandleClientLine(
     );
 }
 
+function FindLicense(
+    licenseKey
+) {
+    licenseKey =
+        NormalizeLicenseKey(
+            licenseKey
+        );
+
+    if (!licenseKey) {
+        return null;
+    }
+
+    return (
+        licenses.get(
+            licenseKey
+        ) ||
+        null
+    );
+}
+
 function CreateLicense(
     days,
     memo
@@ -2095,35 +2661,33 @@ function CreateLicense(
         licenses.has(key)
     );
 
-    const license = {
-        createdAt: now,
-        expiresAt,
-
-        boundClient: '',
-
-        boundAt: 0,
-
-        lastAuthAt: 0,
-
-        lastSeenAt: 0,
-
-        lastIP: '',
-
-        authCount: 0,
-
-        sendCount: 0,
-
-        suspended: false,
-
-        memo:
-            SanitizeMemo(
-                memo
-            )
-    };
-
     licenses.set(
         key,
-        license
+        {
+            createdAt: now,
+            expiresAt,
+
+            boundClient: '',
+
+            boundAt: 0,
+
+            lastAuthAt: 0,
+
+            lastSeenAt: 0,
+
+            lastIP: '',
+
+            authCount: 0,
+
+            sendCount: 0,
+
+            suspended: false,
+
+            memo:
+                SanitizeMemo(
+                    memo
+                )
+        }
     );
 
     SaveIdentities();
@@ -2408,6 +2972,72 @@ function TransferLicense(
     };
 }
 
+function IsAdminAllowed(
+    connection,
+    action
+) {
+    const role =
+        connection.adminRole ||
+        'admin';
+
+    if (role === 'admin') {
+        return true;
+    }
+
+    if (role === 'operator') {
+        return [
+            'LIST',
+            'VIEW',
+            'EXTEND',
+            'UNBIND',
+            'SUSPEND',
+            'RESUME',
+            'TRANSFER',
+            'DASHBOARD',
+            'SERVER_LIST',
+            'CLIENT_LIST',
+            'AUDIT_LIST'
+        ].includes(
+            action
+        );
+    }
+
+    if (role === 'viewer') {
+        return [
+            'LIST',
+            'VIEW',
+            'DASHBOARD',
+            'SERVER_LIST',
+            'CLIENT_LIST',
+            'AUDIT_LIST'
+        ].includes(
+            action
+        );
+    }
+
+    return false;
+}
+
+function ResolveAdminRole(
+    suppliedRole
+) {
+    const role =
+        String(
+            suppliedRole ||
+            'admin'
+        ).toLowerCase();
+
+    if (
+        role === 'admin' ||
+        role === 'operator' ||
+        role === 'viewer'
+    ) {
+        return role;
+    }
+
+    return 'admin';
+}
+
 function HandleAdminAuth(
     connection,
     line
@@ -2436,6 +3066,11 @@ function HandleAdminAuth(
         parts[3]
             .trim()
             .toUpperCase();
+
+    const requestedRole =
+        parts.length >= 5
+            ? parts[4]
+            : 'admin';
 
     const timestamp =
         Number(
@@ -2489,7 +3124,8 @@ function HandleAdminAuth(
     if (
         Math.abs(
             now - timestamp
-        ) > ADMIN_AUTH_WINDOW_SECONDS
+        ) >
+        ADMIN_AUTH_WINDOW_SECONDS
     ) {
         SendLine(
             connection.socket,
@@ -2538,17 +3174,120 @@ function HandleAdminAuth(
     connection.adminNonce =
         '';
 
+    connection.adminRole =
+        ResolveAdminRole(
+            requestedRole
+        );
+
     SendLine(
         connection.socket,
-        'ADMIN_OK'
+        'ADMIN_OK|' +
+        connection.adminRole
     );
 
     LogEvent(
         'ADMIN_AUTH',
+        connection.adminRole +
+        ' / ' +
         SafeIP(
             connection.socket
         )
     );
+}
+
+function SearchLicenses(
+    query,
+    status,
+    boundClient
+) {
+    const results = [];
+
+    query =
+        String(
+            query || ''
+        )
+            .trim()
+            .toUpperCase();
+
+    status =
+        String(
+            status || ''
+        )
+            .trim()
+            .toUpperCase();
+
+    boundClient =
+        NormalizeID(
+            boundClient ||
+            ''
+        );
+
+    for (
+        const [
+            key,
+            license
+        ]
+        of licenses.entries()
+    ) {
+        const licenseStatus =
+            GetLicenseStatus(
+                license
+            );
+
+        if (
+            status &&
+            status !== 'ALL' &&
+            licenseStatus !==
+            status
+        ) {
+            continue;
+        }
+
+        if (
+            boundClient &&
+            NormalizeID(
+                license.boundClient ||
+                ''
+            ) !==
+            boundClient
+        ) {
+            continue;
+        }
+
+        if (query) {
+            const haystack =
+                (
+                    key +
+                    '|' +
+                    license.memo +
+                    '|' +
+                    license.boundClient
+                )
+                    .toUpperCase();
+
+            if (
+                !haystack.includes(
+                    query
+                )
+            ) {
+                continue;
+            }
+        }
+
+        results.push({
+            key,
+            license
+        });
+
+        if (
+            results.length >=
+            MAX_SEARCH_RESULTS
+        ) {
+            break;
+        }
+    }
+
+    return results;
 }
 
 function HandleAdminLine(
@@ -2577,6 +3316,9 @@ function HandleAdminLine(
 
         connection.adminAuthenticated =
             false;
+
+        connection.adminRole =
+            null;
 
         SendLine(
             connection.socket,
@@ -2619,6 +3361,9 @@ function HandleAdminLine(
         connection.adminAuthenticated =
             false;
 
+        connection.adminRole =
+            null;
+
         SendLine(
             connection.socket,
             'ADMIN_ERROR|SESSION_EXPIRED'
@@ -2631,52 +3376,103 @@ function HandleAdminLine(
         Now();
 
     if (
+        line ===
+        'WHOAMI'
+    ) {
+        SendLine(
+            connection.socket,
+            'ADMIN_ROLE|' +
+            connection.adminRole
+        );
+
+        return;
+    }
+
+    if (
         line.startsWith(
-            'LIC_CREATE|'
+            'LIC_SEARCH|'
         )
     ) {
-        const parts =
-            line.split('|');
-
-        const days =
-            Number(
-                parts[1]
-            );
-
-        const memo =
-            parts.length >= 3
-                ? parts
-                    .slice(2)
-                    .join('|')
-                : '';
-
         if (
-            !Number.isInteger(
-                days
-            ) ||
-            days <= 0 ||
-            days > 36500
+            !IsAdminAllowed(
+                connection,
+                'LIST'
+            )
         ) {
             SendLine(
                 connection.socket,
-                'LIC_ERROR|INVALID_DAYS'
+                'ADMIN_ERROR|FORBIDDEN'
             );
 
             return;
         }
 
-        const created =
-            CreateLicense(
-                days,
-                memo
+        const parts =
+            line.split('|');
+
+        const query =
+            parts[1] || '';
+
+        const status =
+            parts[2] || '';
+
+        const boundClient =
+            parts[3] || '';
+
+        const results =
+            SearchLicenses(
+                query,
+                status,
+                boundClient
             );
+
+        for (
+            const item
+            of results
+        ) {
+            const license =
+                item.license;
+
+            SendLine(
+                connection.socket,
+                'LIC_ITEM|' +
+                item.key +
+                '|' +
+                GetLicenseStatus(
+                    license
+                ) +
+                '|' +
+                license.expiresAt +
+                '|' +
+                (
+                    license.boundClient ||
+                    ''
+                ) +
+                '|' +
+                SanitizeMemo(
+                    license.memo ||
+                    ''
+                ) +
+                '|' +
+                license.createdAt +
+                '|' +
+                license.boundAt +
+                '|' +
+                license.lastAuthAt +
+                '|' +
+                license.lastSeenAt +
+                '|' +
+                license.lastIP +
+                '|' +
+                license.authCount +
+                '|' +
+                license.sendCount
+            );
+        }
 
         SendLine(
             connection.socket,
-            'LIC_OK|' +
-            created.key +
-            '|' +
-            created.expiresAt
+            'END_SEARCH'
         );
 
         return;
@@ -2686,6 +3482,20 @@ function HandleAdminLine(
         line ===
         'LIC_LIST'
     ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'LIST'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
         for (
             const [
                 key,
@@ -2740,38 +3550,101 @@ function HandleAdminLine(
 
     if (
         line.startsWith(
+            'LIC_CREATE|'
+        )
+    ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'EXTEND'
+            ) ||
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const parts =
+            line.split('|');
+
+        const days =
+            Number(
+                parts[1]
+            );
+
+        const memo =
+            parts.length >= 3
+                ? parts
+                    .slice(2)
+                    .join('|')
+                : '';
+
+        if (
+            !Number.isInteger(days) ||
+            days <= 0 ||
+            days > 36500
+        ) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|INVALID_DAYS'
+            );
+
+            return;
+        }
+
+        const created =
+            CreateLicense(
+                days,
+                memo
+            );
+
+        SendLine(
+            connection.socket,
+            'LIC_OK|' +
+            created.key +
+            '|' +
+            created.expiresAt
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith(
             'LIC_EXTEND|'
         )
     ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'EXTEND'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
         const parts =
             line.split('|');
 
         const key =
             NormalizeLicenseKey(
-                parts[1] ||
-                ''
+                parts[1] || ''
             );
 
         const days =
             Number(
                 parts[2]
             );
-
-        if (
-            !key ||
-            !Number.isInteger(
-                days
-            ) ||
-            days <= 0 ||
-            days > 36500
-        ) {
-            SendLine(
-                connection.socket,
-                'LIC_ERROR|INVALID_REQUEST'
-            );
-
-            return;
-        }
 
         const license =
             FindLicense(
@@ -2782,6 +3655,19 @@ function HandleAdminLine(
             SendLine(
                 connection.socket,
                 'LIC_ERROR|NOT_FOUND'
+            );
+
+            return;
+        }
+
+        if (
+            !Number.isInteger(days) ||
+            days <= 0 ||
+            days > 36500
+        ) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|INVALID_DAYS'
             );
 
             return;
@@ -2830,12 +3716,21 @@ function HandleAdminLine(
             'LIC_DELETE|'
         )
     ) {
-        const parts =
-            line.split('|');
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
 
         const key =
             NormalizeLicenseKey(
-                parts[1] ||
+                line.split('|')[1] ||
                 ''
             );
 
@@ -2909,12 +3804,23 @@ function HandleAdminLine(
             'LIC_UNBIND|'
         )
     ) {
-        const parts =
-            line.split('|');
+        if (
+            !IsAdminAllowed(
+                connection,
+                'UNBIND'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
 
         const key =
             NormalizeLicenseKey(
-                parts[1] ||
+                line.split('|')[1] ||
                 ''
             );
 
@@ -3005,12 +3911,23 @@ function HandleAdminLine(
             'LIC_SUSPEND|'
         )
     ) {
-        const parts =
-            line.split('|');
+        if (
+            !IsAdminAllowed(
+                connection,
+                'SUSPEND'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
 
         const key =
             NormalizeLicenseKey(
-                parts[1] ||
+                line.split('|')[1] ||
                 ''
             );
 
@@ -3082,12 +3999,23 @@ function HandleAdminLine(
             'LIC_RESUME|'
         )
     ) {
-        const parts =
-            line.split('|');
+        if (
+            !IsAdminAllowed(
+                connection,
+                'RESUME'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
 
         const key =
             NormalizeLicenseKey(
-                parts[1] ||
+                line.split('|')[1] ||
                 ''
             );
 
@@ -3156,18 +4084,27 @@ function HandleAdminLine(
             'LIC_REISSUE|'
         )
     ) {
-        const parts =
-            line.split('|');
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
 
-        const oldKey =
+            return;
+        }
+
+        const key =
             NormalizeLicenseKey(
-                parts[1] ||
+                line.split('|')[1] ||
                 ''
             );
 
         const result =
             ReissueLicense(
-                oldKey
+                key
             );
 
         if (!result) {
@@ -3197,19 +4134,31 @@ function HandleAdminLine(
             'LIC_TRANSFER|'
         )
     ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'TRANSFER'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
         const parts =
             line.split('|');
 
         const key =
             NormalizeLicenseKey(
-                parts[1] ||
-                ''
+                parts[1] || ''
             );
 
         const newClientId =
             NormalizeID(
-                parts[2] ||
-                ''
+                parts[2] || ''
             );
 
         const result =
@@ -3240,132 +4189,107 @@ function HandleAdminLine(
     }
 
     if (
-        line ===
-        'SERVER_LIST'
+        line.startsWith(
+            'LIC_BULK_EXTEND|'
+        )
     ) {
-        for (
-            const [
-                serverId,
-                identityKey
-            ]
-            of serverIdentities.entries()
+        if (
+            !IsAdminAllowed(
+                connection,
+                'EXTEND'
+            )
         ) {
-            const online =
-                !!GetOnlineServer(
-                    serverId
-                );
-
-            const live =
-                servers.get(
-                    serverId
-                );
-
             SendLine(
                 connection.socket,
-                'SERVER_ITEM|' +
-                serverId +
-                '|' +
-                (
-                    online
-                        ? 'ONLINE'
-                        : 'OFFLINE'
-                ) +
-                '|' +
-                (
-                    live
-                        ? live.clients.size
-                        : 0
-                ) +
-                '|' +
-                identityKey +
-                '|' +
-                (
-                    live
-                        ? live.lastIP
-                        : ''
-                ) +
-                '|' +
-                (
-                    live
-                        ? live.lastSeen
-                        : 0
-                )
+                'ADMIN_ERROR|FORBIDDEN'
             );
+
+            return;
         }
+
+        const parts =
+            line.split('|');
+
+        const days =
+            Number(
+                parts[1]
+            );
+
+        if (
+            !Number.isInteger(days) ||
+            days <= 0 ||
+            days > 36500
+        ) {
+            SendLine(
+                connection.socket,
+                'LIC_ERROR|INVALID_DAYS'
+            );
+
+            return;
+        }
+
+        let success =
+            0;
+
+        const keys =
+            parts
+                .slice(2)
+                .map(
+                    NormalizeLicenseKey
+                )
+                .filter(
+                    Boolean
+                );
+
+        for (
+            const key
+            of keys
+        ) {
+            const license =
+                FindLicense(
+                    key
+                );
+
+            if (!license) {
+                continue;
+            }
+
+            ExtendLicense(
+                license,
+                days
+            );
+
+            success++;
+
+            if (
+                license.boundClient
+            ) {
+                const client =
+                    GetOnlineClient(
+                        license.boundClient
+                    );
+
+                if (client) {
+                    NotifyClientLicenseState(
+                        client
+                    );
+                }
+            }
+        }
+
+        SaveIdentities();
 
         SendLine(
             connection.socket,
-            'END_SERVER_LIST'
+            'LIC_BULK_EXTEND_OK|' +
+            success +
+            '|' +
+            keys.length
         );
 
-        return;
-    }
-
-    if (
-        line ===
-        'CLIENT_LIST'
-    ) {
-        for (
-            const [
-                deviceKey,
-                saved
-            ]
-            of clientIdentities.entries()
-        ) {
-            const online =
-                !!GetOnlineClient(
-                    saved.id
-                );
-
-            const license =
-                GetBoundLicense(
-                    saved.id
-                );
-
-            SendLine(
-                connection.socket,
-                'CLIENT_ITEM|' +
-                saved.id +
-                '|' +
-                deviceKey +
-                '|' +
-                saved.serverId +
-                '|' +
-                (
-                    online
-                        ? 'ONLINE'
-                        : 'OFFLINE'
-                ) +
-                '|' +
-                (
-                    license
-                        ? GetLicenseStatus(
-                            license
-                        )
-                        : 'NONE'
-                ) +
-                '|' +
-                (
-                    license
-                        ? license.expiresAt
-                        : 0
-                ) +
-                '|' +
-                saved.lastAuthAt +
-                '|' +
-                saved.lastSeenAt +
-                '|' +
-                saved.lastIP +
-                '|' +
-                saved.authCount +
-                '|' +
-                saved.sendCount
-            );
-        }
-
-        SendLine(
-            connection.socket,
-            'END_CLIENT_LIST'
+        LogEvent(
+            'LICENSE_BULK_EXTEND',
+            String(success)
         );
 
         return;
@@ -3373,130 +4297,396 @@ function HandleAdminLine(
 
     if (
         line.startsWith(
-            'SERVER_KICK|'
+            'LIC_BULK_UNBIND|'
         )
     ) {
-        const parts =
-            line.split('|');
-
-        const serverId =
-            NormalizeID(
-                parts[1] ||
-                ''
-            );
-
-        const target =
-            GetOnlineServer(
-                serverId
-            );
-
-        if (!target) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'UNBIND'
+            )
+        ) {
             SendLine(
                 connection.socket,
-                'ADMIN_ERROR|SERVER_NOT_ONLINE'
+                'ADMIN_ERROR|FORBIDDEN'
             );
 
             return;
         }
 
-        SendLine(
-            target.socket,
-            'ERROR|ADMIN_KICK'
-        );
+        const keys =
+            line
+                .split('|')
+                .slice(1)
+                .map(
+                    NormalizeLicenseKey
+                )
+                .filter(
+                    Boolean
+                );
 
-        target.socket.destroy();
-
-        SendLine(
-            connection.socket,
-            'SERVER_KICK_OK|' +
-            serverId
-        );
-
-        LogEvent(
-            'SERVER_KICK',
-            serverId
-        );
-
-        return;
-    }
-
-    if (
-        line ===
-        'SERVICE_STOP'
-    ) {
-        serviceEnabled =
-            false;
-
-        SaveIdentities();
+        let success =
+            0;
 
         for (
-            const client
-            of clients.values()
+            const key
+            of keys
         ) {
-            client.licenseAuthorized =
-                false;
+            const license =
+                FindLicense(
+                    key
+                );
 
-            client.licenseKey =
-                null;
+            if (!license) {
+                continue;
+            }
 
-            client.licenseExpiresAt =
+            const oldClient =
+                license.boundClient;
+
+            license.boundClient =
+                '';
+
+            license.boundAt =
                 0;
 
-            SendLine(
-                client.socket,
-                'SERVICE_ERROR|DISABLED'
-            );
+            license.lastAuthAt =
+                0;
 
-            NotifyServerUnauthorized(
-                client.clientId,
-                'SERVICE_DISABLED'
-            );
+            license.lastSeenAt =
+                0;
+
+            license.lastIP =
+                '';
+
+            license.authCount =
+                0;
+
+            license.sendCount =
+                0;
+
+            success++;
+
+            if (oldClient) {
+                const client =
+                    GetOnlineClient(
+                        oldClient
+                    );
+
+                if (client) {
+                    client.licenseAuthorized =
+                        false;
+
+                    client.licenseKey =
+                        null;
+
+                    client.licenseExpiresAt =
+                        0;
+
+                    SendLine(
+                        client.socket,
+                        'LICENSE_ERROR|UNBOUND'
+                    );
+                }
+
+                NotifyServerUnauthorized(
+                    oldClient,
+                    'UNBOUND'
+                );
+            }
         }
+
+        SaveIdentities();
 
         SendLine(
             connection.socket,
-            'SERVICE_STOP_OK'
-        );
-
-        LogEvent(
-            'SERVICE_STOP',
-            SafeIP(
-                connection.socket
-            )
+            'LIC_BULK_UNBIND_OK|' +
+            success +
+            '|' +
+            keys.length
         );
 
         return;
     }
 
     if (
-        line ===
-        'SERVICE_START'
+        line.startsWith(
+            'LIC_BULK_SUSPEND|'
+        )
     ) {
-        serviceEnabled =
-            true;
+        if (
+            !IsAdminAllowed(
+                connection,
+                'SUSPEND'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const keys =
+            line
+                .split('|')
+                .slice(1)
+                .map(
+                    NormalizeLicenseKey
+                )
+                .filter(
+                    Boolean
+                );
+
+        let success =
+            0;
+
+        for (
+            const key
+            of keys
+        ) {
+            const license =
+                FindLicense(
+                    key
+                );
+
+            if (!license) {
+                continue;
+            }
+
+            license.suspended =
+                true;
+
+            success++;
+
+            if (
+                license.boundClient
+            ) {
+                const client =
+                    GetOnlineClient(
+                        license.boundClient
+                    );
+
+                if (client) {
+                    client.licenseAuthorized =
+                        false;
+
+                    client.licenseKey =
+                        null;
+
+                    client.licenseExpiresAt =
+                        0;
+
+                    SendLine(
+                        client.socket,
+                        'LICENSE_ERROR|SUSPENDED'
+                    );
+                }
+
+                NotifyServerUnauthorized(
+                    license.boundClient,
+                    'SUSPENDED'
+                );
+            }
+        }
 
         SaveIdentities();
 
         SendLine(
             connection.socket,
-            'SERVICE_START_OK'
+            'LIC_BULK_SUSPEND_OK|' +
+            success +
+            '|' +
+            keys.length
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith(
+            'LIC_BULK_RESUME|'
+        )
+    ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'RESUME'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const keys =
+            line
+                .split('|')
+                .slice(1)
+                .map(
+                    NormalizeLicenseKey
+                )
+                .filter(
+                    Boolean
+                );
+
+        let success =
+            0;
+
+        for (
+            const key
+            of keys
+        ) {
+            const license =
+                FindLicense(
+                    key
+                );
+
+            if (!license) {
+                continue;
+            }
+
+            if (
+                Now() >=
+                license.expiresAt
+            ) {
+                continue;
+            }
+
+            license.suspended =
+                false;
+
+            success++;
+
+            if (
+                license.boundClient
+            ) {
+                const client =
+                    GetOnlineClient(
+                        license.boundClient
+                    );
+
+                if (client) {
+                    NotifyClientLicenseState(
+                        client
+                    );
+                }
+            }
+        }
+
+        SaveIdentities();
+
+        SendLine(
+            connection.socket,
+            'LIC_BULK_RESUME_OK|' +
+            success +
+            '|' +
+            keys.length
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith(
+            'LIC_BULK_DELETE|'
+        )
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const keys =
+            line
+                .split('|')
+                .slice(1)
+                .map(
+                    NormalizeLicenseKey
+                )
+                .filter(
+                    Boolean
+                );
+
+        let success =
+            0;
+
+        for (
+            const key
+            of keys
+        ) {
+            const license =
+                FindLicense(
+                    key
+                );
+
+            if (!license) {
+                continue;
+            }
+
+            const boundClient =
+                license.boundClient;
+
+            licenses.delete(
+                key
+            );
+
+            success++;
+
+            if (boundClient) {
+                const client =
+                    GetOnlineClient(
+                        boundClient
+                    );
+
+                if (client) {
+                    client.licenseAuthorized =
+                        false;
+
+                    client.licenseKey =
+                        null;
+
+                    client.licenseExpiresAt =
+                        0;
+
+                    SendLine(
+                        client.socket,
+                        'LICENSE_ERROR|REVOKED'
+                    );
+                }
+
+                NotifyServerUnauthorized(
+                    boundClient,
+                    'REVOKED'
+                );
+            }
+        }
+
+        SaveIdentities();
+
+        SendLine(
+            connection.socket,
+            'LIC_BULK_DELETE_OK|' +
+            success +
+            '|' +
+            keys.length
         );
 
         LogEvent(
-            'SERVICE_START',
-            SafeIP(
-                connection.socket
-            )
+            'LICENSE_BULK_DELETE',
+            String(success)
         );
-
-        for (
-            const client
-            of clients.values()
-        ) {
-            NotifyClientLicenseState(
-                client
-            );
-        }
 
         return;
     }
@@ -3505,6 +4695,20 @@ function HandleAdminLine(
         line ===
         'DASHBOARD'
     ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'DASHBOARD'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
         let onlineServers = 0;
         let onlineClients = 0;
         let availableLicenses = 0;
@@ -3579,6 +4783,12 @@ function HandleAdminLine(
                     ? 'ONLINE'
                     : 'OFFLINE'
             ) +
+            '|MAINTENANCE=' +
+            (
+                maintenanceMode
+                    ? 'ON'
+                    : 'OFF'
+            ) +
             '|SERVERS=' +
             serverIdentities.size +
             '|ONLINE_SERVERS=' +
@@ -3596,7 +4806,9 @@ function HandleAdminLine(
             '|EXPIRED=' +
             expiredLicenses +
             '|SUSPENDED=' +
-            suspendedLicenses
+            suspendedLicenses +
+            '|RATE_LIMIT=' +
+            RATE_LIMIT_MAX
         );
 
         const recent =
@@ -3632,8 +4844,356 @@ function HandleAdminLine(
 
     if (
         line ===
+        'SERVER_LIST'
+    ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'SERVER_LIST'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        for (
+            const [
+                serverId,
+                identityKey
+            ]
+            of serverIdentities.entries()
+        ) {
+            const live =
+                servers.get(
+                    serverId
+                );
+
+            SendLine(
+                connection.socket,
+                'SERVER_ITEM|' +
+                serverId +
+                '|' +
+                (
+                    live &&
+                    live.socket &&
+                    !live.socket.destroyed
+                        ? 'ONLINE'
+                        : 'OFFLINE'
+                ) +
+                '|' +
+                (
+                    live
+                        ? live.clients.size
+                        : 0
+                ) +
+                '|' +
+                identityKey +
+                '|' +
+                (
+                    live
+                        ? live.lastIP
+                        : ''
+                ) +
+                '|' +
+                (
+                    live
+                        ? live.lastSeen
+                        : 0
+                )
+            );
+        }
+
+        SendLine(
+            connection.socket,
+            'END_SERVER_LIST'
+        );
+
+        return;
+    }
+
+    if (
+        line ===
+        'CLIENT_LIST'
+    ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'CLIENT_LIST'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        for (
+            const [
+                deviceKey,
+                saved
+            ]
+            of clientIdentities.entries()
+        ) {
+            const online =
+                !!GetOnlineClient(
+                    saved.id
+                );
+
+            const license =
+                GetBoundLicense(
+                    saved.id
+                );
+
+            SendLine(
+                connection.socket,
+                'CLIENT_ITEM|' +
+                saved.id +
+                '|' +
+                deviceKey +
+                '|' +
+                saved.serverId +
+                '|' +
+                (
+                    online
+                        ? 'ONLINE'
+                        : 'OFFLINE'
+                ) +
+                '|' +
+                (
+                    license
+                        ? GetLicenseStatus(
+                            license
+                        )
+                        : 'NONE'
+                ) +
+                '|' +
+                (
+                    license
+                        ? license.expiresAt
+                        : 0
+                ) +
+                '|' +
+                saved.lastAuthAt +
+                '|' +
+                saved.lastSeenAt +
+                '|' +
+                saved.lastIP +
+                '|' +
+                saved.authCount +
+                '|' +
+                saved.sendCount
+            );
+        }
+
+        SendLine(
+            connection.socket,
+            'END_CLIENT_LIST'
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith(
+            'CLIENT_DETAIL|'
+        )
+    ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'VIEW'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const clientId =
+            NormalizeID(
+                line.split('|')[1] ||
+                ''
+            );
+
+        const saved =
+            GetSavedClientByID(
+                clientId
+            );
+
+        if (!saved) {
+            SendLine(
+                connection.socket,
+                'CLIENT_ERROR|NOT_FOUND'
+            );
+
+            return;
+        }
+
+        const license =
+            GetBoundLicense(
+                clientId
+            );
+
+        const online =
+            !!GetOnlineClient(
+                clientId
+            );
+
+        SendLine(
+            connection.socket,
+            'CLIENT_DETAIL_ITEM|' +
+            saved.id +
+            '|' +
+            (
+                online
+                    ? 'ONLINE'
+                    : 'OFFLINE'
+            ) +
+            '|' +
+            saved.serverId +
+            '|' +
+            (
+                license
+                    ? GetLicenseStatus(
+                        license
+                    )
+                    : 'NONE'
+            ) +
+            '|' +
+            (
+                license
+                    ? license.expiresAt
+                    : 0
+            ) +
+            '|' +
+            saved.lastAuthAt +
+            '|' +
+            saved.lastSeenAt +
+            '|' +
+            saved.lastIP +
+            '|' +
+            saved.authCount +
+            '|' +
+            saved.sendCount
+        );
+
+        SendLine(
+            connection.socket,
+            'END_CLIENT_DETAIL'
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith(
+            'SERVER_TREE|'
+        )
+    ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'VIEW'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const serverId =
+            NormalizeID(
+                line.split('|')[1] ||
+                ''
+            );
+
+        const server =
+            GetOnlineServer(
+                serverId
+            );
+
+        if (!server) {
+            SendLine(
+                connection.socket,
+                'SERVER_TREE_ERROR|OFFLINE'
+            );
+
+            return;
+        }
+
+        for (
+            const clientId
+            of server.clients
+        ) {
+            const client =
+                GetOnlineClient(
+                    clientId
+                );
+
+            const license =
+                GetBoundLicense(
+                    clientId
+                );
+
+            SendLine(
+                connection.socket,
+                'SERVER_TREE_CLIENT|' +
+                clientId +
+                '|' +
+                (
+                    client
+                        ? 'ONLINE'
+                        : 'OFFLINE'
+                ) +
+                '|' +
+                (
+                    license
+                        ? GetLicenseStatus(
+                            license
+                        )
+                        : 'NONE'
+                )
+            );
+        }
+
+        SendLine(
+            connection.socket,
+            'END_SERVER_TREE'
+        );
+
+        return;
+    }
+
+    if (
+        line ===
         'AUDIT_LIST'
     ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'AUDIT_LIST'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
         for (
             const event
             of events
@@ -3657,33 +5217,502 @@ function HandleAdminLine(
         return;
     }
 
+    if (
+        line ===
+        'BACKUP_CREATE'
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const file =
+            SaveBackup(
+                'manual'
+            );
+
+        CleanupBackups();
+
+        if (!file) {
+            SendLine(
+                connection.socket,
+                'BACKUP_ERROR|CREATE_FAILED'
+            );
+
+            return;
+        }
+
+        SendLine(
+            connection.socket,
+            'BACKUP_OK|' +
+            path.basename(
+                file
+            )
+        );
+
+        return;
+    }
+
+    if (
+        line ===
+        'BACKUP_LIST'
+    ) {
+        if (
+            !IsAdminAllowed(
+                connection,
+                'VIEW'
+            )
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        EnsureBackupDirectory();
+
+        try {
+            const files =
+                fs.readdirSync(
+                    BACKUP_DIR
+                )
+                    .filter(
+                        file =>
+                            file.endsWith(
+                                '.json'
+                            )
+                    )
+                    .sort()
+                    .reverse();
+
+            for (
+                const file
+                of files
+            ) {
+                const fullPath =
+                    path.join(
+                        BACKUP_DIR,
+                        file
+                    );
+
+                const stat =
+                    fs.statSync(
+                        fullPath
+                    );
+
+                SendLine(
+                    connection.socket,
+                    'BACKUP_ITEM|' +
+                    file +
+                    '|' +
+                    stat.size +
+                    '|' +
+                    stat.mtimeMs
+                );
+            }
+        } catch (_) {}
+
+        SendLine(
+            connection.socket,
+            'END_BACKUP_LIST'
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith(
+            'BACKUP_RESTORE|'
+        )
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const fileName =
+            line.substring(
+                'BACKUP_RESTORE|'.length
+            );
+
+        const result =
+            RestoreBackupFile(
+                fileName
+            );
+
+        if (!result.ok) {
+            SendLine(
+                connection.socket,
+                'BACKUP_ERROR|' +
+                result.reason
+            );
+
+            return;
+        }
+
+        SendLine(
+            connection.socket,
+            'BACKUP_RESTORE_OK|' +
+            fileName +
+            '|' +
+            result.preRestoreBackup
+        );
+
+        return;
+    }
+
+    if (
+        line.startsWith(
+            'BACKUP_DELETE|'
+        )
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const fileName =
+            path.basename(
+                line.substring(
+                    'BACKUP_DELETE|'.length
+                )
+            );
+
+        const fullPath =
+            path.join(
+                BACKUP_DIR,
+                fileName
+            );
+
+        try {
+            if (
+                fs.existsSync(
+                    fullPath
+                )
+            ) {
+                fs.unlinkSync(
+                    fullPath
+                );
+
+                SendLine(
+                    connection.socket,
+                    'BACKUP_DELETE_OK|' +
+                    fileName
+                );
+            } else {
+                SendLine(
+                    connection.socket,
+                    'BACKUP_ERROR|NOT_FOUND'
+                );
+            }
+        } catch (_) {
+            SendLine(
+                connection.socket,
+                'BACKUP_ERROR|DELETE_FAILED'
+            );
+        }
+
+        return;
+    }
+
+    if (
+        line ===
+        'SERVICE_STOP'
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        serviceEnabled =
+            false;
+
+        maintenanceMode =
+            false;
+
+        SaveIdentities();
+
+        for (
+            const client
+            of clients.values()
+        ) {
+            client.licenseAuthorized =
+                false;
+
+            client.licenseKey =
+                null;
+
+            client.licenseExpiresAt =
+                0;
+
+            SendLine(
+                client.socket,
+                'SERVICE_ERROR|DISABLED'
+            );
+
+            NotifyServerUnauthorized(
+                client.clientId,
+                'SERVICE_DISABLED'
+            );
+        }
+
+        SendLine(
+            connection.socket,
+            'SERVICE_STOP_OK'
+        );
+
+        LogEvent(
+            'SERVICE_STOP',
+            SafeIP(
+                connection.socket
+            )
+        );
+
+        return;
+    }
+
+    if (
+        line ===
+        'SERVICE_START'
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        serviceEnabled =
+            true;
+
+        SaveIdentities();
+
+        SendLine(
+            connection.socket,
+            'SERVICE_START_OK'
+        );
+
+        LogEvent(
+            'SERVICE_START',
+            SafeIP(
+                connection.socket
+            )
+        );
+
+        for (
+            const client
+            of clients.values()
+        ) {
+            NotifyClientLicenseState(
+                client
+            );
+        }
+
+        return;
+    }
+
+    if (
+        line ===
+        'MAINTENANCE_ON'
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        maintenanceMode =
+            true;
+
+        SaveIdentities();
+
+        for (
+            const client
+            of clients.values()
+        ) {
+            client.licenseAuthorized =
+                false;
+
+            client.licenseKey =
+                null;
+
+            client.licenseExpiresAt =
+                0;
+
+            SendLine(
+                client.socket,
+                'SERVICE_ERROR|MAINTENANCE'
+            );
+
+            NotifyServerUnauthorized(
+                client.clientId,
+                'MAINTENANCE'
+            );
+        }
+
+        SendLine(
+            connection.socket,
+            'MAINTENANCE_ON_OK'
+        );
+
+        LogEvent(
+            'MAINTENANCE_ON',
+            SafeIP(
+                connection.socket
+            )
+        );
+
+        return;
+    }
+
+    if (
+        line ===
+        'MAINTENANCE_OFF'
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        maintenanceMode =
+            false;
+
+        SaveIdentities();
+
+        SendLine(
+            connection.socket,
+            'MAINTENANCE_OFF_OK'
+        );
+
+        LogEvent(
+            'MAINTENANCE_OFF',
+            SafeIP(
+                connection.socket
+            )
+        );
+
+        for (
+            const client
+            of clients.values()
+        ) {
+            NotifyClientLicenseState(
+                client
+            );
+        }
+
+        return;
+    }
+
+    if (
+        line.startsWith(
+            'SERVER_KICK|'
+        )
+    ) {
+        if (
+            connection.adminRole !==
+            'admin'
+        ) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|FORBIDDEN'
+            );
+
+            return;
+        }
+
+        const serverId =
+            NormalizeID(
+                line.split('|')[1] ||
+                ''
+            );
+
+        const target =
+            GetOnlineServer(
+                serverId
+            );
+
+        if (!target) {
+            SendLine(
+                connection.socket,
+                'ADMIN_ERROR|SERVER_NOT_ONLINE'
+            );
+
+            return;
+        }
+
+        SendLine(
+            target.socket,
+            'ERROR|ADMIN_KICK'
+        );
+
+        target.socket.destroy();
+
+        SendLine(
+            connection.socket,
+            'SERVER_KICK_OK|' +
+            serverId
+        );
+
+        LogEvent(
+            'SERVER_KICK',
+            serverId
+        );
+
+        return;
+    }
+
     SendLine(
         connection.socket,
         'ADMIN_ERROR|UNKNOWN_COMMAND'
     );
-}
-
-function CleanupRequestHistory() {
-    const cutoff =
-        Now() -
-        REQUEST_HISTORY_TIMEOUT;
-
-    for (
-        const [
-            key,
-            timestamp
-        ]
-        of requestHistory.entries()
-    ) {
-        if (
-            timestamp <
-            cutoff
-        ) {
-            requestHistory.delete(
-                key
-            );
-        }
-    }
 }
 
 function ValidateClientLicenseConnection(
@@ -3696,7 +5725,9 @@ function ValidateClientLicenseConnection(
         return;
     }
 
-    if (!serviceEnabled) {
+    if (
+        !serviceEnabled
+    ) {
         if (
             connection.licenseAuthorized
         ) {
@@ -3717,6 +5748,35 @@ function ValidateClientLicenseConnection(
             NotifyServerUnauthorized(
                 connection.clientId,
                 'SERVICE_DISABLED'
+            );
+        }
+
+        return;
+    }
+
+    if (
+        maintenanceMode
+    ) {
+        if (
+            connection.licenseAuthorized
+        ) {
+            connection.licenseAuthorized =
+                false;
+
+            connection.licenseKey =
+                null;
+
+            connection.licenseExpiresAt =
+                0;
+
+            SendLine(
+                connection.socket,
+                'SERVICE_ERROR|MAINTENANCE'
+            );
+
+            NotifyServerUnauthorized(
+                connection.clientId,
+                'MAINTENANCE'
             );
         }
 
@@ -3846,7 +5906,11 @@ function CreateConnection(
         adminAuthenticated:
             false,
 
-        adminNonce: '',
+        adminRole:
+            null,
+
+        adminNonce:
+            '',
 
         adminNonceCreatedAt:
             0,
@@ -3854,29 +5918,37 @@ function CreateConnection(
         adminAuthenticatedAt:
             0,
 
-        identityKey: null,
+        identityKey:
+            null,
 
-        serverId: null,
+        serverId:
+            null,
 
-        clientId: null,
+        clientId:
+            null,
 
         licenseAuthorized:
             false,
 
-        licenseKey: null,
+        licenseKey:
+            null,
 
         licenseExpiresAt:
             0,
 
-        lastSeen: Now(),
+        lastSeen:
+            Now(),
 
         lastIP:
-            SafeIP(socket),
+            SafeIP(
+                socket
+            ),
 
         clients:
             new Set(),
 
-        buffer: ''
+        buffer:
+            ''
     };
 
     socket.setNoDelay(
@@ -3923,7 +5995,9 @@ function CreateConnection(
                         ''
                     );
 
-                if (!connection.type) {
+                if (
+                    !connection.type
+                ) {
                     if (
                         line ===
                         'REGISTER' ||
@@ -4010,6 +6084,8 @@ function CreateConnection(
 
 LoadIdentities();
 
+EnsureBackupDirectory();
+
 const server =
     net.createServer(
         socket => {
@@ -4071,7 +6147,27 @@ server.listen(
         );
 
         console.log(
-            'Dashboard: ENABLED'
+            'Search / Filter: ENABLED'
+        );
+
+        console.log(
+            'Bulk Operations: ENABLED'
+        );
+
+        console.log(
+            'Backup / Restore: ENABLED'
+        );
+
+        console.log(
+            'Auto Backup: ENABLED'
+        );
+
+        console.log(
+            'Client Details: ENABLED'
+        );
+
+        console.log(
+            'Server Tree: ENABLED'
         );
 
         console.log(
@@ -4079,11 +6175,21 @@ server.listen(
         );
 
         console.log(
+            'Admin Roles: ENABLED'
+        );
+
+        console.log(
+            'Maintenance Mode: ENABLED'
+        );
+
+        console.log(
             'Kill Switch: ENABLED'
         );
 
         console.log(
-            'Request ID: ENABLED'
+            'Rate Limit: ' +
+            RATE_LIMIT_MAX +
+            '/sec'
         );
 
         console.log(
@@ -4096,6 +6202,15 @@ server.listen(
                 serviceEnabled
                     ? 'ONLINE'
                     : 'OFFLINE'
+            )
+        );
+
+        console.log(
+            'Maintenance: ' +
+            (
+                maintenanceMode
+                    ? 'ON'
+                    : 'OFF'
             )
         );
 
@@ -4181,11 +6296,27 @@ setInterval(
                 connection.socket,
                 'PING'
             );
+
+            const saved =
+                GetSavedClientByID(
+                    connection.clientId
+                );
+
+            if (saved) {
+                saved.lastSeenAt =
+                    connection.lastSeen;
+
+                saved.lastIP =
+                    connection.lastIP;
+            }
         }
 
         for (
-            const license
-            of licenses.values()
+            const [
+                key,
+                license
+            ]
+            of licenses.entries()
         ) {
             if (
                 license.boundClient
@@ -4203,6 +6334,65 @@ setInterval(
                         client.lastIP;
                 }
             }
+
+            if (
+                license.suspended
+            ) {
+                continue;
+            }
+
+            if (
+                Now() >=
+                license.expiresAt
+            ) {
+                const client =
+                    GetOnlineClient(
+                        license.boundClient
+                    );
+
+                if (client) {
+                    if (
+                        client.licenseAuthorized
+                    ) {
+                        client.licenseAuthorized =
+                            false;
+
+                        client.licenseKey =
+                            null;
+
+                        client.licenseExpiresAt =
+                            0;
+
+                        SendLine(
+                            client.socket,
+                            'LICENSE_ERROR|EXPIRED'
+                        );
+
+                        NotifyServerUnauthorized(
+                            client.clientId,
+                            'EXPIRED'
+                        );
+                    }
+                }
+            }
+        }
+
+        for (
+            const [
+                key,
+                state
+            ]
+            of rateLimits.entries()
+        ) {
+            if (
+                Now() -
+                state.startedAt >
+                RATE_LIMIT_WINDOW * 5
+            ) {
+                rateLimits.delete(
+                    key
+                );
+            }
         }
     },
     10000
@@ -4213,4 +6403,49 @@ setInterval(
         SaveIdentities();
     },
     30000
+);
+
+setInterval(
+    () => {
+        CreateAutoBackup();
+    },
+    AUTO_BACKUP_INTERVAL
+);
+
+process.on(
+    'SIGINT',
+    () => {
+        console.log(
+            'Creating final backup...'
+        );
+
+        SaveBackup(
+            'shutdown'
+        );
+
+        SaveIdentities();
+
+        process.exit(
+            0
+        );
+    }
+);
+
+process.on(
+    'SIGTERM',
+    () => {
+        console.log(
+            'Creating final backup...'
+        );
+
+        SaveBackup(
+            'shutdown'
+        );
+
+        SaveIdentities();
+
+        process.exit(
+            0
+        );
+    }
 );
