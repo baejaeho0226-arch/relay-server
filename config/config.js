@@ -1,0 +1,71 @@
+'use strict';
+
+const path = require('path');
+
+const HOST = '0.0.0.0';
+const PORT = Number(process.env.PORT || 3000);
+const HEALTH_PORT = Number(process.env.HEALTH_PORT || 0);
+
+const DATA_DIR = process.env.DATA_DIR
+    ? path.resolve(process.env.DATA_DIR)
+    : path.resolve(__dirname, '..');
+const DB_FILE = path.join(DATA_DIR, 'relay-identities.json');
+const DB_BAK_FILE = path.join(DATA_DIR, 'relay-identities.bak.json');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const AUDIT_DIR = path.join(DATA_DIR, 'audit');
+
+const CURRENT_PROTOCOL_VERSION = 2;
+const DEFAULT_MIN_PROTOCOL_VERSION = Number(process.env.MIN_PROTOCOL_VERSION || 1);
+const DEFAULT_MIN_SERVER_VERSION = String(process.env.MIN_SERVER_VERSION || '1.0.0');
+const DEFAULT_MIN_CLIENT_VERSION = String(process.env.MIN_CLIENT_VERSION || '1.0.0');
+
+const ADMIN_CREDENTIALS = {
+    admin: process.env.ADMIN_SECRET || 'ADMIN-SECRET-KEY-1234',
+    operator: process.env.OPERATOR_SECRET || '',
+    viewer: process.env.VIEWER_SECRET || ''
+};
+
+const ADMIN_AUTH_WINDOW_SECONDS = 60;
+const ADMIN_SESSION_TIMEOUT_MS = 10 * 60 * 1000;
+const CONFIRM_TOKEN_TTL_MS = 60 * 1000;
+
+const SERVER_KICK_BLOCK_MS = 60 * 1000;
+const CLIENT_KICK_BLOCK_MS = 60 * 1000;
+const RATE_LIMIT_WINDOW_MS = 1000;
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 30);
+const MAX_CLIENTS_PER_SERVER = Math.max(1, Number(process.env.MAX_CLIENTS_PER_SERVER || 100));
+
+const REQUEST_HISTORY_TIMEOUT_MS = 10 * 60 * 1000;
+const ACK_RETRY_MS = 3000;
+const ACK_TIMEOUT_MS = 10000;
+const ACK_MAX_RETRIES = 2;
+
+const MAX_INPUT_BUFFER = 64 * 1024;
+const MAX_BULK_KEYS = 500;
+const MAX_SEARCH_RESULTS = 500;
+const MAX_EVENT_MEMORY = 2000;
+const AUTO_BACKUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const MAX_BACKUPS = 30;
+
+const DANGEROUS_PREFIXES = [
+    'SERVICE_STOP',
+    'BACKUP_RESTORE|',
+    'LIC_BULK_DELETE|',
+    'SERVER_DISABLE|',
+    'CLIENT_DISABLE|',
+    'VERSION_SET|'
+];
+
+module.exports = {
+    HOST, PORT, HEALTH_PORT,
+    DATA_DIR, DB_FILE, DB_BAK_FILE, BACKUP_DIR, AUDIT_DIR,
+    CURRENT_PROTOCOL_VERSION,
+    DEFAULT_MIN_PROTOCOL_VERSION, DEFAULT_MIN_SERVER_VERSION, DEFAULT_MIN_CLIENT_VERSION,
+    ADMIN_CREDENTIALS, ADMIN_AUTH_WINDOW_SECONDS, ADMIN_SESSION_TIMEOUT_MS, CONFIRM_TOKEN_TTL_MS,
+    SERVER_KICK_BLOCK_MS, CLIENT_KICK_BLOCK_MS,
+    RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, MAX_CLIENTS_PER_SERVER,
+    REQUEST_HISTORY_TIMEOUT_MS, ACK_RETRY_MS, ACK_TIMEOUT_MS, ACK_MAX_RETRIES,
+    MAX_INPUT_BUFFER, MAX_BULK_KEYS, MAX_SEARCH_RESULTS, MAX_EVENT_MEMORY,
+    AUTO_BACKUP_INTERVAL_MS, MAX_BACKUPS,
+    DANGEROUS_PREFIXES
+};
