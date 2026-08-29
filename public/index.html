@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Pure TCP Relay Admin</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <section id="login-screen" class="login-screen">
+    <div class="login-card">
+      <div class="brand-mark">R</div>
+      <h1>Pure TCP Relay</h1>
+      <p class="muted">Web Admin</p>
+      <form id="login-form" autocomplete="off">
+        <label>Role
+          <select id="login-role">
+            <option value="admin">Admin</option>
+            <option value="operator">Operator</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </label>
+        <label>Password
+          <input id="login-password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="primary wide" type="submit">로그인</button>
+      </form>
+      <div id="login-error" class="form-error"></div>
+    </div>
+  </section>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark small">R</div>
+        <div><strong>Relay Admin</strong><span>vNext</span></div>
+      </div>
+      <nav id="nav">
+        <button data-view="dashboard" class="active">Dashboard</button>
+        <button data-view="servers">Servers</button>
+        <button data-view="clients">Clients</button>
+        <button data-view="licenses">Licenses</button>
+        <button data-view="audit">Audit Log</button>
+        <button data-view="backups">Backups</button>
+        <button data-view="system">System</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div><span class="muted">Role</span><strong id="role-label">-</strong></div>
+        <button id="logout-btn" class="ghost">로그아웃</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="page-title">Dashboard</h2>
+          <p id="page-subtitle" class="muted">Relay 상태를 확인합니다.</p>
+        </div>
+        <div class="topbar-actions">
+          <span id="live-state" class="live-pill">LIVE</span>
+          <button id="refresh-btn" class="ghost">새로고침</button>
+        </div>
+      </header>
+      <section id="content" class="content"></section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <div id="modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h3 id="modal-title">확인</h3>
+        <button class="icon-btn" data-modal-close>×</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="ghost">취소</button>
+        <button id="modal-confirm" class="primary">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin.js" defer></script>
+</body>
+</html>
