@@ -5,6 +5,8 @@ const path = require('path');
 const HOST = '0.0.0.0';
 const PORT = Number(process.env.PORT || 3000);
 const HEALTH_PORT = Number(process.env.HEALTH_PORT || 0);
+const WEB_ADMIN_PORT = Number(process.env.WEB_ADMIN_PORT || 8080);
+const WEB_ADMIN_SESSION_MS = Number(process.env.WEB_ADMIN_SESSION_MS || 30 * 60 * 1000);
 
 const DATA_DIR = process.env.DATA_DIR
     ? path.resolve(process.env.DATA_DIR)
@@ -57,7 +59,7 @@ const DANGEROUS_PREFIXES = [
 ];
 
 module.exports = {
-    HOST, PORT, HEALTH_PORT,
+    HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT, WEB_ADMIN_SESSION_MS,
     DATA_DIR, DB_FILE, DB_BAK_FILE, BACKUP_DIR, AUDIT_DIR,
     CURRENT_PROTOCOL_VERSION,
     DEFAULT_MIN_PROTOCOL_VERSION, DEFAULT_MIN_SERVER_VERSION, DEFAULT_MIN_CLIENT_VERSION,

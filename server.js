@@ -36,9 +36,10 @@ const { ValidateClientLicense } = require('./license/licenseManager');
 const { SendPing } = require('./relay/heartbeat');
 const { HealthSnapshot } = require('./services/dashboard');
 const { GetOnlineServer, GetOnlineClient } = require('./identity/identityManager');
+const { StartWebAdmin } = require('./web/webServer');
 
 const {
-    HOST, PORT, HEALTH_PORT,
+    HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT,
     DATA_DIR, CURRENT_PROTOCOL_VERSION,
     MAX_CLIENTS_PER_SERVER,
     ACK_RETRY_MS, ACK_TIMEOUT_MS,
@@ -71,7 +72,9 @@ relayServer.listen(PORT, HOST, () => {
     console.log('================================');
 });
 
-if (HEALTH_PORT > 0) {
+StartWebAdmin();
+
+if (HEALTH_PORT > 0 && HEALTH_PORT !== WEB_ADMIN_PORT) {
     const health = http.createServer((req, res) => {
         if (req.url !== '/health' && req.url !== '/healthz') {
             res.writeHead(404, { 'Content-Type': 'application/json' });
