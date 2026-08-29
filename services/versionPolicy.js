@@ -66,14 +66,14 @@ const {
 const {
     HandlePong
 } = require(
-    './heartbeat'
+    '../relay/heartbeat'
 );
 
 const {
     IsDuplicateRequest,
     RegisterPendingRequest
 } = require(
-    './ackManager'
+    '../relay/ackManager'
 );
 
 const {
