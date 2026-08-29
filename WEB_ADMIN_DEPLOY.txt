@@ -1,47 +1,95 @@
-PURE TCP RELAY vNext - WEB ADMIN 배포
+PURE TCP RELAY + WEB ADMIN FINAL
+================================
 
-1. 기존 TCP Relay 설정은 그대로 유지합니다.
-   - WinSockServer / ApkWinSock 코드 변경 없음
-   - 기존 Railway TCP Proxy도 그대로 유지
+배포 기준
+---------
+- AdminMain.pas / AdminMain.exe는 더 이상 사용하지 않음.
+- 관리 기능은 Web Admin만 사용.
+- 기존 ApkWinSock / WinSockServer TCP Protocol 2는 변경 없음.
+- 기존 Railway TCP Proxy (예: sakura.proxy.rlwy.net:33802)는 그대로 유지.
 
-2. Railway Variables
-   필수:
-   ADMIN_SECRET=강력한관리자비밀번호
+필수 Railway Variables
+----------------------
+ADMIN_SECRET=원하는 관리자 비밀번호
+WEB_ADMIN_PORT=8080
 
-   선택:
-   OPERATOR_SECRET=운영자비밀번호
-   VIEWER_SECRET=조회전용비밀번호
-   WEB_ADMIN_PORT=8080
-   WEB_ADMIN_SESSION_MS=1800000
+권장 Railway Variables
+----------------------
+DATA_DIR=/data              (Railway Volume 사용 시)
+OPERATOR_SECRET=...         (operator 계정이 필요할 때만)
+VIEWER_SECRET=...           (viewer 계정이 필요할 때만)
 
-   중요:
-   ADMIN_SECRET에는 코드 기본값이 없습니다. Railway Variables에 직접 설정해야 admin 로그인이 활성화됩니다.
-   Web Admin 로그인 실패 횟수에 따른 자동 차단은 사용하지 않습니다.
+Legacy TCP Admin
+----------------
+기본값: DISABLED
+AdminMain.exe용 TCP Admin은 기본적으로 차단됨.
+정말 예전 TCP Admin을 다시 써야 할 때만 아래 변수를 추가:
+ENABLE_LEGACY_TCP_ADMIN=1
 
-3. Railway Web Domain
-   - HTTP/HTTPS Domain의 Target Port를 WEB_ADMIN_PORT와 동일하게 설정합니다.
-   - 예: WEB_ADMIN_PORT=8080 -> Domain Target Port 8080
-   - 기존 TCP Proxy Target Port는 Relay TCP PORT 쪽을 그대로 사용합니다.
+Web Admin Railway 설정
+----------------------
+1. GitHub 저장소 최상위에 server.js / package.json / public / web 등이 위치하도록 업로드.
+2. Railway 새 Deployment가 SUCCESS인지 확인.
+3. Railway HTTP Domain의 Target Port를 WEB_ADMIN_PORT(기본 8080)로 지정.
+4. 브라우저에서 https://<railway-domain>/ 또는 /index.html 접속.
+5. Role=admin, Password=ADMIN_SECRET 값으로 로그인.
 
-4. 실행
-   npm run check
-   npm start
+Web Admin 주요 기능
+-------------------
+Dashboard
+- Server / Client / License / ACK / Service / Version / 최근 이벤트
 
-5. 정상 시작 로그 예
-   PURE TCP RELAY vNext
-   TCP Port: ...
-   Web Admin HTTP Port: 8080
+Servers
+- Detail
+- Kick 60s
+- Drain ON/OFF
+- Disable/Enable
+- 상태/Health/RTT/Client 수/Version/IP/Reconnect
 
-6. 접속
-   Railway에서 생성한 HTTPS Domain을 브라우저로 엽니다.
-   Admin / Operator / Viewer 중 설정한 Role로 로그인합니다.
+Clients
+- Detail
+- Notice
+- Move
+- Kick 60s
+- Disable/Enable
+- License/Server/RTT/Send/Auth/Reconnect
 
-7. 보안
-   - 비밀번호는 HTML/JS에 저장하지 않습니다.
-   - 로그인 성공 후 HttpOnly + SameSite=Strict 세션 쿠키를 사용합니다.
-   - 변경 API는 CSRF Token을 추가로 검사합니다.
-   - Web Admin 세션은 Node 재시작 시 모두 만료됩니다.
+Client Move 안전 조건
+---------------------
+대상 Server가 아래 조건을 모두 만족해야 이동 가능:
+- ONLINE
+- DISABLED 아님
+- DRAINING 아님
+- KICKED 아님
+- 정원 초과 아님
+- 현재 Server와 다른 Server
 
-8. 기존 AdminMain.exe
-   TCP Admin 기능은 삭제하지 않았으므로 당분간 AdminMain.exe와 Web Admin을 동시에 사용할 수 있습니다.
-   Web Admin 안정화 후 필요하면 TCP Admin을 제거할 수 있습니다.
+Licenses
+- Create/List/Search
+- Extend/Unbind/Suspend/Resume/Reissue/Transfer/Delete
+- Bulk Extend/Unbind/Suspend/Resume/Delete
+
+Backups
+- Create/List/Restore/Delete
+
+System
+- Service Start/Stop
+- Maintenance ON/OFF
+- Maintenance Schedule/Clear
+- Notice All
+- Version Policy
+
+로그인 정책
+-----------
+- 로그인 실패 횟수에 따른 시간 차단 없음.
+- LOGIN_RATE_LIMIT 없음.
+- ADMIN-SECRET-KEY-1234 같은 기본 비밀번호 없음.
+- ADMIN_SECRET가 설정되지 않으면 admin 로그인 자체가 비활성화됨.
+
+로컬 검사
+---------
+npm run check
+
+실행
+----
+npm start

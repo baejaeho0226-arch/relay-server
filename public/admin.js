@@ -240,19 +240,44 @@ async function renderDashboard() {
 
 async function renderServers() {
   const { servers } = await api('/api/servers');
-  const actions = id => roleIsAdmin() ? `<div class="actions">
-    <button data-server-action="detail" data-id="${id}">상세</button><button data-server-action="kick" data-id="${id}">Kick</button><button data-server-action="drain-on" data-id="${id}">Drain ON</button><button data-server-action="drain-off" data-id="${id}">Drain OFF</button><button class="danger" data-server-action="disable" data-id="${id}">Disable</button><button data-server-action="enable" data-id="${id}">Enable</button>
-  </div>` : `<button data-server-action="detail" data-id="${id}">상세</button>`;
-  content.innerHTML = `<div class="table-wrap"><table><thead><tr><th>SERVER-ID</th><th>Status</th><th>Health</th><th>Clients</th><th>RTT</th><th>Version</th><th>IP</th><th>Last Seen</th><th>Reconnect</th><th>Action</th></tr></thead><tbody>
-    ${servers.map(s => `<tr><td class="code">${esc(s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.health)}</td><td>${s.clients} / ${s.savedClients}</td><td>${s.rttMs >= 0 ? `${s.rttMs} ms` : '-'}</td><td>${esc(s.appVersion || '-')}</td><td>${esc(s.lastIP || '-')}</td><td>${esc(fmtTime(s.lastSeen))}</td><td>${s.reconnectCount}</td><td>${actions(s.id)}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Server 없음</td></tr>'}
+  const actions = server => {
+    const id = esc(server.id);
+    const detail = `<button data-server-action="detail" data-id="${id}">상세</button>`;
+    if (!roleIsAdmin()) return `<div class="actions">${detail}</div>`;
+
+    const kick = server.online && server.status !== 'DISABLED' ? `<button class="warning" data-server-action="kick" data-id="${id}">Kick 60s</button>` : '';
+    const drain = server.status === 'DRAINING'
+      ? `<button data-server-action="drain-off" data-id="${id}">Drain OFF</button>`
+      : server.status !== 'DISABLED' ? `<button data-server-action="drain-on" data-id="${id}">Drain ON</button>` : '';
+    const enabled = server.status === 'DISABLED'
+      ? `<button class="primary" data-server-action="enable" data-id="${id}">Enable</button>`
+      : `<button class="danger" data-server-action="disable" data-id="${id}">Disable</button>`;
+    return `<div class="actions">${detail}${kick}${drain}${enabled}</div>`;
+  };
+
+  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Drain은 신규 Client 배정만 중지 · Disable은 Enable 전까지 차단</span></div><div class="table-wrap"><table><thead><tr><th>SERVER-ID</th><th>Status</th><th>Health</th><th>Accept</th><th>Clients</th><th>RTT</th><th>Version</th><th>IP</th><th>Last Seen</th><th>Reconnect</th><th>Action</th></tr></thead><tbody>
+    ${servers.map(s => `<tr><td class="code">${esc(s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.health)}</td><td>${s.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</td><td>${s.clients} / ${s.savedClients}</td><td>${s.rttMs >= 0 ? `${s.rttMs} ms` : '-'}</td><td>${esc(s.appVersion || '-')}</td><td>${esc(s.lastIP || '-')}</td><td>${esc(fmtTime(s.lastSeen))}</td><td>${s.reconnectCount}</td><td>${actions(s)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">Server 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
 async function renderClients() {
   const { clients } = await api('/api/clients');
-  const actions = id => `<div class="actions"><button data-client-action="detail" data-id="${id}">상세</button>${roleCanOperate() ? `<button data-client-action="notice" data-id="${id}">Notice</button>` : ''}${roleIsAdmin() ? `<button data-client-action="move" data-id="${id}">Move</button><button data-client-action="kick" data-id="${id}">Kick</button><button class="danger" data-client-action="disable" data-id="${id}">Disable</button><button data-client-action="enable" data-id="${id}">Enable</button>` : ''}</div>`;
-  content.innerHTML = `<div class="table-wrap"><table><thead><tr><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Action</th></tr></thead><tbody>
-    ${clients.map(c => `<tr><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td class="code">${esc(c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td>${actions(c.id)}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Client 없음</td></tr>'}
+  const actions = client => {
+    const id = esc(client.id);
+    let html = `<button data-client-action="detail" data-id="${id}">상세</button>`;
+    if (roleCanOperate() && client.online) html += `<button data-client-action="notice" data-id="${id}">Notice</button>`;
+    if (roleIsAdmin()) {
+      html += `<button data-client-action="move" data-id="${id}">Move</button>`;
+      if (client.online && client.status !== 'DISABLED') html += `<button class="warning" data-client-action="kick" data-id="${id}">Kick 60s</button>`;
+      html += client.status === 'DISABLED'
+        ? `<button class="primary" data-client-action="enable" data-id="${id}">Enable</button>`
+        : `<button class="danger" data-client-action="disable" data-id="${id}">Disable</button>`;
+    }
+    return `<div class="actions">${html}</div>`;
+  };
+
+  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Disable은 Enable 전까지 재접속 차단</span></div><div class="table-wrap"><table><thead><tr><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Action</th></tr></thead><tbody>
+    ${clients.map(c => `<tr><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td class="code">${esc(c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td>${actions(c)}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Client 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
@@ -294,7 +319,7 @@ async function renderSystem() {
   const { system: s } = await api('/api/system');
   const schedule = s.maintenanceSchedule;
   content.innerHTML = `<div class="panel-grid">
-    <div class="section-card"><div class="section-head"><h3>Service</h3>${badge(s.serviceEnabled ? 'ONLINE' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Maintenance</div><div>${badge(s.maintenanceMode ? 'ON' : 'OFF')}</div><div>Data Dir</div><div class="code">${esc(s.dataDir)}</div><div>Max Clients / Server</div><div>${s.maxClientsPerServer}</div><div>Rate Limit</div><div>${s.rateLimit}/sec</div></div>${roleIsAdmin() ? `<div class="toolbar"><button id="service-start-btn">Service Start</button><button id="service-stop-btn" class="danger">Service Stop</button><button id="maint-on-btn" class="warning">Maintenance ON</button><button id="maint-off-btn">Maintenance OFF</button></div>` : ''}</div></div>
+    <div class="section-card"><div class="section-head"><h3>Service</h3>${badge(s.serviceEnabled ? 'ONLINE' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Maintenance</div><div>${badge(s.maintenanceMode ? 'ON' : 'OFF')}</div><div>Web Admin</div><div>v${esc(s.webAdminVersion || '-')}</div><div>Legacy TCP Admin</div><div>${badge(s.legacyTcpAdminEnabled ? 'ONLINE' : 'DISABLED')}</div><div>Data Dir</div><div class="code">${esc(s.dataDir)}</div><div>Max Clients / Server</div><div>${s.maxClientsPerServer}</div><div>Rate Limit</div><div>${s.rateLimit}/sec</div></div>${roleIsAdmin() ? `<div class="toolbar"><button id="service-start-btn">Service Start</button><button id="service-stop-btn" class="danger">Service Stop</button><button id="maint-on-btn" class="warning">Maintenance ON</button><button id="maint-off-btn">Maintenance OFF</button></div>` : ''}</div></div>
     <div class="section-card"><div class="section-head"><h3>Version Policy</h3></div><div class="section-body"><div class="form-grid"><label>Protocol<input id="version-protocol" type="number" min="1" max="${s.currentProtocolVersion}" value="${s.minProtocolVersion}"></label><label>Server<input id="version-server" value="${esc(s.minServerVersion)}"></label><label>Client<input id="version-client" value="${esc(s.minClientVersion)}"></label><label>Current Protocol<input disabled value="${s.currentProtocolVersion}"></label></div>${roleIsAdmin() ? '<button id="version-apply-btn" class="warning">Version Policy 적용</button>' : ''}</div></div>
     <div class="section-card"><div class="section-head"><h3>Maintenance Schedule</h3></div><div class="section-body">${schedule ? `<div class="kv"><div>Start</div><div>${esc(fmtTime(schedule.startAt))}</div><div>End</div><div>${esc(fmtTime(schedule.endAt))}</div><div>Message</div><div>${esc(schedule.message)}</div></div>` : '<p class="muted">예약된 Maintenance가 없습니다.</p>'}${roleIsAdmin() ? '<div class="toolbar"><button id="schedule-create-btn">예약 설정</button><button id="schedule-clear-btn">예약 제거</button></div>' : ''}</div></div>
     <div class="section-card"><div class="section-head"><h3>Notice</h3></div><div class="section-body"><p class="muted">현재 온라인 Client 전체에 공지를 전송합니다.</p>${roleCanOperate() ? '<button id="notice-all-btn">전체 공지 보내기</button>' : ''}</div></div>
@@ -384,43 +409,77 @@ content.addEventListener('click', async event => {
 });
 
 async function serverAction(action, id) {
+  const encodedId = encodeURIComponent(id);
   if (action === 'detail') {
-    const { server } = await api(`/api/servers/${encodeURIComponent(id)}`);
+    const { server } = await api(`/api/servers/${encodedId}`);
     const clients = server.clientsList.map(c => `<tr><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.licenseStatus)}</td></tr>`).join('') || '<tr><td colspan="3">Client 없음</td></tr>';
-    await openModal({ title: `Server ${id}`, html: `<div class="kv"><div>Device Key</div><div class="code">${esc(server.deviceKey)}</div><div>Status</div><div>${badge(server.status)}</div><div>Health</div><div>${badge(server.health)}</div><div>RTT</div><div>${server.rttMs} ms</div><div>IP</div><div>${esc(server.lastIP || '-')}</div><div>Version</div><div>${esc(server.appVersion || '-')}</div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>License</th></tr></thead><tbody>${clients}</tbody></table></div>`, confirmLabel: '닫기' });
+    await openModal({ title: `Server ${id}`, html: `<div class="kv"><div>Device Key</div><div class="code">${esc(server.deviceKey)}</div><div>Status</div><div>${badge(server.status)}</div><div>Health</div><div>${badge(server.health)}</div><div>Accept Clients</div><div>${server.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</div><div>Live / Saved Clients</div><div>${server.clients} / ${server.savedClients}</div><div>RTT</div><div>${server.rttMs >= 0 ? `${server.rttMs} ms` : '-'}</div><div>Kick Until</div><div>${esc(fmtTime(server.kickedUntil))}</div><div>IP</div><div>${esc(server.lastIP || '-')}</div><div>Protocol / Version</div><div>${server.protocolVersion || '-'} / ${esc(server.appVersion || '-')}</div><div>Reconnect</div><div>${server.reconnectCount}</div><div>Last Seen</div><div>${esc(fmtTime(server.lastSeen))}</div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>License</th></tr></thead><tbody>${clients}</tbody></table></div>`, confirmLabel: '닫기' });
     return;
   }
+
   let body = {};
-  if (action === 'disable') {
-    const v = await openModal({ title: 'Server Disable', message: `${id} 서버를 비활성화합니다. DISABLE을 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true });
-    if (!v) return; body = v;
+  if (action === 'kick') {
+    const v = await openModal({ title: 'Server Kick', message: `${id} 연결을 끊고 60초 동안 재등록을 차단합니다.`, confirmLabel: 'Kick' });
+    if (!v) return;
+  } else if (action === 'drain-on') {
+    const v = await openModal({ title: 'Drain ON', message: `${id}에 신규 Client 배정을 중지합니다. 기존 Client는 유지됩니다.`, confirmLabel: '적용' });
+    if (!v) return;
+  } else if (action === 'disable') {
+    const v = await openModal({ title: 'Server Disable', message: `${id} 서버를 비활성화하고 현재 연결을 종료합니다. DISABLE을 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: 'Disable' });
+    if (!v) return;
+    body = v;
   }
-  await api(`/api/servers/${id}/${action}`, { method: 'POST', body });
-  toast(`Server ${action}: ${id}`); renderServers();
+
+  await api(`/api/servers/${encodedId}/${action}`, { method: 'POST', body });
+  toast(`Server ${action}: ${id}`);
+  await renderServers();
 }
 
 async function clientAction(action, id) {
+  const encodedId = encodeURIComponent(id);
   if (action === 'detail') {
-    const { client } = await api(`/api/clients/${id}`);
-    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Server</div><div class="code">${esc(client.serverId)}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Auth / Send</div><div>${client.authCount} / ${client.sendCount}</div></div>`, confirmLabel: '닫기' });
+    const { client } = await api(`/api/clients/${encodedId}`);
+    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Server</div><div class="code">${esc(client.serverId)}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>License Status</div><div>${badge(client.licenseStatus)}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>Kick Until</div><div>${esc(fmtTime(client.kickedUntil))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Protocol / Version</div><div>${client.protocolVersion || '-'} / ${esc(client.appVersion || '-')}</div><div>RTT</div><div>${client.rttMs >= 0 ? `${client.rttMs} ms` : '-'}</div><div>Auth / Send / Reconnect</div><div>${client.authCount} / ${client.sendCount} / ${client.reconnectCount}</div><div>Last Auth</div><div>${esc(fmtTime(client.lastAuthAt))}</div><div>Last Seen</div><div>${esc(fmtTime(client.lastSeenAt))}</div></div>`, confirmLabel: '닫기' });
     return;
   }
+
   if (action === 'notice') {
     const v = await openModal({ title: 'Client Notice', message: id, fields: [{ name: 'message', label: '공지', type: 'textarea' }], confirmLabel: '전송' });
-    if (!v) return; await api(`/api/clients/${id}/notice`, { method: 'POST', body: v }); toast('공지 전송 완료'); return;
+    if (!v) return;
+    await api(`/api/clients/${encodedId}/notice`, { method: 'POST', body: v });
+    toast('공지 전송 완료');
+    return;
   }
+
   if (action === 'move') {
-    const { servers } = await api('/api/servers');
-    const v = await openModal({ title: 'Client Move', message: id, fields: [{ name: 'serverId', label: '새 Server', type: 'select', options: servers.map(s => ({ value: s.id, label: `${s.id} · ${s.status}` })) }], confirmLabel: '이동' });
-    if (!v) return; await api(`/api/clients/${id}/move`, { method: 'POST', body: v }); toast('Client 이동 완료'); renderClients(); return;
+    const [{ client }, { servers }] = await Promise.all([api(`/api/clients/${encodedId}`), api('/api/servers')]);
+    const eligible = servers.filter(s => s.id !== client.serverId && s.canAcceptClients);
+    if (!eligible.length) {
+      toast('이동 가능한 ONLINE Server가 없습니다.', true);
+      return;
+    }
+    const v = await openModal({ title: 'Client Move', message: `${id}
+ONLINE이며 Drain/Disable/Kick 상태가 아닌 Server만 표시됩니다.`, fields: [{ name: 'serverId', label: '새 Server', type: 'select', options: eligible.map(s => ({ value: s.id, label: `${s.id} · ${s.health} · ${s.clients}/${s.savedClients}` })) }], confirmLabel: '이동' });
+    if (!v) return;
+    await api(`/api/clients/${encodedId}/move`, { method: 'POST', body: v });
+    toast('Client 이동 완료');
+    await renderClients();
+    return;
   }
+
   let body = {};
-  if (action === 'disable') {
-    const v = await openModal({ title: 'Client Disable', message: `${id} Client를 비활성화합니다. DISABLE을 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true });
-    if (!v) return; body = v;
+  if (action === 'kick') {
+    const v = await openModal({ title: 'Client Kick', message: `${id} 연결을 끊고 60초 동안 재접속을 차단합니다.`, confirmLabel: 'Kick' });
+    if (!v) return;
+  } else if (action === 'disable') {
+    const v = await openModal({ title: 'Client Disable', message: `${id} Client를 비활성화하고 현재 연결을 종료합니다. DISABLE을 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: 'Disable' });
+    if (!v) return;
+    body = v;
   }
-  await api(`/api/clients/${id}/${action}`, { method: 'POST', body });
-  toast(`Client ${action}: ${id}`); renderClients();
+
+  await api(`/api/clients/${encodedId}/${action}`, { method: 'POST', body });
+  toast(`Client ${action}: ${id}`);
+  await renderClients();
 }
 
 async function createLicense() {

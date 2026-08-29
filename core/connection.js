@@ -6,7 +6,7 @@ const path = require('path');
 const config = require('../config/config');
 const state = require('../core/state');
 
-const { HOST, PORT, HEALTH_PORT, DATA_DIR, DB_FILE, DB_BAK_FILE, BACKUP_DIR, AUDIT_DIR, CURRENT_PROTOCOL_VERSION, DEFAULT_MIN_PROTOCOL_VERSION, DEFAULT_MIN_SERVER_VERSION, DEFAULT_MIN_CLIENT_VERSION, ADMIN_CREDENTIALS, ADMIN_AUTH_WINDOW_SECONDS, ADMIN_SESSION_TIMEOUT_MS, CONFIRM_TOKEN_TTL_MS, SERVER_KICK_BLOCK_MS, CLIENT_KICK_BLOCK_MS, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, MAX_CLIENTS_PER_SERVER, REQUEST_HISTORY_TIMEOUT_MS, ACK_RETRY_MS, ACK_TIMEOUT_MS, ACK_MAX_RETRIES, MAX_INPUT_BUFFER, MAX_BULK_KEYS, MAX_SEARCH_RESULTS, MAX_EVENT_MEMORY, AUTO_BACKUP_INTERVAL_MS, MAX_BACKUPS, DANGEROUS_PREFIXES } = config;
+const { HOST, PORT, HEALTH_PORT, DATA_DIR, DB_FILE, DB_BAK_FILE, BACKUP_DIR, AUDIT_DIR, CURRENT_PROTOCOL_VERSION, DEFAULT_MIN_PROTOCOL_VERSION, DEFAULT_MIN_SERVER_VERSION, DEFAULT_MIN_CLIENT_VERSION, ADMIN_CREDENTIALS, ADMIN_AUTH_WINDOW_SECONDS, ADMIN_SESSION_TIMEOUT_MS, CONFIRM_TOKEN_TTL_MS, SERVER_KICK_BLOCK_MS, CLIENT_KICK_BLOCK_MS, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, MAX_CLIENTS_PER_SERVER, REQUEST_HISTORY_TIMEOUT_MS, ACK_RETRY_MS, ACK_TIMEOUT_MS, ACK_MAX_RETRIES, MAX_INPUT_BUFFER, MAX_BULK_KEYS, MAX_SEARCH_RESULTS, MAX_EVENT_MEMORY, AUTO_BACKUP_INTERVAL_MS, MAX_BACKUPS, DANGEROUS_PREFIXES, ENABLE_LEGACY_TCP_ADMIN } = config;
 const { servers, clients, serverIdentities, clientIdentities, licenses, disabledServers, drainingServers, disabledClients, kickedServers, kickedClients, requestHistory, pendingRequests, rateLimits, events, confirmTokens, ipHistory, runtimeStats } = state;
 
 function DisconnectConnection(...args) { return require('./lifecycle').DisconnectConnection(...args); }
@@ -36,7 +36,14 @@ function CreateConnection(socket) {
             if(!connection.type){
                 if(line==='REGISTER'||line.startsWith('REGISTER|'))connection.type='server';
                 else if(line==='CONNECT'||line.startsWith('CONNECT|')||line.startsWith('LICENSE_AUTH|')||line.startsWith('SEND|'))connection.type='client';
-                else if(line==='ADMIN_HELLO'||line.startsWith('ADMIN_HELLO|')||line.startsWith('ADMIN_AUTH|'))connection.type='admin';
+                else if(line==='ADMIN_HELLO'||line.startsWith('ADMIN_HELLO|')||line.startsWith('ADMIN_AUTH|')) {
+                    if (!ENABLE_LEGACY_TCP_ADMIN) {
+                        SendLine(socket,'ERROR|ADMIN_TCP_DISABLED');
+                        socket.destroy();
+                        return;
+                    }
+                    connection.type='admin';
+                }
                 else{SendLine(socket,'ERROR|UNKNOWN_COMMAND');continue;}
             }
             if(connection.type==='server')HandleServerLine(connection,line);else if(connection.type==='client')HandleClientLine(connection,line);else HandleAdminLine(connection,line);

@@ -29,7 +29,8 @@ const { Can, IsAdmin, ClientIP } = require('./webAuth');
 const {
     BACKUP_DIR, DATA_DIR, CURRENT_PROTOCOL_VERSION,
     SERVER_KICK_BLOCK_MS, CLIENT_KICK_BLOCK_MS,
-    MAX_CLIENTS_PER_SERVER, RATE_LIMIT_MAX, MAX_BULK_KEYS
+    MAX_CLIENTS_PER_SERVER, RATE_LIMIT_MAX, MAX_BULK_KEYS,
+    ENABLE_LEGACY_TCP_ADMIN, WEB_ADMIN_VERSION
 } = config;
 
 function Json(res, status, data) {
@@ -166,14 +167,19 @@ function BuildServers() {
         else if (state.drainingServers.has(serverId)) status = 'DRAINING';
         else if (kickedUntil > Now()) status = 'KICKED';
 
+        const liveClients = live ? live.clients.size : 0;
+        const savedClients = GetServerClientCount(serverId);
+        const canAcceptClients = !!live && !state.disabledServers.has(serverId) && !state.drainingServers.has(serverId) && kickedUntil <= Now() && liveClients < MAX_CLIENTS_PER_SERVER && savedClients < MAX_CLIENTS_PER_SERVER;
+
         out.push({
             id: serverId,
             deviceKey,
             status,
             online: !!live,
             health: live ? ServerHealth(live) : 'OFFLINE',
-            clients: live ? live.clients.size : 0,
-            savedClients: GetServerClientCount(serverId),
+            clients: liveClients,
+            savedClients,
+            canAcceptClients,
             lastIP: live ? live.lastIP : '',
             lastSeen: live ? live.lastSeen : 0,
             kickedUntil,
@@ -284,6 +290,8 @@ function BuildSystem() {
         maxClientsPerServer: MAX_CLIENTS_PER_SERVER,
         rateLimit: RATE_LIMIT_MAX,
         dataDir: DATA_DIR,
+        webAdminVersion: WEB_ADMIN_VERSION,
+        legacyTcpAdminEnabled: ENABLE_LEGACY_TCP_ADMIN,
         health: HealthSnapshot()
     };
 }
@@ -420,8 +428,8 @@ async function HandleApiRequest(req, res, session) {
         const id = NormalizeID(DecodePart(match[1]));
         const newServerId = NormalizeID(body.serverId || '');
         const result = ClientMove(id, newServerId);
-        if (!result.ok) { ApiError(res, 400, result.reason); return; }
-        Json(res, 200, { ok: true, id, serverId: newServerId });
+        if (!result.ok) { ApiError(res, 409, result.reason); return; }
+        Json(res, 200, { ok: true, id, serverId: newServerId, oldServerId: result.oldServerId });
         return;
     }
 

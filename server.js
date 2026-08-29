@@ -39,7 +39,7 @@ const { GetOnlineServer, GetOnlineClient } = require('./identity/identityManager
 const { StartWebAdmin } = require('./web/webServer');
 
 const {
-    HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT,
+    HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT, WEB_ADMIN_VERSION, ENABLE_LEGACY_TCP_ADMIN,
     DATA_DIR, CURRENT_PROTOCOL_VERSION,
     MAX_CLIENTS_PER_SERVER,
     ACK_RETRY_MS, ACK_TIMEOUT_MS,
@@ -69,6 +69,8 @@ relayServer.listen(PORT, HOST, () => {
     console.log('Max clients/server:', MAX_CLIENTS_PER_SERVER);
     console.log('ACK retry/timeout:', ACK_RETRY_MS, '/', ACK_TIMEOUT_MS);
     console.log('Service:', state.serviceEnabled ? 'ONLINE' : 'OFFLINE', 'Maintenance:', state.maintenanceMode ? 'ON' : 'OFF');
+    console.log('Web Admin:', `v${WEB_ADMIN_VERSION}`, 'Port:', WEB_ADMIN_PORT);
+    console.log('Legacy TCP Admin:', ENABLE_LEGACY_TCP_ADMIN ? 'ENABLED' : 'DISABLED');
     console.log('================================');
 });
 

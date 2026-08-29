@@ -135,18 +135,26 @@ function ClientMove(clientId, newServerId) {
     const saved = GetSavedClientByID(clientId);
     if (!saved) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
     if (!ServerExists(newServerId)) return { ok: false, reason: 'SERVER_NOT_FOUND' };
+    if (saved.serverId === newServerId) return { ok: false, reason: 'SAME_SERVER' };
     if (disabledServers.has(newServerId)) return { ok: false, reason: 'SERVER_DISABLED' };
-    if (GetServerClientCount(newServerId) >= MAX_CLIENTS_PER_SERVER && saved.serverId !== newServerId) return { ok: false, reason: 'SERVER_FULL' };
+    if (drainingServers.has(newServerId)) return { ok: false, reason: 'SERVER_DRAINING' };
+    if (GetKickUntil(kickedServers, newServerId) > Now()) return { ok: false, reason: 'SERVER_KICKED' };
+    const target = GetOnlineServer(newServerId);
+    if (!target) return { ok: false, reason: 'SERVER_OFFLINE' };
+    if (target.clients.size >= MAX_CLIENTS_PER_SERVER || GetServerClientCount(newServerId) >= MAX_CLIENTS_PER_SERVER) return { ok: false, reason: 'SERVER_FULL' };
+
     const oldServer = saved.serverId;
     saved.serverId = newServerId;
     SaveDatabase();
+
     const live = GetOnlineClient(clientId);
     if (live) {
         SendLine(live.socket, `ERROR|CLIENT_MOVED|${newServerId}`);
         live.socket.destroy();
     }
+
     LogEvent('CLIENT_MOVE', `${clientId} ${oldServer} -> ${newServerId}`);
-    return { ok: true };
+    return { ok: true, oldServerId: oldServer, newServerId };
 }
 
 module.exports = {
