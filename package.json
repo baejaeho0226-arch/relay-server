@@ -1,12 +1,9 @@
 {
-  "name": "winsock-tcp-relay",
-  "version": "1.0.0",
-  "description": "WinSock RAW TCP Relay with License Verification",
+  "name": "pure-tcp-relay",
+  "version": "2.0.0",
+  "description": "Pure TCP Relay",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
-  },
-  "keywords": ["delphi", "winsock", "tcp", "relay", "license"],
-  "author": "",
-  "license": "ISC"
+  }
 }
