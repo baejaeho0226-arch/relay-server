@@ -1160,51 +1160,6 @@ function PushLicenseState(
     connection.licenseExpiresAt =
         0;
 
-    const bound =
-        GetBoundLicense(
-            connection.clientId
-        );
-
-    if (
-        bound &&
-        bound.suspended
-    ) {
-        SendLine(
-            connection.socket,
-            'LICENSE_ERROR|SUSPENDED'
-        );
-
-        NotifyServerUnauthorized(
-            connection.clientId,
-            'SUSPENDED'
-        );
-
-        return;
-    }
-
-    if (
-        bound &&
-        Now() >=
-        bound.expiresAt
-    ) {
-        SendLine(
-            connection.socket,
-            'LICENSE_ERROR|EXPIRED'
-        );
-
-        NotifyServerUnauthorized(
-            connection.clientId,
-            'EXPIRED'
-        );
-
-        return;
-    }
-
-    SendLine(
-        connection.socket,
-        'LICENSE_ERROR|LICENSE_REQUIRED'
-    );
-
     NotifyServerUnauthorized(
         connection.clientId,
         'LICENSE_REQUIRED'
@@ -5675,6 +5630,9 @@ function CreateConnection(
         licenseExpiresAt:
             0,
 
+        lastServerAuthState:
+            '',        
+
         lastSeen:
             Now(),
 
@@ -6144,12 +6102,20 @@ function NotifyServerCurrentState(
     if (
         !serviceEnabled
     ) {
-        SendLine(
-            server.socket,
-            'CLIENT_UNAUTHORIZED|' +
-            client.clientId +
-            '|SERVICE_DISABLED'
-        );
+        if (
+            client.lastServerAuthState !==
+            'SERVICE_DISABLED'
+        ) {
+            client.lastServerAuthState =
+                'SERVICE_DISABLED';
+
+            SendLine(
+                server.socket,
+                'CLIENT_UNAUTHORIZED|' +
+                client.clientId +
+                '|SERVICE_DISABLED'
+            );
+        }
 
         return;
     }
@@ -6157,12 +6123,20 @@ function NotifyServerCurrentState(
     if (
         maintenanceMode
     ) {
-        SendLine(
-            server.socket,
-            'CLIENT_UNAUTHORIZED|' +
-            client.clientId +
-            '|MAINTENANCE'
-        );
+        if (
+            client.lastServerAuthState !==
+            'MAINTENANCE'
+        ) {
+            client.lastServerAuthState =
+                'MAINTENANCE';
+
+            SendLine(
+                server.socket,
+                'CLIENT_UNAUTHORIZED|' +
+                client.clientId +
+                '|MAINTENANCE'
+            );
+        }
 
         return;
     }
@@ -6173,14 +6147,36 @@ function NotifyServerCurrentState(
         );
 
     if (active) {
-        SendLine(
-            server.socket,
-            'CLIENT_AUTHORIZED|' +
-            client.clientId +
-            '|' +
-            active.license.expiresAt
-        );
-    } else {
+        const state =
+            'AUTHORIZED|' +
+            active.license.expiresAt;
+
+        if (
+            client.lastServerAuthState !==
+            state
+        ) {
+            client.lastServerAuthState =
+                state;
+
+            SendLine(
+                server.socket,
+                'CLIENT_AUTHORIZED|' +
+                client.clientId +
+                '|' +
+                active.license.expiresAt
+            );
+        }
+
+        return;
+    }
+
+    if (
+        client.lastServerAuthState !==
+        'LICENSE_REQUIRED'
+    ) {
+        client.lastServerAuthState =
+            'LICENSE_REQUIRED';
+
         SendLine(
             server.socket,
             'CLIENT_UNAUTHORIZED|' +
