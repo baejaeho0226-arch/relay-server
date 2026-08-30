@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'relay-admin-shell-v2.3.0';
+const CACHE = 'relay-admin-shell-v2.7.0';
 const SHELL = [
   '/index.html',
   '/admin.css',

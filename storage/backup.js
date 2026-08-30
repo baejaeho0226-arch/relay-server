@@ -57,9 +57,11 @@ function RestoreBackup(fileName) {
     if (!ImportDatabaseObject(data)) return { ok: false, reason: 'INVALID_DATA' };
     requestHistory.clear();
     pendingRequests.clear();
+    state.requestTraces.clear();
     rateLimits.clear();
     kickedServers.clear();
     kickedClients.clear();
+    require('../services/requestRecovery').RebuildQueueRuntime();
     SaveDatabase();
     LogEvent('BACKUP_RESTORE', safe);
     setTimeout(() => ForceReconnectAll('DATABASE_RESTORED'), 250);

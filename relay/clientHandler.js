@@ -134,7 +134,7 @@ function HandleClientSend(connection, line) {
     if (!/^-?\d+$/.test(number)) { SendLine(connection.socket, 'ERROR|NUMBER_ONLY'); return; }
 
     const requestKey = MakeRequestKey(clientId, requestId);
-    if (requestHistory.has(requestKey)) { SendLine(connection.socket, 'ERROR|DUPLICATE_REQUEST'); return; }
+    if (requestHistory.has(requestKey) || require('../services/requestRecovery').IsQueued(clientId, requestId)) { SendLine(connection.socket, 'ERROR|DUPLICATE_REQUEST'); return; }
 
     const active = GetUsableLicenseForConnection(connection);
     if (!active) {
@@ -148,27 +148,52 @@ function HandleClientSend(connection, line) {
     const saved = GetSavedClientByID(clientId);
     const server = saved ? GetOnlineServer(saved.serverId) : null;
     if (!saved) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND'); return; }
-    if (!server) { SendLine(connection.socket, 'ERROR|SERVER_OFFLINE'); return; }
-    if (deviceAuth.Enforced('SERVER',saved.serverId) && !deviceAuth.Verified('SERVER',saved.serverId)) { SendLine(connection.socket,'ERROR|SERVER_AUTH_REQUIRED'); deviceAuth.IssueChallenge('SERVER',saved.serverId); return; }
-
     const payload = `NUMBER|${requestId}|${clientId}|${number}`;
-    if (!SendLine(server.socket, payload)) { SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED'); return; }
+    const recovery = require('../services/requestRecovery');
+    const recordAccepted = () => {
+        active.license.lastSeenAt = Now();
+        active.license.lastIP = SafeIP(connection.socket);
+        active.license.sendCount = Number(active.license.sendCount || 0) + 1;
+        saved.lastSeenAt = Now();
+        saved.lastIP = active.license.lastIP;
+        saved.sendCount = Number(saved.sendCount || 0) + 1;
+        SaveDatabase();
+    };
+    let unavailableReason = '';
+    if (!server) unavailableReason = 'SERVER_OFFLINE';
+    else if (deviceAuth.Enforced('SERVER',saved.serverId) && !deviceAuth.Verified('SERVER',saved.serverId)) {
+        unavailableReason = 'SERVER_AUTH_REQUIRED';
+        deviceAuth.IssueChallenge('SERVER',saved.serverId);
+    }
+    if (unavailableReason) {
+        const queued = recovery.EnqueueRequest({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, unavailableReason);
+        if (!queued.ok) {
+            recovery.AddDeadLetter({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, unavailableReason, { detail: queued.reason });
+            SendLine(connection.socket, `ERROR|${unavailableReason}`);
+            return;
+        }
+        recordAccepted();
+        SendLine(connection.socket, `QUEUED|OK|${requestId}|${queued.position}`);
+        return;
+    }
+    if (!SendLine(server.socket, payload)) {
+        const queued = recovery.EnqueueRequest({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, 'SERVER_SEND_FAILED');
+        if (queued.ok) { recordAccepted(); SendLine(connection.socket, `QUEUED|OK|${requestId}|${queued.position}`); return; }
+        recovery.AddDeadLetter({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, 'SERVER_SEND_FAILED', { detail: queued.reason });
+        SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED');
+        return;
+    }
 
     const forwardedAt = Now();
     requestHistory.set(requestKey, forwardedAt);
-    require('../services/requestTrace').StartTrace(clientId, requestId, saved.serverId, number, forwardedAt);
+    require('../services/requestTrace').StartTrace(clientId, requestId, saved.serverId, number, forwardedAt, { source: 'CLIENT', notifyClient: true });
     pendingRequests.set(requestKey, {
-        clientId, serverId: saved.serverId, requestId, payload,
-        createdAt: forwardedAt, lastSendAt: forwardedAt, retries: 0
+        clientId, serverId: saved.serverId, requestId, number, payload,
+        createdAt: forwardedAt, originCreatedAt: forwardedAt, lastSendAt: forwardedAt, retries: 0,
+        source: 'CLIENT', replayOf: '', notifyClient: true
     });
 
-    active.license.lastSeenAt = Now();
-    active.license.lastIP = SafeIP(connection.socket);
-    active.license.sendCount = Number(active.license.sendCount || 0) + 1;
-    saved.lastSeenAt = Now();
-    saved.lastIP = active.license.lastIP;
-    saved.sendCount = Number(saved.sendCount || 0) + 1;
-    SaveDatabase();
+    recordAccepted();
 
     SendLine(connection.socket, `SENT|OK|${requestId}`);
     LogEvent('NUMBER_SEND', `${requestId} / ${clientId} / ${number}`);

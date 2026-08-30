@@ -20,7 +20,7 @@ function TrimTraces() {
     }
 }
 
-function StartTrace(clientId, requestId, serverId, number, createdAt) {
+function StartTrace(clientId, requestId, serverId, number, createdAt, meta = {}) {
     const now = Number(createdAt) || Now();
     const key = TraceKey(clientId, requestId);
     const trace = {
@@ -30,16 +30,50 @@ function StartTrace(clientId, requestId, serverId, number, createdAt) {
         serverId: NormalizeID(serverId),
         number: String(number || '').slice(0, 128),
         createdAt: now,
-        forwardedAt: now,
+        forwardedAt: meta.queued ? 0 : now,
+        queuedAt: meta.queued ? now : 0,
         ackAt: 0,
         completedAt: 0,
         durationMs: 0,
-        status: 'PENDING',
+        status: meta.queued ? 'QUEUED' : 'PENDING',
         reason: '',
-        retries: 0
+        retries: 0,
+        source: SafeField(meta.source || 'CLIENT'),
+        replayOf: SafeField(meta.replayOf || ''),
+        notifyClient: meta.notifyClient !== false,
+        deadLetterId: ''
     };
     state.requestTraces.set(key, trace);
     TrimTraces();
+    return trace;
+}
+
+function MarkQueued(clientId, requestId, reason, at) {
+    const trace = state.requestTraces.get(TraceKey(clientId, requestId));
+    if (!trace) return null;
+    trace.status = 'QUEUED';
+    trace.reason = SafeField(reason || 'SERVER_OFFLINE');
+    trace.queuedAt = Number(at) || Now();
+    trace.completedAt = 0;
+    trace.ackAt = 0;
+    return trace;
+}
+
+function MarkForwarded(clientId, requestId, serverId, at) {
+    const trace = state.requestTraces.get(TraceKey(clientId, requestId));
+    if (!trace) return null;
+    const now = Number(at) || Now();
+    trace.serverId = NormalizeID(serverId);
+    trace.forwardedAt = now;
+    trace.status = 'PENDING';
+    trace.reason = '';
+    return trace;
+}
+
+function LinkDeadLetter(clientId, requestId, deadLetterId) {
+    const trace = state.requestTraces.get(TraceKey(clientId, requestId));
+    if (!trace) return null;
+    trace.deadLetterId = SafeField(deadLetterId || '');
     return trace;
 }
 
@@ -69,7 +103,7 @@ function SearchTraces(query) {
     const out = [];
     for (const trace of state.requestTraces.values()) {
         if (query) {
-            const text = `${trace.requestId}|${trace.clientId}|${trace.serverId}|${trace.status}|${trace.number}`.toUpperCase();
+            const text = `${trace.requestId}|${trace.clientId}|${trace.serverId}|${trace.status}|${trace.number}|${trace.source}|${trace.replayOf}|${trace.deadLetterId}`.toUpperCase();
             if (!text.includes(query)) continue;
         }
         out.push({ ...trace });
@@ -81,6 +115,9 @@ module.exports = {
     TraceKey,
     TrimTraces,
     StartTrace,
+    MarkQueued,
+    MarkForwarded,
+    LinkDeadLetter,
     RetryTrace,
     CompleteTrace,
     SearchTraces

@@ -95,6 +95,7 @@ function TrackIP(kind, id, ip) {
         LogEvent('IP_CHANGED', `${key} ${prev.ip} -> ${ip}`);
     }
     ipHistory.set(key, { ip, changedAt: Now() });
+    try { require('../services/networkSecurity').Track(kind, id, ip); } catch (_) {}
 }
 
 function GetServerClientCount(serverId) {
@@ -146,6 +147,7 @@ function ClientMove(clientId, newServerId) {
 
     const oldServer = saved.serverId;
     saved.serverId = newServerId;
+    try { require('../services/emergencyFailover').HandleManualMove(clientId, newServerId); } catch (_) {}
     SaveDatabase();
 
     const live = GetOnlineClient(clientId);

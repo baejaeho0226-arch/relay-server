@@ -40,6 +40,8 @@ const { StartWebAdmin } = require('./web/webServer');
 const { CleanupReconnectHistory } = require('./services/reconnectMonitor');
 const { ScanLicenseExpiryAlerts } = require('./services/licenseMonitor');
 const { CheckDrainReadiness } = require('./services/drainMonitor');
+const { Evaluate: EvaluateEmergencyFailover } = require('./services/emergencyFailover');
+const { ProcessOfflineQueue } = require('./services/requestRecovery');
 
 const {
     HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT, WEB_ADMIN_VERSION, ENABLE_LEGACY_TCP_ADMIN,
@@ -109,6 +111,8 @@ setInterval(() => {
     ApplyMaintenanceSchedule();
     CleanupReconnectHistory();
     CheckDrainReadiness();
+    EvaluateEmergencyFailover();
+    ProcessOfflineQueue();
 }, 1000);
 
 setInterval(() => {

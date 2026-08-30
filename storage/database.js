@@ -19,7 +19,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 100,
+        version: 114,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -47,6 +47,15 @@ function BuildDatabaseObject() {
         deviceEnrollments: Object.fromEntries(state.deviceEnrollments),
         deviceSecretRotations: Object.fromEntries(state.deviceSecretRotations),
         deviceSecretMeta: Object.fromEntries(state.deviceSecretMeta),
+        deviceNetworkProfiles: Object.fromEntries(state.deviceNetworkProfiles),
+        emergencyFailoverPolicy: state.emergencyFailoverPolicy,
+        clientFailoverEnabled: Array.from(state.clientFailoverEnabled),
+        clientFailoverRecords: Object.fromEntries(state.clientFailoverRecords),
+        clientServerBindings: Object.fromEntries(state.clientServerBindings),
+        offlineQueuePolicy: state.offlineQueuePolicy,
+        clientOfflineQueueEnabled: Array.from(state.clientOfflineQueueEnabled),
+        offlineQueue: Object.fromEntries(state.offlineQueue),
+        deadLetters: Object.fromEntries(state.deadLetters),
         licenseRevision: Number(state.licenseRevision) || 0,
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
@@ -152,7 +161,7 @@ function ImportDatabaseObject(data) {
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
     state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
-    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -231,6 +240,26 @@ function ImportDatabaseObject(data) {
     if(data.deviceEnrollments&&typeof data.deviceEnrollments==='object') for(const [key,value] of Object.entries(data.deviceEnrollments)){if(/^(SERVER|CLIENT):/.test(key)&&value&&typeof value==='object')state.deviceEnrollments.set(key,{...value});}
     if(data.deviceSecretRotations&&typeof data.deviceSecretRotations==='object') for(const [key,value] of Object.entries(data.deviceSecretRotations)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&value&&typeof value==='object')state.deviceSecretRotations.set(key,{...value});}
     if(data.deviceSecretMeta&&typeof data.deviceSecretMeta==='object') for(const [key,value] of Object.entries(data.deviceSecretMeta)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&value&&typeof value==='object')state.deviceSecretMeta.set(key,{createdAt:Number(value.createdAt)||0,rotatedAt:Number(value.rotatedAt)||0,rotationCount:Math.max(0,Number(value.rotationCount)||0)});}
+    if(data.deviceNetworkProfiles&&typeof data.deviceNetworkProfiles==='object'){
+        const networkSecurity=require('../services/networkSecurity');
+        for(const [key,value] of Object.entries(data.deviceNetworkProfiles)){
+            if(!/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)) continue;
+            const normalized=networkSecurity.NormalizeStoredProfile(value);
+            if(normalized) state.deviceNetworkProfiles.set(key,normalized);
+        }
+    }
+    state.emergencyFailoverPolicy = require('../services/emergencyFailover').NormalizePolicy(data.emergencyFailoverPolicy);
+    if(Array.isArray(data.clientFailoverEnabled)) for(const rawId of data.clientFailoverEnabled){const id=NormalizeID(rawId);if(id&&Array.from(newClients.values()).some(x=>x.id===id))state.clientFailoverEnabled.add(id);}
+    if(data.clientFailoverRecords&&typeof data.clientFailoverRecords==='object'){
+        for(const [rawClientId,value] of Object.entries(data.clientFailoverRecords)){
+            const clientId=NormalizeID(rawClientId); if(!clientId||!value||typeof value!=='object')continue;
+            const saved=Array.from(newClients.values()).find(x=>x.id===clientId); if(!saved)continue;
+            const primaryServerId=NormalizeID(value.primaryServerId), failoverServerId=NormalizeID(value.failoverServerId);
+            if(!primaryServerId||!failoverServerId||!Array.from(newServers.values()).includes(primaryServerId)||!Array.from(newServers.values()).includes(failoverServerId))continue;
+            state.clientFailoverRecords.set(clientId,{clientId,primaryServerId,failoverServerId,failedOverAt:Number(value.failedOverAt)||0,lastMoveAt:Number(value.lastMoveAt)||0,moveCount:Math.max(1,Number(value.moveCount)||1),reason:String(value.reason||''),selectedBy:String(value.selectedBy||'AUTO_FALLBACK'),lastReturnAt:Number(value.lastReturnAt)||0});
+        }
+    }
+    require('../services/requestRecovery').ImportPersisted(data);
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
 
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;
@@ -247,11 +276,7 @@ function ImportDatabaseObject(data) {
         const startAt = Number(data.maintenanceSchedule.startAt);
         const endAt = Number(data.maintenanceSchedule.endAt);
         if (startAt > 0 && endAt > startAt) {
-            state.maintenanceSchedule = {
-                startAt,
-                endAt,
-                message: SafeField(data.maintenanceSchedule.message || 'Scheduled maintenance')
-            };
+            state.maintenanceSchedule = require('../services/maintenance').NormalizeSchedule(data.maintenanceSchedule);
         }
     } else {
         state.maintenanceSchedule = null;

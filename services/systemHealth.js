@@ -115,7 +115,11 @@ function BuildSystemHealth() {
             ackOk: state.runtimeStats.ackOk,
             ackError: state.runtimeStats.ackError,
             ackTimeout: state.runtimeStats.ackTimeout,
-            ackRetries: state.runtimeStats.ackRetries
+            ackRetries: state.runtimeStats.ackRetries,
+            offlineQueue: state.offlineQueue.size,
+            activeDeadLetters: Array.from(state.deadLetters.values()).filter(x => x.status === 'ACTIVE').length,
+            replayedRequests: state.runtimeStats.replayedRequests,
+            dequeuedRequests: state.runtimeStats.dequeuedRequests
         }
     };
 }

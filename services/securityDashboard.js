@@ -5,6 +5,7 @@ const { Now } = require('../core/utils');
 const deviceAuth = require('./deviceAuth');
 const enrollment = require('./deviceEnrollment');
 const rotation = require('./deviceSecretRotation');
+const networkSecurity = require('./networkSecurity');
 
 const SECRET_STALE_MS = 90 * 24 * 60 * 60 * 1000;
 const AUTH_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -73,6 +74,7 @@ function Build() {
     const unverifiedOnline = devices.filter(x => x.online && x.capable && !x.verified).length;
     const activeRotations = rotations.filter(x => !['COMPLETED', 'EXPIRED', 'FAILED'].includes(String(x.status || '').toUpperCase())).length;
     const authFailures24h = RecentEventCount(['DEVICE_AUTH_FAILED', 'DEVICE_AUTH_INVALID_CHALLENGE'], AUTH_WINDOW_MS);
+    const network = networkSecurity.Summary();
 
     let risk = 0;
     risk += Clamp(enrollmentOverview.pending * 8, 24);
@@ -81,6 +83,9 @@ function Build() {
     risk += Clamp(staleSecrets * 5, 20);
     risk += Clamp(legacy * 3, 15);
     risk += Clamp(activeRotations * 2, 10);
+    risk += Clamp(network.critical * 15, 30);
+    risk += Clamp(network.warning * 6, 18);
+    risk += Clamp(network.info * 2, 8);
     risk = Math.min(100, risk);
 
     const score = Math.max(0, 100 - risk);
@@ -93,6 +98,9 @@ function Build() {
     if (staleSecrets) alerts.push({ severity: 'WARNING', code: 'SECRET_AGE_90D', count: staleSecrets, message: '90일 이상 된 Device Secret이 있습니다.' });
     if (legacy) alerts.push({ severity: 'INFO', code: 'LEGACY_DEVICE', count: legacy, message: 'DEVICE_HMAC capability가 없는 Legacy 기기가 있습니다.' });
     if (activeRotations) alerts.push({ severity: 'INFO', code: 'SECRET_ROTATION_ACTIVE', count: activeRotations, message: '진행 중인 Device Secret Rotation이 있습니다.' });
+    if (network.critical) alerts.push({ severity: 'CRITICAL', code: 'DEVICE_COUNTRY_CHANGED', count: network.critical, message: '신뢰 기준과 다른 국가에서 접속한 Device가 있습니다.' });
+    if (network.warning) alerts.push({ severity: 'WARNING', code: 'DEVICE_SUBNET_CHANGED', count: network.warning, message: '신뢰 기준과 다른 Subnet에서 접속한 Device가 있습니다.' });
+    if (network.info) alerts.push({ severity: 'INFO', code: 'DEVICE_IP_CHANGED', count: network.info, message: '신뢰 기준과 다른 IP에서 접속한 Device가 있습니다.' });
 
     return {
         score,
@@ -111,6 +119,7 @@ function Build() {
         activeRotations,
         authFailures24h,
         enrollment: enrollmentOverview,
+        network,
         alerts,
         devices
     };

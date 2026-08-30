@@ -1,11 +1,12 @@
 {
   "name": "pure-tcp-relay",
-  "version": "5.0.0",
-  "description": "Pure TCP Relay vNext with persistent identities, licensing, ACK, admin controls, monitoring and recovery",
+  "version": "5.1.0",
+  "description": "Pure TCP Relay vNext with persistent identities, primary/backup binding, offline queue, replay and DLQ",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "check": "node scripts/check-modules.js",
+    "test:roadmap14": "node scripts/test-roadmap11-14.js",
     "loadtest": "node tools/load-simulator.js"
   },
   "engines": {
@@ -13,5 +14,8 @@
   },
   "dependencies": {
     "qrcode": "^1.5.4"
+  },
+  "optionalDependencies": {
+    "geoip-lite": "^1.4.10"
   }
 }

@@ -28,6 +28,7 @@ function HealthSnapshot() {
         licenses: licenses.size,
         pendingAcks: pendingRequests.size,
         ack: { ok: runtimeStats.ackOk, error: runtimeStats.ackError, timeout: runtimeStats.ackTimeout, retries: runtimeStats.ackRetries },
+        recovery: { queued: state.offlineQueue.size, deadLetters: Array.from(state.deadLetters.values()).filter(x => x.status === 'ACTIVE').length },
         versionPolicy: { minProtocolVersion: state.minProtocolVersion, minServerVersion: state.minServerVersion, minClientVersion: state.minClientVersion },
         dataDir: DATA_DIR
     };

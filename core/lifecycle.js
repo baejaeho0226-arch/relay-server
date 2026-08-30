@@ -35,7 +35,7 @@ function DisconnectConnection(connection) {
     if(connection.disconnected)return;connection.disconnected=true;
     if(connection.type==='server'){
         if(connection.serverId&&servers.get(connection.serverId)===connection)servers.delete(connection.serverId);
-        if(connection.serverId){FailPendingRequestsForServer(connection.serverId,'SERVER_OFFLINE');LogEvent('SERVER_OFFLINE',connection.serverId);}
+        if(connection.serverId){FailPendingRequestsForServer(connection.serverId,'SERVER_OFFLINE');LogEvent('SERVER_OFFLINE',connection.serverId);try{require('../services/emergencyFailover').MarkServerOffline(connection.serverId);}catch(_){}}
     }else if(connection.type==='client'){
         if(connection.clientId&&clients.get(connection.clientId)===connection)clients.delete(connection.clientId);
         if(connection.clientId&&connection.serverId){const s=GetOnlineServer(connection.serverId);if(s)s.clients.delete(connection.clientId);}

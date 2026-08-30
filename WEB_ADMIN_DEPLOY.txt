@@ -79,6 +79,17 @@ System
 - Notice All
 - Version Policy
 
+Primary / Backup Binding
+- Client별 Primary / Backup Server 지정
+- 지정 Backup 우선 Failover
+- Backup 불가 시 자동 대체 허용 여부 설정
+
+Request Recovery
+- Offline Queue 전체 정책 + Client별 opt-in
+- FIFO / TTL / Delivery Attempt 제한
+- Request Trace Replay (항상 새 Request ID)
+- Dead Letter Queue Retry / Discard
+
 로그인 정책
 -----------
 - 로그인 실패 횟수에 따른 시간 차단 없음.
@@ -89,13 +100,14 @@ System
 로컬 검사
 ---------
 npm run check
+npm run test:roadmap14
 
 실행
 ----
 npm start
 
-FINAL 1.7.0 NOTE
-- Web Admin now includes all planned features 01-20.
+FINAL 2.7.0 NOTE
+- Web Admin includes the original features 01-20 and Operations Roadmap 11-14.
 - Danger Zone is admin-only.
 - Quick Command Terminal is allowlist-only and never runs OS shell commands.
 - Existing Relay TCP protocol remains unchanged.

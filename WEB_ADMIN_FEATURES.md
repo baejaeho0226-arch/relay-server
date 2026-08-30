@@ -1,4 +1,4 @@
-# Web Admin Feature Matrix // v1.7.0
+# Web Admin Feature Matrix // v2.7.0
 
 01. Live Event Console
 02. Request Trace
@@ -20,5 +20,9 @@
 18. Server Client Distribution
 19. Graceful Drain UX (persistent progress / READY notification)
 20. Danger Zone (Service Stop / Backup Restore+Delete / Version Apply / Bulk License Delete)
+21. Primary / Backup Server Binding (explicit backup first, optional automatic fallback)
+22. Offline Queue (global OFF by default, per-client opt-in, FIFO, TTL and attempt limits)
+23. Request Replay (ERROR/TIMEOUT only, always generates a new Request ID)
+24. Dead Letter Queue (ACK timeout / server offline / process error, retry or discard with audit history)
 
-Legacy TCP Admin remains disabled by default. Existing Relay protocol stays at Protocol 2 / App 2.0.0.
+Legacy TCP Admin remains disabled by default. Relay protocol stays at Protocol 2 / App 2.0.0. Android adds optional QUEUED/DEQUEUED handling without changing the CONNECT/SEND/ACK handshake.

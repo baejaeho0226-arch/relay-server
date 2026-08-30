@@ -69,6 +69,7 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     require('../services/reconnectMonitor').RecordReconnect('SERVER', serverId);
     servers.set(serverId, connection);
     TrackIP('SERVER', serverId, connection.lastIP);
+    try { require('../services/emergencyFailover').MarkServerOnline(serverId); } catch (_) {}
 
     SendLine(connection.socket, `REGISTERED|${serverId}|${protocolVersion}|${appVersion}`);
     LogEvent('SERVER_ONLINE', `${serverId} v${appVersion}`);

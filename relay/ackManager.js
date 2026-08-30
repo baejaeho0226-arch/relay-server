@@ -45,13 +45,14 @@ function HandleServerAck(connection, line) {
     const clientId = NormalizeID(parts[2] || '');
     const result = String(parts[3] || '').trim().toUpperCase();
     const saved = GetSavedClientByID(clientId);
-    if (!requestId || !clientId || !saved || saved.serverId !== connection.serverId) {
+    const key = MakeRequestKey(clientId, requestId);
+    const pending = pendingRequests.get(key);
+    if (!requestId || !clientId || !saved) {
         SendLine(connection.socket, 'ERROR|ACK_NOT_OWNER');
         return;
     }
-    const key = MakeRequestKey(clientId, requestId);
-    const pending = pendingRequests.get(key);
     if (!pending) { SendLine(connection.socket, `ACK_RESULT|UNKNOWN|${requestId}`); return; }
+    if (pending.serverId !== connection.serverId) { SendLine(connection.socket, 'ERROR|ACK_NOT_OWNER'); return; }
     pendingRequests.delete(key);
     const client = GetOnlineClient(clientId);
     if (result === 'OK') {
@@ -62,7 +63,7 @@ function HandleServerAck(connection, line) {
         const detail = parts.length >= 7 ? SafeField(parts.slice(6).join(' ')) : '';
         const trace=CompleteTrace(clientId, requestId, 'OK', '', Now());
         if(trace){trace.processingMs=processingMs;trace.processor=processor;trace.resultDetail=detail;}
-        if (client) SendLine(client.socket, processingMs||processor||detail ? `ACK|OK|${requestId}|${processingMs}|${processor}|${detail}` : `ACK|OK|${requestId}`);
+        if (client && pending.notifyClient !== false) SendLine(client.socket, processingMs||processor||detail ? `ACK|OK|${requestId}|${processingMs}|${processor}|${detail}` : `ACK|OK|${requestId}`);
         SendLine(connection.socket, `ACK_RESULT|OK|${requestId}`);
         LogEvent('ACK_OK', `${requestId} / ${clientId}`);
     } else {
@@ -74,7 +75,8 @@ function HandleServerAck(connection, line) {
         const detail = parts.length >= 8 ? SafeField(parts.slice(7).join(' ')) : '';
         const trace=CompleteTrace(clientId, requestId, 'ERROR', reason, Now());
         if(trace){trace.processingMs=processingMs;trace.processor=processor;trace.resultDetail=detail;}
-        if (client) SendLine(client.socket, processingMs||processor||detail ? `ACK|ERROR|${requestId}|${reason}|${processingMs}|${processor}|${detail}` : `ACK|ERROR|${requestId}|${reason}`);
+        require('../services/requestRecovery').AddDeadLetter(pending, reason, { detail });
+        if (client && pending.notifyClient !== false) SendLine(client.socket, processingMs||processor||detail ? `ACK|ERROR|${requestId}|${reason}|${processingMs}|${processor}|${detail}` : `ACK|ERROR|${requestId}|${reason}`);
         SendLine(connection.socket, `ACK_RESULT|ERROR|${requestId}`);
         LogEvent('ACK_ERROR', `${requestId} / ${clientId} / ${reason}`);
     }
@@ -82,7 +84,12 @@ function HandleServerAck(connection, line) {
 
 function CleanupRequestHistory() {
     const cutoff=Now()-REQUEST_HISTORY_TIMEOUT_MS;
-    for(const [key,ts] of requestHistory) if(!Number.isFinite(ts)||ts<cutoff) requestHistory.delete(key);
+    for(const [key,ts] of requestHistory) {
+        if (pendingRequests.has(key)) continue;
+        const split = key.indexOf('|');
+        const queued = split > 0 && require('../services/requestRecovery').IsQueued(key.substring(0, split), key.substring(split + 1));
+        if (!queued && (!Number.isFinite(ts) || ts < cutoff)) requestHistory.delete(key);
+    }
     TrimTraces();
 }
 
@@ -90,7 +97,7 @@ function ProcessPendingRequests() {
     const now=Now();
     for(const [key,p] of Array.from(pendingRequests.entries())) {
         if(now-p.createdAt>=ACK_TIMEOUT_MS){
-            pendingRequests.delete(key);runtimeStats.ackTimeout++;RecordAck(p.serverId,p.clientId,'TIMEOUT');CompleteTrace(p.clientId,p.requestId,'TIMEOUT','ACK_TIMEOUT',now);const c=GetOnlineClient(p.clientId);if(c)SendLine(c.socket,`ACK|TIMEOUT|${p.requestId}`);LogEvent('ACK_TIMEOUT',`${p.requestId} / ${p.clientId}`);continue;
+            pendingRequests.delete(key);runtimeStats.ackTimeout++;RecordAck(p.serverId,p.clientId,'TIMEOUT');CompleteTrace(p.clientId,p.requestId,'TIMEOUT','ACK_TIMEOUT',now);require('../services/requestRecovery').AddDeadLetter(p,'ACK_TIMEOUT');const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|TIMEOUT|${p.requestId}`);LogEvent('ACK_TIMEOUT',`${p.requestId} / ${p.clientId}`);continue;
         }
         if(now-p.lastSendAt>=ACK_RETRY_MS&&p.retries<ACK_MAX_RETRIES){
             const s=GetOnlineServer(p.serverId);if(!s)continue;
@@ -101,7 +108,10 @@ function ProcessPendingRequests() {
 
 function FailPendingRequestsForServer(serverId, reason) {
     for(const [key,p] of Array.from(pendingRequests.entries())){
-        if(p.serverId!==serverId)continue;pendingRequests.delete(key);CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());const c=GetOnlineClient(p.clientId);if(c)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');LogEvent('ACK_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);
+        if(p.serverId!==serverId)continue;pendingRequests.delete(key);
+        const queued=require('../services/requestRecovery').RequeuePending(p,reason);
+        if(queued.ok){LogEvent('ACK_REQUEUED',`${p.requestId} / ${p.clientId} / ${reason}`);continue;}
+        CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());require('../services/requestRecovery').AddDeadLetter(p,reason,{detail:queued.reason});const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');LogEvent('ACK_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);
     }
 }
 

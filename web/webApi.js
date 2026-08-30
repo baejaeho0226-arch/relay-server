@@ -45,6 +45,10 @@ const configHistory = require('../services/configHistory');
 const deviceEnrollment = require('../services/deviceEnrollment');
 const secretRotation = require('../services/deviceSecretRotation');
 const securityDashboard = require('../services/securityDashboard');
+const maintenanceService = require('../services/maintenance');
+const networkSecurity = require('../services/networkSecurity');
+const emergencyFailover = require('../services/emergencyFailover');
+const requestRecovery = require('../services/requestRecovery');
 
 const {
     BACKUP_DIR, DATA_DIR, CURRENT_PROTOCOL_VERSION,
@@ -169,6 +173,12 @@ function BuildDashboard() {
             retries: state.runtimeStats.ackRetries,
             successRate: Number(ackSuccessRate.toFixed(2))
         },
+        recovery: {
+            queued: state.offlineQueue.size,
+            deadLetters: Array.from(state.deadLetters.values()).filter(x => x.status === 'ACTIVE').length,
+            replayed: state.runtimeStats.replayedRequests,
+            dequeued: state.runtimeStats.dequeuedRequests
+        },
         versions: {
             protocol: state.minProtocolVersion,
             server: state.minServerVersion,
@@ -246,6 +256,7 @@ function BuildClients() {
         const ack = state.runtimeStats.clientAckStats.get(saved.id) || { ok: 0, error: 0, timeout: 0 };
         const ackTotal = ack.ok + ack.error + ack.timeout;
         const reconnectWindow = GetReconnectStatus('CLIENT', saved.id);
+        const binding = emergencyFailover.GetBinding(saved.id);
         out.push({
             id: saved.id,
             alias: state.clientAliases.get(saved.id) || '',
@@ -254,6 +265,11 @@ function BuildClients() {
             deviceKey,
             serverId: saved.serverId,
             serverAlias: state.serverAliases.get(saved.serverId) || '',
+            primaryServerId: binding ? binding.primaryServerId : saved.serverId,
+            backupServerId: binding ? binding.backupServerId : '',
+            bindingConfigured: Boolean(binding && binding.configured),
+            offlineQueueEnabled: state.clientOfflineQueueEnabled.has(saved.id),
+            queuedRequests: Array.from(state.offlineQueue.values()).filter(x => x.clientId === saved.id).length,
             status,
             online: !!live,
             health: reconnectWindow.flapping ? 'FLAPPING' : (live ? ClientHealth(live) : 'OFFLINE'),
@@ -355,6 +371,7 @@ function BuildSystem() {
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         maintenanceSchedule: state.maintenanceSchedule,
+        maintenanceAutomation: maintenanceService.GetMaintenanceAutomationStatus(),
         minProtocolVersion: state.minProtocolVersion,
         minServerVersion: state.minServerVersion,
         minClientVersion: state.minClientVersion,
@@ -711,6 +728,53 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
+    if (method === 'POST' && pathname === '/api/request-traces/replay') {
+        if (!RequireAdmin(res, session)) return;
+        const result = requestRecovery.ReplayTrace(String(body.key || ''), session.role);
+        if (!result.ok) { ApiError(res, 409, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/request-recovery') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, recovery: requestRecovery.BuildStatus(url.searchParams.get('query') || '') });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/request-recovery/policy') {
+        if (!RequireAdmin(res, session)) return;
+        const policy = requestRecovery.SetPolicy({
+            enabled: Boolean(body.enabled),
+            maxItemsPerClient: Number(body.maxItemsPerClient),
+            ttlSeconds: Number(body.ttlSeconds),
+            maxDeliveryAttempts: Number(body.maxDeliveryAttempts)
+        });
+        Json(res, 200, { ok: true, policy });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/request-recovery\/clients\/([^/]+)$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const result = requestRecovery.SetClientEnabled(DecodePart(match[1]), Boolean(body.enabled));
+        if (!result.ok) { ApiError(res, 404, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
+    match = pathname.match(/^\/api\/dead-letters\/([^/]+)\/(retry|discard)$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const id = DecodePart(match[1]);
+        const result = match[2] === 'retry'
+            ? requestRecovery.RetryDeadLetter(id, session.role)
+            : requestRecovery.DiscardDeadLetter(id, session.role);
+        if (!result.ok) { ApiError(res, 409, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
     if (method === 'GET' && pathname === '/api/audit') {
         if (!RequireOperation(res, session, 'AUDIT')) return;
         const query = url.searchParams.get('query') || '';
@@ -953,6 +1017,90 @@ if (method === 'GET' && pathname === '/api/control/devices') {
         return;
     }
 
+    if (method === 'GET' && pathname === '/api/security/network') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, summary: networkSecurity.Summary(), devices: networkSecurity.Overview(), geo: networkSecurity.GeoStatus() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/security/network/trust') {
+        if (!RequireAdmin(res, session)) return;
+        const type = String(body.type || '').toUpperCase();
+        const id = NormalizeID(body.id);
+        if (!['SERVER', 'CLIENT'].includes(type) || !id) { ApiError(res, 400, 'INVALID_DEVICE'); return; }
+        if (!networkSecurity.Trust(type, id)) { ApiError(res, 404, 'NETWORK_PROFILE_NOT_FOUND'); return; }
+        Json(res, 200, { ok: true, profile: networkSecurity.Get(type, id) });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/failover') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, failover: emergencyFailover.BuildStatus() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/failover/policy') {
+        if (!RequireAdmin(res, session)) return;
+        const policy = emergencyFailover.SetPolicy({
+            enabled: Boolean(body.enabled),
+            autoReturn: body.autoReturn !== false,
+            offlineGraceSeconds: Number(body.offlineGraceSeconds),
+            returnGraceSeconds: Number(body.returnGraceSeconds),
+            maxMovesPerCycle: Number(body.maxMovesPerCycle)
+        });
+        Json(res, 200, { ok: true, policy });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/failover/run') {
+        if (!RequireAdmin(res, session)) return;
+        Json(res, 200, { ok: true, result: emergencyFailover.Evaluate(), failover: emergencyFailover.BuildStatus() });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/failover\/clients\/([^/]+)$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const id = NormalizeID(DecodePart(match[1]));
+        const result = emergencyFailover.SetClientEnabled(id, Boolean(body.enabled));
+        if (!result.ok) { ApiError(res, 404, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
+    match = pathname.match(/^\/api\/failover\/clients\/([^/]+)\/return$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const id = NormalizeID(DecodePart(match[1]));
+        const result = emergencyFailover.ReturnToPrimary(id, true);
+        if (!result.ok) { ApiError(res, 409, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
+    match = pathname.match(/^\/api\/failover\/clients\/([^/]+)\/binding$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const result = emergencyFailover.SetBinding(
+            DecodePart(match[1]),
+            body.primaryServerId,
+            body.backupServerId,
+            Boolean(body.allowAutomaticFallback)
+        );
+        if (!result.ok) { ApiError(res, 409, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
+    match = pathname.match(/^\/api\/failover\/clients\/([^/]+)\/binding\/clear$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const result = emergencyFailover.ClearBinding(DecodePart(match[1]));
+        if (!result.ok) { ApiError(res, 404, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
     if (method === 'GET' && pathname === '/api/system/health') {
         if (!RequireOperation(res, session, 'VIEW')) return;
         Json(res, 200, { ok: true, health: BuildSystemHealth() });
@@ -1016,23 +1164,22 @@ if (method === 'GET' && pathname === '/api/control/devices') {
 
     if (method === 'POST' && pathname === '/api/system/maintenance/schedule') {
         if (!RequireAdmin(res, session)) return;
-        const startAt = Number(body.startAt);
-        const endAt = Number(body.endAt);
-        const message = SafeField(body.message || 'Scheduled maintenance');
-        if (!(startAt > Now() && endAt > startAt)) { ApiError(res, 400, 'INVALID_TIME'); return; }
-        state.maintenanceSchedule = { startAt, endAt, message };
-        SaveDatabase();
-        LogEvent('MAINT_SCHEDULE', `${startAt}-${endAt} ${message}`);
-        Json(res, 200, { ok: true, schedule: state.maintenanceSchedule });
+        const result = maintenanceService.ScheduleMaintenance({
+            startAt: Number(body.startAt),
+            endAt: Number(body.endAt),
+            message: SafeField(body.message || 'Scheduled maintenance'),
+            autoDrain: Boolean(body.autoDrain),
+            drainLeadMinutes: Number(body.drainLeadMinutes) || 0,
+            forceStart: Boolean(body.forceStart)
+        });
+        if (!result.ok) { ApiError(res, 400, result.reason || 'INVALID_TIME'); return; }
+        Json(res, 200, result);
         return;
     }
 
     if (method === 'POST' && pathname === '/api/system/maintenance/clear') {
         if (!RequireAdmin(res, session)) return;
-        state.maintenanceSchedule = null;
-        SaveDatabase();
-        LogEvent('MAINT_SCHEDULE_CLEAR', 'WEB');
-        Json(res, 200, { ok: true });
+        Json(res, 200, maintenanceService.ClearMaintenanceSchedule('WEB'));
         return;
     }
 

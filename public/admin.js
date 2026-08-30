@@ -39,6 +39,9 @@ let liveConsoleEvents = [];
 let consolePaused = false;
 let traceQuery = '';
 let traceRows = new Map();
+let failoverRows = new Map();
+let failoverServers = [];
+let recoveryQuery = '';
 let statsRange = '1H';
 let paletteTimer = null;
 let terminalLines = [];
@@ -53,6 +56,8 @@ const titles = {
   monitor: ['Health Monitor', 'Server / Client RTT와 연결 상태를 3초 단위로 감시합니다.'],
   terminal: ['Command Terminal', '허용된 Relay 관리 명령만 실행합니다. OS Shell은 연결되지 않습니다.'],
   distribution: ['Distribution', 'Server별 Live / Binding Client 분포와 Drain 진행률을 확인합니다.'],
+  failover: ['Emergency Failover', '기존 Primary 바인딩을 보존한 채 opt-in Client만 장애 시 임시 Server로 재배치합니다.'],
+  recovery: ['Request Recovery', 'Offline Queue, Request Replay, Dead Letter Queue를 관리합니다.'],
   notifications: ['Notifications', '중요 운영 경고와 시스템 이벤트를 확인합니다.'],
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
@@ -200,7 +205,7 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    if (['dashboard', 'monitor', 'distribution', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
+    if (['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
     updateNotificationBadge();
   });
   eventSource.addEventListener('session', () => showLogin());
@@ -268,6 +273,8 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'monitor') await renderMonitor();
     else if (currentView === 'terminal') await renderTerminal();
     else if (currentView === 'distribution') await renderDistribution();
+    else if (currentView === 'failover') await renderFailover();
+    else if (currentView === 'recovery') await renderRecovery();
     else if (currentView === 'notifications') await renderNotifications();
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
@@ -334,6 +341,7 @@ async function renderDashboard() {
       <div class="card"><div class="stat-label">SERVICE</div><div class="stat-value">${d.serviceEnabled ? 'ONLINE' : 'OFFLINE'}</div><div class="stat-sub">Maintenance ${d.maintenanceMode ? 'ON' : 'OFF'}</div></div>
       <div class="card"><div class="stat-label">UPTIME</div><div class="stat-value">${esc(fmtDuration(d.uptimeMs))}</div><div class="stat-sub">Connections ${d.totalConnections}</div></div>
       <div class="card"><div class="stat-label">VERSION</div><div class="stat-value">P${d.versions.protocol}</div><div class="stat-sub">Server ${esc(d.versions.server)} · Client ${esc(d.versions.client)}</div></div>
+      <div class="card"><div class="stat-label">RECOVERY</div><div class="stat-value">${d.recovery.queued} / ${d.recovery.deadLetters}</div><div class="stat-sub">Queue / Active DLQ · Replay ${d.recovery.replayed}</div></div>
     </div>
     ${renderStatsPanel(stats)}
     <div class="section-card"><div class="section-head"><h3>Server Distribution</h3><button data-open-view="distribution">OPEN DISTRIBUTION</button></div><div class="section-body"><p class="muted">Server별 Live/Binding Client 부하와 Graceful Drain 진행률을 확인합니다.</p></div></div>
@@ -367,7 +375,7 @@ async function renderConsole() {
 async function renderTrace() {
   const { traces } = await api(`/api/request-traces?query=${encodeURIComponent(traceQuery)}`);
   traceRows = new Map(traces.map(t => [t.key, t]));
-  content.innerHTML = `<div class="toolbar"><input id="trace-search" placeholder="Request ID / Client / Server / Number" value="${esc(traceQuery)}"><button id="trace-search-btn">Trace</button><span class="small-note">최근 10분 / 최대 2000건 메모리 추적</span></div><div class="table-wrap"><table><thead><tr><th>Request ID</th><th>Client</th><th>Server</th><th>Number</th><th>Status</th><th>Retry</th><th>Duration</th><th>Forwarded</th><th>Action</th></tr></thead><tbody>${traces.map(t => `<tr><td class="code">${esc(t.requestId)}</td><td class="code">${esc(t.clientId)}</td><td class="code">${esc(t.serverId)}</td><td class="code">${esc(t.number)}</td><td>${badge(t.status)}</td><td>${t.retries}</td><td>${t.completedAt ? `${t.durationMs} ms` : '-'}</td><td>${esc(fmtTime(t.forwardedAt))}</td><td><button data-trace-detail="${esc(t.key)}">상세</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Trace 없음</td></tr>'}</tbody></table></div>`;
+  content.innerHTML = `<div class="toolbar"><input id="trace-search" placeholder="Request ID / Client / Server / Number" value="${esc(traceQuery)}"><button id="trace-search-btn">Trace</button><span class="small-note">최근 10분 / Replay는 반드시 새 Request ID 사용</span></div><div class="table-wrap"><table><thead><tr><th>Request ID</th><th>Source</th><th>Client</th><th>Server</th><th>Number</th><th>Status</th><th>Retry</th><th>Duration</th><th>Forwarded</th><th>Action</th></tr></thead><tbody>${traces.map(t => `<tr><td class="code">${esc(t.requestId)}</td><td>${esc(t.source||'CLIENT')}</td><td class="code">${esc(t.clientId)}</td><td class="code">${esc(t.serverId)}</td><td class="code">${esc(t.number)}</td><td>${badge(t.status)}</td><td>${t.retries}</td><td>${t.completedAt ? `${t.durationMs} ms` : '-'}</td><td>${esc(fmtTime(t.forwardedAt))}</td><td><div class="actions"><button data-trace-detail="${esc(t.key)}">상세</button>${roleIsAdmin()&&['ERROR','TIMEOUT','DLQ'].includes(String(t.status||'').toUpperCase())?`<button class="warning" data-trace-replay="${esc(t.key)}">REPLAY</button>`:''}</div></td></tr>`).join('') || '<tr><td colspan="10" class="empty">Trace 없음</td></tr>'}</tbody></table></div>`;
 }
 
 async function renderMonitor() {
@@ -480,6 +488,61 @@ async function renderDistribution() {
   const sorted = [...servers].sort((a,b)=>b.savedClients-a.savedClients || b.clients-a.clients);
   const totalLive=sorted.reduce((n,x)=>n+x.clients,0), totalSaved=sorted.reduce((n,x)=>n+x.savedClients,0);
   content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">TOTAL LIVE</div><div class="stat-value">${totalLive}</div><div class="stat-sub">Active Client sockets</div></div><div class="card"><div class="stat-label">TOTAL BINDINGS</div><div class="stat-value">${totalSaved}</div><div class="stat-sub">Persistent Client → Server</div></div><div class="card"><div class="stat-label">CAPACITY</div><div class="stat-value">${sorted.length*max}</div><div class="stat-sub">${max} / Server</div></div><div class="card"><div class="stat-label">DRAINING</div><div class="stat-value">${sorted.filter(x=>x.drain&&x.drain.active).length}</div><div class="stat-sub">Ready ${sorted.filter(x=>x.drain&&x.drain.ready).length}</div></div></div><div class="section-card"><div class="section-head"><h3>Server Client Distribution</h3><span class="small-note">AUTO REFRESH // 3 SEC</span></div><div class="distribution-list">${sorted.map(s=>`<div class="distribution-row"><div class="distribution-id"><strong>${esc(s.alias||s.id)}</strong><small>${esc(s.id)}</small>${badge(s.status)} ${badge(s.health)}</div><div class="distribution-load"><label>LIVE <b>${s.clients}/${max}</b></label>${distributionBar(s.clients,max,'live')}<label>BINDINGS <b>${s.savedClients}/${max}</b></label>${distributionBar(s.savedClients,max,'saved')}</div><div class="distribution-drain">${s.drain&&s.drain.active?`<div class="drain-label">DRAIN // ${s.drain.ready?'<strong>READY FOR MAINTENANCE</strong>':`${s.drain.currentClients} ACTIVE`}</div><div class="drain-progress"><i style="width:${s.drain.progress}%"></i></div><div class="small-note">${s.drain.progress}% // start ${esc(fmtTime(s.drain.startedAt))} // initial ${s.drain.initialClients}</div>`:`<span class="small-note">ACCEPT CLIENTS: ${s.canAcceptClients?'YES':'NO'}</span>`}</div>${roleIsAdmin()?`<div class="actions">${s.drain&&s.drain.active?`<button data-server-action="drain-off" data-id="${esc(s.id)}">Drain OFF</button>`:`<button data-server-action="drain-on" data-id="${esc(s.id)}">Drain ON</button>`}</div>`:''}</div>`).join('')||'<div class="empty">Server 없음</div>'}</div></div>`;
+}
+
+
+async function renderFailover() {
+  const [{ failover:f }, { servers }] = await Promise.all([api('/api/failover'), api('/api/servers')]);
+  failoverServers = servers || [];
+  failoverRows = new Map((f.clients||[]).map(x=>[x.clientId,x]));
+  const p=f.policy||{}, sum=f.summary||{};
+  const rows=(f.clients||[]).map(c=>{
+    const stateLabel=c.failedOver?'FAILED_OVER':(c.enabled?'ARMED':'OFF');
+    const action=roleIsAdmin()?`<div class="actions"><button data-binding-edit="${esc(c.clientId)}">Binding</button>${c.bindingConfigured?`<button data-binding-clear="${esc(c.clientId)}">Clear</button>`:''}<button data-failover-toggle="${esc(c.clientId)}" data-enabled="${c.enabled?'0':'1'}">${c.enabled?'Opt-out':'Opt-in'}</button>${c.failedOver?`<button class="warning" data-failover-return="${esc(c.clientId)}">Return Primary</button>`:''}</div>`:'-';
+    return `<tr><td class="code">${esc(c.clientId)}</td><td>${badge(stateLabel)}</td><td>${c.bindingConfigured?badge('CONFIGURED'):badge('AUTO')}</td><td class="code">${esc(c.primaryServerId||'-')}</td><td class="code">${esc(c.backupServerId||'-')}</td><td class="code">${esc(c.currentServerId||'-')}</td><td>${badge(c.primaryStatus||'UNKNOWN')}</td><td>${badge(c.backupStatus||'NOT_CONFIGURED')}</td><td>${c.allowAutomaticFallback?'YES':'NO'}</td><td>${c.moveCount||0}</td><td>${esc(c.selectedBy||c.reason||'-')}</td><td>${esc(fmtTime(c.failedOverAt))}</td><td>${action}</td></tr>`;
+  }).join('');
+  content.innerHTML=`<div class="cards">
+    <div class="card"><div class="stat-label">GLOBAL POLICY</div><div class="stat-value">${p.enabled?'ON':'OFF'}</div><div class="stat-sub">기본 OFF · opt-in only</div></div>
+    <div class="card"><div class="stat-label">OPT-IN CLIENTS</div><div class="stat-value">${sum.optedIn||0}</div><div class="stat-sub">Total ${sum.totalClients||0}</div></div>
+    <div class="card"><div class="stat-label">FAILED OVER</div><div class="stat-value">${sum.failedOver||0}</div><div class="stat-sub">temporary bindings</div></div>
+    <div class="card"><div class="stat-label">PRIMARY DOWN</div><div class="stat-value">${sum.primaryUnavailable||0}</div><div class="stat-sub">armed / waiting grace</div></div>
+    <div class="card"><div class="stat-label">EXPLICIT BINDINGS</div><div class="stat-value">${sum.configuredBindings||0}</div><div class="stat-sub">Primary + Backup policy</div></div>
+  </div>
+  <div class="section-card"><div class="section-head"><h3>Emergency Failover Policy</h3><span class="small-note">Primary binding preserved // Drain does not trigger failover</span></div><div class="section-body">
+    <div class="form-grid">
+      <label>Global<select id="failover-policy-enabled"><option value="0" ${p.enabled?'':'selected'}>OFF</option><option value="1" ${p.enabled?'selected':''}>ON</option></select></label>
+      <label>Auto Return<select id="failover-auto-return"><option value="1" ${p.autoReturn?'selected':''}>ON</option><option value="0" ${p.autoReturn?'':'selected'}>OFF</option></select></label>
+      <label>Offline Grace (sec)<input id="failover-offline-grace" type="number" min="0" max="3600" value="${Number(p.offlineGraceSeconds||15)}"></label>
+      <label>Return Grace (sec)<input id="failover-return-grace" type="number" min="0" max="3600" value="${Number(p.returnGraceSeconds||30)}"></label>
+      <label>Max Moves / Cycle<input id="failover-max-moves" type="number" min="1" max="1000" value="${Number(p.maxMovesPerCycle||50)}"></label>
+    </div>
+    ${roleIsAdmin()?'<div class="toolbar"><button id="failover-policy-save" class="primary">SAVE POLICY</button><button id="failover-run-now">EVALUATE NOW</button></div>':''}
+    <div class="warning-box">Emergency Failover는 기존 고정 SERVER-ID를 삭제하지 않습니다. Failover record에 Primary를 보존하고, 장애 시에만 임시 Binding으로 이동합니다. Maintenance 중에는 자동 이동을 멈춥니다.</div>
+  </div></div>
+  <div class="section-card"><div class="section-head"><h3>Primary / Backup Binding Matrix</h3><span class="small-note">명시적 Backup 우선 · 선택적으로 자동 대체</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Client</th><th>Mode</th><th>Binding</th><th>Primary</th><th>Backup</th><th>Current</th><th>Primary Status</th><th>Backup Status</th><th>Auto Fallback</th><th>Moves</th><th>Selection</th><th>Failed At</th><th>Action</th></tr></thead><tbody>${rows||'<tr><td colspan="13" class="empty">Client 없음</td></tr>'}</tbody></table></div></div></div>`;
+}
+
+async function renderRecovery() {
+  const { recovery:r } = await api(`/api/request-recovery?query=${encodeURIComponent(recoveryQuery)}`);
+  const p=r.policy||{}, s=r.summary||{};
+  const clientRows=(r.clients||[]).map(x=>`<tr><td class="code">${esc(x.clientId)}</td><td class="code">${esc(x.serverId)}</td><td>${badge(x.enabled?'ON':'OFF')}</td><td>${x.queued}</td><td>${x.deadLetters}</td><td>${roleIsAdmin()?`<button data-queue-toggle="${esc(x.clientId)}" data-enabled="${x.enabled?'0':'1'}">${x.enabled?'Disable':'Enable'}</button>`:'-'}</td></tr>`).join('');
+  const queueRows=(r.queue||[]).map(x=>`<tr><td class="code">${esc(x.queueId)}</td><td class="code">${esc(x.requestId)}</td><td class="code">${esc(x.clientId)}</td><td class="code">${esc(x.serverId||'-')}</td><td class="code">${esc(x.number)}</td><td>${x.attempts}</td><td>${esc(x.reason)}</td><td>${esc(fmtTime(x.queuedAt))}</td><td>${esc(fmtTime(x.expiresAt))}</td></tr>`).join('');
+  const dlqRows=(r.deadLetters||[]).map(x=>`<tr><td class="code">${esc(x.deadLetterId)}</td><td>${badge(x.status)}</td><td class="code">${esc(x.originalRequestId)}</td><td class="code">${esc(x.clientId)}</td><td class="code">${esc(x.serverId||'-')}</td><td class="code">${esc(x.number)}</td><td>${esc(x.reason)}</td><td>${x.attempts}</td><td>${esc(fmtTime(x.failedAt))}</td><td>${x.status==='ACTIVE'&&roleIsAdmin()?`<div class="actions"><button class="warning" data-dlq-retry="${esc(x.deadLetterId)}">RETRY</button><button data-dlq-discard="${esc(x.deadLetterId)}">DISCARD</button></div>`:(x.lastReplayRequestId?`<span class="code">${esc(x.lastReplayRequestId)}</span>`:'-')}</td></tr>`).join('');
+  content.innerHTML=`<div class="cards">
+    <div class="card"><div class="stat-label">OFFLINE QUEUE</div><div class="stat-value">${p.enabled?'ON':'OFF'}</div><div class="stat-sub">opt-in clients ${s.enabledClients||0}</div></div>
+    <div class="card"><div class="stat-label">QUEUED</div><div class="stat-value">${s.queued||0}</div><div class="stat-sub">ordered per Client</div></div>
+    <div class="card"><div class="stat-label">ACTIVE DLQ</div><div class="stat-value">${s.activeDeadLetters||0}</div><div class="stat-sub">operator action required</div></div>
+    <div class="card"><div class="stat-label">RESOLVED DLQ</div><div class="stat-value">${(s.replayedDeadLetters||0)+(s.discardedDeadLetters||0)}</div><div class="stat-sub">Replay ${s.replayedDeadLetters||0} · Discard ${s.discardedDeadLetters||0}</div></div>
+  </div>
+  <div class="section-card"><div class="section-head"><h3>Offline Queue Policy</h3><span class="small-note">기본 OFF · Client별 opt-in · FIFO</span></div><div class="section-body"><div class="form-grid">
+    <label>Global<select id="queue-policy-enabled"><option value="0" ${p.enabled?'':'selected'}>OFF</option><option value="1" ${p.enabled?'selected':''}>ON</option></select></label>
+    <label>Max / Client<input id="queue-policy-max" type="number" min="1" max="1000" value="${Number(p.maxItemsPerClient||100)}"></label>
+    <label>TTL (sec)<input id="queue-policy-ttl" type="number" min="30" max="604800" value="${Number(p.ttlSeconds||3600)}"></label>
+    <label>Delivery Attempts<input id="queue-policy-attempts" type="number" min="1" max="50" value="${Number(p.maxDeliveryAttempts||5)}"></label>
+  </div>${roleIsAdmin()?'<div class="toolbar"><button id="queue-policy-save" class="primary">SAVE POLICY</button></div>':''}<div class="warning-box">Queue는 Client별 입력 순서를 보존합니다. 재전송에는 동일 Request ID를 사용해 WinSockServer RequestCache의 중복 처리 방지를 유지합니다.</div></div></div>
+  <div class="section-card"><div class="section-head"><h3>Client Queue Opt-in</h3></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Current Server</th><th>Queue</th><th>Queued</th><th>Active DLQ</th><th>Action</th></tr></thead><tbody>${clientRows||'<tr><td colspan="6" class="empty">Client 없음</td></tr>'}</tbody></table></div></div>
+  <div class="section-card"><div class="section-head"><h3>Offline Queue</h3><span class="small-note">서버 복구 후 자동 전달</span></div><div class="table-wrap"><table><thead><tr><th>Queue ID</th><th>Request</th><th>Client</th><th>Target</th><th>Number</th><th>Attempts</th><th>Reason</th><th>Queued At</th><th>Expires</th></tr></thead><tbody>${queueRows||'<tr><td colspan="9" class="empty">Queued Request 없음</td></tr>'}</tbody></table></div></div>
+  <div class="section-card"><div class="section-head"><h3>Dead Letter Queue</h3><div class="actions"><input id="recovery-search" placeholder="DLQ / Request / Client / Reason" value="${esc(recoveryQuery)}"><button id="recovery-search-btn">SEARCH</button></div></div><div class="table-wrap"><table><thead><tr><th>DLQ ID</th><th>Status</th><th>Original Request</th><th>Client</th><th>Server</th><th>Number</th><th>Reason</th><th>Attempts</th><th>Failed At</th><th>Action / Replay</th></tr></thead><tbody>${dlqRows||'<tr><td colspan="10" class="empty">Dead Letter 없음</td></tr>'}</tbody></table></div></div>`;
 }
 
 async function renderDangerZone() {
@@ -665,7 +728,12 @@ async function renderEnrollment() {
 }
 
 async function renderSecurityCenter() {
-  const { security:s } = await api('/api/security/dashboard');
+  const [{ security:s }, networkResult] = await Promise.all([
+    api('/api/security/dashboard'),
+    api('/api/security/network')
+  ]);
+  const network = networkResult.summary || { total:0, changed:0, critical:0, warning:0, info:0 };
+  const geo = networkResult.geo || {};
   const alerts=(s.alerts||[]).map(a=>`<div class="integrity-row">${badge(a.severity)}<span class="code">${esc(a.code)}</span><span>COUNT ${a.count}</span><span>${esc(a.message||'')}</span></div>`).join('');
   const rows=(s.devices||[]).map(d=>{
     const age=d.hasSecret?(d.secretAgeUnknown?'UNKNOWN':`${d.secretAgeDays}d`):'-';
@@ -673,15 +741,23 @@ async function renderSecurityCenter() {
     const secret=!d.hasSecret?badge('NONE'):(d.secretStale?badge('STALE'):badge('OK'));
     return `<tr><td>${badge(d.type)}</td><td class="code">${esc(d.id)}</td><td>${d.online?badge('ONLINE'):badge('OFFLINE')}</td><td>${hmac}</td><td>${d.enforced?badge('ENFORCED'):badge('OPTIONAL')}</td><td>${secret}</td><td>${esc(age)}</td><td>${esc(d.authStatus||'-')}</td><td>${d.verifiedAt?esc(fmtTime(d.verifiedAt)):'-'}</td><td>${d.rotationStatus?badge(d.rotationStatus):'-'}</td></tr>`;
   }).join('');
+  const networkRows=(networkResult.devices||[]).map(n=>{
+    const current=n.current||{}, trusted=n.trusted||{};
+    const location=[current.country,current.region,current.city].filter(Boolean).join(' / ')||'-';
+    const trustedLocation=[trusted.country,trusted.region,trusted.city].filter(Boolean).join(' / ')||'-';
+    const action=roleIsAdmin()?`<button data-network-trust data-type="${esc(n.type)}" data-id="${esc(n.id)}" ${n.changed?'':'disabled'}>TRUST CURRENT</button>`:'-';
+    return `<tr><td>${badge(n.type)}</td><td class="code">${esc(n.id)}</td><td>${badge(n.status||'TRUSTED')}</td><td>${n.severity?badge(n.severity):badge('OK')}</td><td class="code">${esc(current.ip||'-')}</td><td class="code">${esc(trusted.ip||'-')}</td><td>${esc(location)}</td><td>${esc(trustedLocation)}</td><td class="code">${esc(current.subnet||'-')}</td><td class="code">${esc(trusted.subnet||'-')}</td><td>${n.changeCount||0}</td><td>${esc(fmtTime(n.lastChangeAt))}</td><td>${action}</td></tr>`;
+  }).join('');
   content.innerHTML=`<div class="cards">
     <div class="card"><div class="stat-label">SECURITY SCORE</div><div class="stat-value">${s.score}</div><div class="stat-sub">${esc(s.label)}</div></div>
-    <div class="card"><div class="stat-label">HMAC VERIFIED</div><div class="stat-value">${s.verified} / ${s.onlineHmacCapable}</div><div class="stat-sub">Online HMAC-capable devices</div></div>
-    <div class="card"><div class="stat-label">ENROLLMENT</div><div class="stat-value">${s.enrollment.pending}</div><div class="stat-sub">Pending · Rejected ${s.enrollment.rejected}</div></div>
-    <div class="card"><div class="stat-label">AUTH FAIL 24H</div><div class="stat-value">${s.authFailures24h}</div><div class="stat-sub">Online unverified ${s.unverifiedOnline}</div></div>
+    <div class="card"><div class="stat-label">HMAC VERIFIED</div><div class="stat-value">${s.verified} / ${s.onlineHmacCapable}</div><div class="stat-sub">Online HMAC-capable</div></div>
+    <div class="card"><div class="stat-label">NETWORK CHANGED</div><div class="stat-value">${network.changed}</div><div class="stat-sub">Critical ${network.critical} · Warn ${network.warning}</div></div>
+    <div class="card"><div class="stat-label">GEOIP</div><div class="stat-value">${geo.available?'READY':'FALLBACK'}</div><div class="stat-sub">${esc(geo.provider||'none')} · no external API</div></div>
     <div class="card"><div class="stat-label">SECRET AGE</div><div class="stat-value">${s.staleSecrets}</div><div class="stat-sub">90d+ · Unknown ${s.unknownSecretAge}</div></div>
     <div class="card"><div class="stat-label">LEGACY</div><div class="stat-value">${s.legacy}</div><div class="stat-sub">Active rotations ${s.activeRotations}</div></div>
   </div>
   <div class="section-card"><div class="section-head"><h3>Security Alerts</h3>${badge(s.label)}</div><div class="section-body">${alerts||'<div class="integrity-ok">[ SECURITY_HEALTHY ] No active security warnings.</div>'}</div></div>
+  <div class="section-card"><div class="section-head"><h3>Trusted Network Baseline</h3><span class="small-note">Country=CRITICAL · Subnet=WARNING · IP=INFO · 자동 차단 없음</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Type</th><th>ID</th><th>Status</th><th>Severity</th><th>Current IP</th><th>Trusted IP</th><th>Current Location</th><th>Trusted Location</th><th>Current Subnet</th><th>Trusted Subnet</th><th>Changes</th><th>Last Change</th><th>Action</th></tr></thead><tbody>${networkRows||'<tr><td colspan="13" class="empty">Network profile 없음</td></tr>'}</tbody></table></div></div></div>
   <div class="section-card"><div class="section-head"><h3>Device Security Matrix</h3><span class="small-note">HMAC / ENROLLMENT / SECRET AGE / ROTATION</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Type</th><th>ID</th><th>Link</th><th>HMAC</th><th>Policy</th><th>Secret</th><th>Age</th><th>Auth State</th><th>Last Verified</th><th>Rotation</th></tr></thead><tbody>${rows||'<tr><td colspan="10" class="empty">Device 없음</td></tr>'}</tbody></table></div></div></div>`;
 }
 
@@ -755,7 +831,7 @@ async function renderSystemHealth() {
     <div class="section-card"><div class="section-head"><h3>Node Runtime</h3>${badge('ONLINE')}</div><div class="section-body"><div class="kv"><div>Node</div><div class="code">${esc(n.version)}</div><div>PID</div><div>${n.pid}</div><div>Platform</div><div>${esc(n.platform)} / ${esc(n.arch)}</div><div>Uptime</div><div>${esc(fmtDuration(n.uptimeMs))}</div><div>RSS</div><div>${esc(fmtBytes(n.rss))}</div><div>Heap</div><div>${esc(fmtBytes(n.heapUsed))} / ${esc(fmtBytes(n.heapTotal))}</div><div>CPU</div><div>${n.cpuCount} cores</div><div>Load 1/5/15m</div><div>${n.load1m} / ${n.load5m} / ${n.load15m}</div></div></div></div>
     <div class="section-card"><div class="section-head"><h3>Database</h3>${badge(db.exists && db.dataDirWritable && db.lastSaveOk ? 'GOOD' : 'WARNING')}</div><div class="section-body"><div class="kv"><div>File</div><div class="code">${esc(db.file)}</div><div>Exists</div><div>${badge(db.exists ? 'GOOD' : 'ERROR')}</div><div>Writable</div><div>${badge(db.dataDirWritable ? 'GOOD' : 'ERROR')}</div><div>Size</div><div>${esc(fmtBytes(db.size))}</div><div>Modified</div><div>${esc(fmtTime(db.mtimeMs))}</div><div>Last Save</div><div>${esc(fmtTime(db.lastSaveAt))}</div><div>Last Save Result</div><div>${badge(db.lastSaveOk ? 'GOOD' : 'ERROR')}</div></div></div></div>
     <div class="section-card"><div class="section-head"><h3>Backup / Audit</h3>${badge(b.writable && a.writable ? 'GOOD' : 'WARNING')}</div><div class="section-body"><div class="kv"><div>Backup Writable</div><div>${badge(b.writable ? 'GOOD' : 'ERROR')}</div><div>Backup Count</div><div>${b.count}</div><div>Latest Backup</div><div class="code">${esc(b.latest ? b.latest.file : '-')}</div><div>Latest Time</div><div>${esc(b.latest ? fmtTime(b.latest.mtimeMs) : '-')}</div><div>Audit Writable</div><div>${badge(a.writable ? 'GOOD' : 'ERROR')}</div><div>Audit Files</div><div>${a.count}</div><div>Latest Audit</div><div class="code">${esc(a.latest ? a.latest.file : '-')}</div></div></div></div>
-    <div class="section-card"><div class="section-head"><h3>Relay Runtime</h3>${badge(o.serviceEnabled ? 'GOOD' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Servers</div><div>${r.serversOnline} online</div><div>Clients</div><div>${r.clientsOnline} online</div><div>Pending ACK</div><div>${r.pendingAcks}</div><div>Request Traces</div><div>${r.requestTraces}</div><div>ACK OK</div><div>${r.ackOk}</div><div>ACK Error</div><div>${r.ackError}</div><div>ACK Timeout</div><div>${r.ackTimeout}</div><div>Retries</div><div>${r.ackRetries}</div><div>Connections</div><div>${r.connections}</div></div></div></div>
+    <div class="section-card"><div class="section-head"><h3>Relay Runtime</h3>${badge(o.serviceEnabled ? 'GOOD' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Servers</div><div>${r.serversOnline} online</div><div>Clients</div><div>${r.clientsOnline} online</div><div>Pending ACK</div><div>${r.pendingAcks}</div><div>Request Traces</div><div>${r.requestTraces}</div><div>Offline Queue</div><div>${r.offlineQueue||0}</div><div>Active DLQ</div><div>${r.activeDeadLetters||0}</div><div>Replayed</div><div>${r.replayedRequests||0}</div><div>Dequeued</div><div>${r.dequeuedRequests||0}</div><div>ACK OK</div><div>${r.ackOk}</div><div>ACK Error</div><div>${r.ackError}</div><div>ACK Timeout</div><div>${r.ackTimeout}</div><div>Retries</div><div>${r.ackRetries}</div><div>Connections</div><div>${r.connections}</div></div></div></div>
   </div><div class="section-card integrity-panel"><div class="section-head"><h3>Database Integrity</h3>${badge(integrity.ok ? 'GOOD' : 'ERROR')}</div><div class="section-body"><div class="stats-summary"><span>Servers <strong>${integrity.stats.servers || 0}</strong></span><span>Clients <strong>${integrity.stats.clients || 0}</strong></span><span>Licenses <strong>${integrity.stats.licenses || 0}</strong></span><span>Errors <strong>${integrity.errors.length}</strong></span><span>Warnings <strong>${integrity.warnings.length}</strong></span><button id="integrity-run-btn">RUN CHECK</button></div>${integrity.errors.length || integrity.warnings.length ? `<div class="integrity-list">${[...integrity.errors.map(x=>({...x,severity:'ERROR'})),...integrity.warnings.map(x=>({...x,severity:'WARNING'}))].map(x=>`<div class="integrity-row">${badge(x.severity)}<span class="code">${esc(x.code)}</span><span>${esc(x.message)}</span><span class="code">${esc(x.entity || '-')}</span></div>`).join('')}</div>` : '<div class="integrity-ok">[ DATABASE_HEALTHY ] No broken bindings or structural errors detected.</div>'}</div></div>`;
 }
 
@@ -794,7 +870,7 @@ async function renderSystem() {
   content.innerHTML = `<div class="panel-grid">
     <div class="section-card"><div class="section-head"><h3>Service</h3>${badge(s.serviceEnabled ? 'ONLINE' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Maintenance</div><div>${badge(s.maintenanceMode ? 'ON' : 'OFF')}</div><div>Web Admin</div><div>v${esc(s.webAdminVersion || '-')}</div><div>Legacy TCP Admin</div><div>${badge(s.legacyTcpAdminEnabled ? 'ONLINE' : 'DISABLED')}</div><div>Data Dir</div><div class="code">${esc(s.dataDir)}</div><div>Max Clients / Server</div><div>${s.maxClientsPerServer}</div><div>Rate Limit</div><div>${s.rateLimit}/sec</div></div>${roleIsAdmin() ? `<div class="toolbar"><button id="service-start-btn">Service Start</button><button id="maint-on-btn" class="warning">Maintenance ON</button><button id="maint-off-btn">Maintenance OFF</button><button data-open-view="danger" class="danger">Danger Zone</button></div>` : ''}</div></div>
     <div class="section-card"><div class="section-head"><h3>Version Policy</h3></div><div class="section-body"><div class="form-grid"><label>Protocol<input id="version-protocol" type="number" min="1" max="${s.currentProtocolVersion}" value="${s.minProtocolVersion}"></label><label>Server<input id="version-server" value="${esc(s.minServerVersion)}"></label><label>Client<input id="version-client" value="${esc(s.minClientVersion)}"></label><label>Current Protocol<input disabled value="${s.currentProtocolVersion}"></label></div>${roleIsAdmin() ? '<button data-open-view="danger" class="warning">Danger Zone에서 변경</button>' : ''}</div></div>
-    <div class="section-card"><div class="section-head"><h3>Maintenance Schedule</h3></div><div class="section-body">${schedule ? `<div class="kv"><div>Start</div><div>${esc(fmtTime(schedule.startAt))}</div><div>End</div><div>${esc(fmtTime(schedule.endAt))}</div><div>Message</div><div>${esc(schedule.message)}</div></div>` : '<p class="muted">예약된 Maintenance가 없습니다.</p>'}${roleIsAdmin() ? '<div class="toolbar"><button id="schedule-create-btn">예약 설정</button><button id="schedule-clear-btn">예약 제거</button></div>' : ''}</div></div>
+    <div class="section-card"><div class="section-head"><h3>Maintenance Schedule / Auto Drain</h3>${s.maintenanceAutomation?.active ? badge(s.maintenanceAutomation.phase) : ''}</div><div class="section-body">${schedule ? `<div class="kv"><div>Start</div><div>${esc(fmtTime(schedule.startAt))}</div><div>End</div><div>${esc(fmtTime(schedule.endAt))}</div><div>Message</div><div>${esc(schedule.message)}</div><div>Auto Drain</div><div>${badge(schedule.autoDrain?'ON':'OFF')}</div><div>Drain Lead</div><div>${schedule.drainLeadMinutes||0} min</div><div>Force Start</div><div>${badge(schedule.forceStart?'ON':'OFF')}</div><div>Phase</div><div>${badge(s.maintenanceAutomation?.phase||'SCHEDULED')}</div><div>Live Clients</div><div>${s.maintenanceAutomation?.liveClients??0}</div><div>Auto-drained Servers</div><div>${s.maintenanceAutomation?.autoDrainedServers??0}</div></div>${s.maintenanceAutomation?.phase==='WAITING_FOR_DRAIN'?'<div class="warning-box">예약 시각이 지났지만 Client가 남아 있어 Maintenance 진입을 기다리고 있습니다. Drain은 Client를 강제 종료하지 않습니다.</div>':''}` : '<p class="muted">예약된 Maintenance가 없습니다.</p>'}${roleIsAdmin() ? '<div class="toolbar"><button id="schedule-create-btn">예약 설정</button><button id="schedule-clear-btn">예약 제거</button></div>' : ''}</div></div>
     <div class="section-card"><div class="section-head"><h3>Notice</h3></div><div class="section-body"><p class="muted">현재 온라인 Client 전체에 공지를 전송합니다.</p>${roleCanOperate() ? '<button id="notice-all-btn">전체 공지 보내기</button>' : ''}</div></div>
   </div>`;
 }
@@ -805,7 +881,7 @@ function openModal(options) {
     const fields = options.fields || [];
     modalBody.innerHTML = `${options.message ? `<p>${esc(options.message)}</p>` : ''}${options.html || ''}${fields.map(f => {
       if (f.type === 'textarea') return `<label>${esc(f.label)}<textarea data-modal-field="${esc(f.name)}" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea></label>`;
-      if (f.type === 'select') return `<label>${esc(f.label)}<select data-modal-field="${esc(f.name)}">${(f.options || []).map(o => `<option value="${esc(o.value ?? o)}">${esc(o.label ?? o)}</option>`).join('')}</select></label>`;
+      if (f.type === 'select') return `<label>${esc(f.label)}<select data-modal-field="${esc(f.name)}">${(f.options || []).map(o => `<option value="${esc(o.value ?? o)}" ${String(o.value ?? o)===String(f.value ?? '')?'selected':''}>${esc(o.label ?? o)}</option>`).join('')}</select></label>`;
       return `<label>${esc(f.label)}<input data-modal-field="${esc(f.name)}" type="${esc(f.type || 'text')}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"></label>`;
     }).join('')}`;
     modalConfirm.textContent = options.confirmLabel || '확인';
@@ -886,6 +962,46 @@ content.addEventListener('click', async event => {
     const releaseDevicePush=event.target.closest('[data-release-device-push]');
     if(releaseDevicePush){ const r=await api('/api/releases/push',{method:'POST',body:{type:releaseDevicePush.dataset.type,id:releaseDevicePush.dataset.id}}); toast(r.result?.available?'UPDATE_AVAILABLE 전송':'대상 업데이트 없음'); return; }
 
+    if (event.target.id === 'failover-policy-save') {
+      const body={
+        enabled:document.getElementById('failover-policy-enabled').value==='1',
+        autoReturn:document.getElementById('failover-auto-return').value==='1',
+        offlineGraceSeconds:Number(document.getElementById('failover-offline-grace').value),
+        returnGraceSeconds:Number(document.getElementById('failover-return-grace').value),
+        maxMovesPerCycle:Number(document.getElementById('failover-max-moves').value)
+      };
+      await api('/api/failover/policy',{method:'POST',body}); toast('Emergency Failover Policy 저장'); await renderFailover(); return;
+    }
+    if (event.target.id === 'failover-run-now') { const r=await api('/api/failover/run',{method:'POST',body:{}}); toast(`Failover moves ${r.result.moves||0} / returns ${r.result.returns||0}`); await renderFailover(); return; }
+    const failoverToggle=event.target.closest('[data-failover-toggle]');
+    if(failoverToggle){await api(`/api/failover/clients/${encodeURIComponent(failoverToggle.dataset.failoverToggle)}`,{method:'POST',body:{enabled:failoverToggle.dataset.enabled==='1'}});toast(`Client Failover ${failoverToggle.dataset.enabled==='1'?'ON':'OFF'}`);await renderFailover();return;}
+    const failoverReturn=event.target.closest('[data-failover-return]');
+    if(failoverReturn){const v=await openModal({title:'Return to Primary',message:`${failoverReturn.dataset.failoverReturn} Client를 원래 Primary Server로 복귀시킵니다. Primary가 준비되지 않았으면 실행되지 않습니다.`,confirmLabel:'RETURN'});if(!v)return;await api(`/api/failover/clients/${encodeURIComponent(failoverReturn.dataset.failoverReturn)}/return`,{method:'POST',body:{}});toast('Primary 복귀 완료');await renderFailover();return;}
+    const bindingEdit=event.target.closest('[data-binding-edit]');
+    if(bindingEdit){
+      const c=failoverRows.get(bindingEdit.dataset.bindingEdit); if(!c)throw new Error('CLIENT_NOT_FOUND');
+      const serverOptions=failoverServers.map(x=>({value:x.id,label:`${x.alias||x.id} // ${x.status}`}));
+      const v=await openModal({title:'Primary / Backup Binding',message:'평상시에는 Primary만 사용하며 장애 시 지정 Backup을 우선합니다.',fields:[
+        {name:'primary',label:'Primary Server',type:'select',value:c.primaryServerId,options:serverOptions},
+        {name:'backup',label:'Backup Server',type:'select',value:c.backupServerId||'',options:[{value:'',label:'NONE'},...serverOptions]},
+        {name:'fallback',label:'Backup 불가 시 자동 선택',type:'select',value:c.allowAutomaticFallback?'1':'0',options:[{value:'0',label:'OFF - 지정 Backup만 사용'},{value:'1',label:'ON - 다른 가용 Server 허용'}]}
+      ],confirmLabel:'SAVE BINDING'}); if(!v)return;
+      await api(`/api/failover/clients/${encodeURIComponent(c.clientId)}/binding`,{method:'POST',body:{primaryServerId:v.primary,backupServerId:v.backup,allowAutomaticFallback:v.fallback==='1'}});toast('Primary / Backup Binding 저장');await renderFailover();return;
+    }
+    const bindingClear=event.target.closest('[data-binding-clear]');
+    if(bindingClear){const v=await openModal({title:'Clear Binding',message:'명시적 Primary / Backup 설정을 제거하고 현재 Server를 기본 바인딩으로 유지합니다.',confirmLabel:'CLEAR'});if(!v)return;await api(`/api/failover/clients/${encodeURIComponent(bindingClear.dataset.bindingClear)}/binding/clear`,{method:'POST',body:{}});toast('Binding 제거 완료');await renderFailover();return;}
+
+    if(event.target.id==='queue-policy-save'){
+      await api('/api/request-recovery/policy',{method:'POST',body:{enabled:document.getElementById('queue-policy-enabled').value==='1',maxItemsPerClient:Number(document.getElementById('queue-policy-max').value),ttlSeconds:Number(document.getElementById('queue-policy-ttl').value),maxDeliveryAttempts:Number(document.getElementById('queue-policy-attempts').value)}});toast('Offline Queue Policy 저장');await renderRecovery();return;
+    }
+    const queueToggle=event.target.closest('[data-queue-toggle]');
+    if(queueToggle){await api(`/api/request-recovery/clients/${encodeURIComponent(queueToggle.dataset.queueToggle)}`,{method:'POST',body:{enabled:queueToggle.dataset.enabled==='1'}});toast(`Client Queue ${queueToggle.dataset.enabled==='1'?'ON':'OFF'}`);await renderRecovery();return;}
+    const dlqRetry=event.target.closest('[data-dlq-retry]');
+    if(dlqRetry){const v=await openModal({title:'Retry Dead Letter',message:'새 Request ID를 생성해 다시 전달합니다. 원본 Request ID는 추적 관계로만 보존됩니다.',confirmLabel:'RETRY'});if(!v)return;const r=await api(`/api/dead-letters/${encodeURIComponent(dlqRetry.dataset.dlqRetry)}/retry`,{method:'POST',body:{}});toast(`DLQ Replay ${r.deadLetter.lastReplayRequestId}`);await renderRecovery();return;}
+    const dlqDiscard=event.target.closest('[data-dlq-discard]');
+    if(dlqDiscard){const v=await openModal({title:'Discard Dead Letter',message:'이 요청을 폐기 상태로 전환합니다. Audit과 DLQ 이력은 유지됩니다.',danger:true,confirmLabel:'DISCARD'});if(!v)return;await api(`/api/dead-letters/${encodeURIComponent(dlqDiscard.dataset.dlqDiscard)}/discard`,{method:'POST',body:{}});toast('DLQ 폐기 완료');await renderRecovery();return;}
+    if(event.target.id==='recovery-search-btn'){recoveryQuery=document.getElementById('recovery-search').value.trim();await renderRecovery();return;}
+
     const serverBtn = event.target.closest('[data-server-action]');
     if (serverBtn) { await serverAction(serverBtn.dataset.serverAction, serverBtn.dataset.id); return; }
     const clientBtn = event.target.closest('[data-client-action]');
@@ -940,9 +1056,11 @@ content.addEventListener('click', async event => {
     const traceBtn = event.target.closest('[data-trace-detail]');
     if (traceBtn) {
       const t = traceRows.get(traceBtn.dataset.traceDetail);
-      if (t) await openModal({ title: `Trace ${t.requestId}`, html: `<div class="kv"><div>Status</div><div>${badge(t.status)}</div><div>Client</div><div class="code">${esc(t.clientId)}</div><div>Server</div><div class="code">${esc(t.serverId)}</div><div>Number</div><div class="code">${esc(t.number)}</div><div>Forwarded</div><div>${esc(fmtTime(t.forwardedAt))}</div><div>ACK / Complete</div><div>${esc(fmtTime(t.completedAt))}</div><div>Duration</div><div>${t.completedAt ? `${t.durationMs} ms` : '-'}</div><div>Retries</div><div>${t.retries}</div><div>Reason</div><div>${esc(t.reason || '-')}</div></div>`, confirmLabel: '닫기' });
+      if (t) await openModal({ title: `Trace ${t.requestId}`, html: `<div class="kv"><div>Status</div><div>${badge(t.status)}</div><div>Source</div><div>${esc(t.source||'CLIENT')}</div><div>Replay Of</div><div class="code">${esc(t.replayOf||'-')}</div><div>DLQ</div><div class="code">${esc(t.deadLetterId||'-')}</div><div>Client</div><div class="code">${esc(t.clientId)}</div><div>Server</div><div class="code">${esc(t.serverId)}</div><div>Number</div><div class="code">${esc(t.number)}</div><div>Queued</div><div>${esc(fmtTime(t.queuedAt))}</div><div>Forwarded</div><div>${esc(fmtTime(t.forwardedAt))}</div><div>ACK / Complete</div><div>${esc(fmtTime(t.completedAt))}</div><div>Duration</div><div>${t.completedAt ? `${t.durationMs} ms` : '-'}</div><div>Retries</div><div>${t.retries}</div><div>Reason</div><div>${esc(t.reason || '-')}</div></div>`, confirmLabel: '닫기' });
       return;
     }
+    const traceReplay=event.target.closest('[data-trace-replay]');
+    if(traceReplay){const t=traceRows.get(traceReplay.dataset.traceReplay);if(!t)throw new Error('TRACE_NOT_FOUND');const v=await openModal({title:'Replay Request',message:`${t.requestId} 요청을 새 Request ID로 다시 실행합니다.`,confirmLabel:'REPLAY'});if(!v)return;const r=await api('/api/request-traces/replay',{method:'POST',body:{key:t.key}});toast(`Replay ${r.requestId||r.item?.requestId}`);await renderTrace();return;}
 
     if (event.target.id === 'feature-global-save') {
       const flags = {};
@@ -990,6 +1108,13 @@ content.addEventListener('click', async event => {
       const v=await openModal({title:'Re-enroll Device Secret',message:`${securityReset.dataset.type} ${securityReset.dataset.id}의 기존 Secret을 폐기하고 새 Secret을 다시 등록합니다. 연결 장애 복구용입니다.`,danger:true,confirmLabel:'RE-ENROLL'}); if(!v)return;
       await api('/api/control/security/reset', { method:'POST', body:{ type:securityReset.dataset.type, id:securityReset.dataset.id } });
       toast('Device Secret Re-enrollment 시작'); setTimeout(()=>renderProtocolSecurity(),350); return;
+    }
+
+    const networkTrust=event.target.closest('[data-network-trust]');
+    if(networkTrust){
+      const v=await openModal({title:'Trust Current Network',message:`${networkTrust.dataset.type} ${networkTrust.dataset.id}의 현재 IP / Subnet / Country를 새 기준점으로 승인합니다. 과거 Audit 기록은 유지됩니다.`,confirmLabel:'TRUST'}); if(!v)return;
+      await api('/api/security/network/trust',{method:'POST',body:{type:networkTrust.dataset.type,id:networkTrust.dataset.id}});
+      toast('Current network trusted'); await renderSecurityCenter(); return;
     }
 
     if (event.target.id === 'license-search-btn') {
@@ -1262,9 +1387,16 @@ async function createSchedule() {
   const now = new Date(Date.now() + 3600000);
   const later = new Date(Date.now() + 7200000);
   const local = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  const v = await openModal({ title: 'Maintenance 예약', fields: [{ name: 'start', label: '시작', type: 'datetime-local', value: local(now) }, { name: 'end', label: '종료', type: 'datetime-local', value: local(later) }, { name: 'message', label: '공지 메시지', value: 'Scheduled maintenance' }], confirmLabel: '예약' });
+  const v = await openModal({ title: 'Maintenance 예약', fields: [
+    { name: 'start', label: '시작', type: 'datetime-local', value: local(now) },
+    { name: 'end', label: '종료', type: 'datetime-local', value: local(later) },
+    { name: 'message', label: '공지 메시지', value: 'Scheduled maintenance' },
+    { name: 'autoDrain', label: 'Auto Drain', type: 'select', options: [{value:'1',label:'ON - 예약 전 Drain 시작'},{value:'0',label:'OFF'}] },
+    { name: 'drainLeadMinutes', label: 'Drain 시작 전 시간(분)', type: 'number', value: '15' },
+    { name: 'forceStart', label: 'Client 남아도 예약 시각에 Maintenance 시작', type: 'select', options: [{value:'0',label:'OFF - 0명까지 대기 (권장)'},{value:'1',label:'ON - 예약 시각 강제 시작'}] }
+  ], confirmLabel: '예약' });
   if (!v) return;
-  await api('/api/system/maintenance/schedule', { method: 'POST', body: { startAt: new Date(v.start).getTime(), endAt: new Date(v.end).getTime(), message: v.message } });
+  await api('/api/system/maintenance/schedule', { method: 'POST', body: { startAt: new Date(v.start).getTime(), endAt: new Date(v.end).getTime(), message: v.message, autoDrain: v.autoDrain === '1', drainLeadMinutes: Number(v.drainLeadMinutes)||0, forceStart: v.forceStart === '1' } });
   toast('Maintenance 예약 완료'); renderSystem();
 }
 

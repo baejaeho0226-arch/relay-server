@@ -13,7 +13,7 @@ function AddIssue(list, code, message, entity = '') {
 function ValidateDatabaseObject(data, source = 'DATABASE') {
     const errors = [];
     const warnings = [];
-    const stats = { servers: 0, clients: 0, licenses: 0, aliases: 0, notes: 0 };
+    const stats = { servers: 0, clients: 0, licenses: 0, aliases: 0, notes: 0, bindings: 0, queued: 0, deadLetters: 0 };
     const serverIds = new Set();
     const clientIds = new Set();
     const licenseBoundClients = new Map();
@@ -23,7 +23,7 @@ function ValidateDatabaseObject(data, source = 'DATABASE') {
         return { ok: false, source, checkedAt: Now(), errors, warnings, stats };
     }
 
-    if (Number(data.version || 0) !== 100) AddIssue(warnings, 'DB_VERSION', `Unexpected database version: ${data.version ?? 'missing'}`);
+    if (Number(data.version || 0) !== 114) AddIssue(warnings, 'DB_VERSION', `Unexpected database version: ${data.version ?? 'missing'} (current 114)`);
 
     const servers = data.servers && typeof data.servers === 'object' && !Array.isArray(data.servers) ? data.servers : {};
     for (const [deviceKey, rawId] of Object.entries(servers)) {
@@ -77,6 +77,44 @@ function ValidateDatabaseObject(data, source = 'DATABASE') {
     for (const rawId of Array.isArray(data.disabledClients) ? data.disabledClients : []) {
         const id = NormalizeID(rawId);
         if (!id || !clientIds.has(id)) AddIssue(warnings, 'ORPHAN_CLIENT_STATE', 'disabledClients references missing Client.', rawId);
+    }
+
+    const bindings = data.clientServerBindings && typeof data.clientServerBindings === 'object' && !Array.isArray(data.clientServerBindings) ? data.clientServerBindings : {};
+    for (const [rawClientId, value] of Object.entries(bindings)) {
+        stats.bindings++;
+        const clientId = NormalizeID(rawClientId);
+        if (!clientId || !clientIds.has(clientId)) { AddIssue(errors, 'BINDING_CLIENT_MISSING', 'Primary/Backup binding references missing Client.', rawClientId); continue; }
+        if (!value || typeof value !== 'object') { AddIssue(errors, 'BINDING_INVALID', 'Primary/Backup binding must be an object.', clientId); continue; }
+        const primary = NormalizeID(value.primaryServerId);
+        const backup = NormalizeID(value.backupServerId || '');
+        if (!primary || !serverIds.has(primary)) AddIssue(errors, 'BINDING_PRIMARY_MISSING', 'Primary Server does not exist.', clientId);
+        if (backup && !serverIds.has(backup)) AddIssue(errors, 'BINDING_BACKUP_MISSING', 'Backup Server does not exist.', clientId);
+        if (primary && backup && primary === backup) AddIssue(errors, 'BINDING_PRIMARY_BACKUP_SAME', 'Primary and Backup must be different.', clientId);
+    }
+
+    for (const rawId of Array.isArray(data.clientOfflineQueueEnabled) ? data.clientOfflineQueueEnabled : []) {
+        const id = NormalizeID(rawId);
+        if (!id || !clientIds.has(id)) AddIssue(warnings, 'ORPHAN_QUEUE_OPT_IN', 'Offline Queue opt-in references missing Client.', rawId);
+    }
+    const queue = data.offlineQueue && typeof data.offlineQueue === 'object' && !Array.isArray(data.offlineQueue) ? data.offlineQueue : {};
+    for (const [queueId, value] of Object.entries(queue)) {
+        stats.queued++;
+        if (!/^QUEUE-[A-Z0-9-]+$/.test(queueId)) AddIssue(errors, 'QUEUE_ID_INVALID', 'Offline Queue ID is invalid.', queueId);
+        if (!value || typeof value !== 'object') { AddIssue(errors, 'QUEUE_RECORD_INVALID', 'Offline Queue record must be an object.', queueId); continue; }
+        const clientId = NormalizeID(value.clientId);
+        if (!clientId || !clientIds.has(clientId)) AddIssue(errors, 'QUEUE_CLIENT_MISSING', 'Offline Queue references missing Client.', queueId);
+        if (!String(value.requestId || '').trim() || !/^-?\d+$/.test(String(value.number || ''))) AddIssue(errors, 'QUEUE_REQUEST_INVALID', 'Offline Queue requestId/number is invalid.', queueId);
+        if (!(Number(value.expiresAt) > Number(value.createdAt))) AddIssue(errors, 'QUEUE_EXPIRY_INVALID', 'Offline Queue expiry is invalid.', queueId);
+    }
+    const deadLetters = data.deadLetters && typeof data.deadLetters === 'object' && !Array.isArray(data.deadLetters) ? data.deadLetters : {};
+    for (const [deadLetterId, value] of Object.entries(deadLetters)) {
+        stats.deadLetters++;
+        if (!/^DLQ-[A-Z0-9-]+$/.test(deadLetterId)) AddIssue(errors, 'DLQ_ID_INVALID', 'Dead Letter ID is invalid.', deadLetterId);
+        if (!value || typeof value !== 'object') { AddIssue(errors, 'DLQ_RECORD_INVALID', 'Dead Letter record must be an object.', deadLetterId); continue; }
+        const clientId = NormalizeID(value.clientId);
+        if (!clientId || !clientIds.has(clientId)) AddIssue(errors, 'DLQ_CLIENT_MISSING', 'Dead Letter references missing Client.', deadLetterId);
+        if (!String(value.originalRequestId || '').trim() || !/^-?\d+$/.test(String(value.number || ''))) AddIssue(errors, 'DLQ_REQUEST_INVALID', 'Dead Letter requestId/number is invalid.', deadLetterId);
+        if (!['ACTIVE', 'REPLAYED', 'DISCARDED'].includes(String(value.status || '').toUpperCase())) AddIssue(errors, 'DLQ_STATUS_INVALID', 'Dead Letter status is invalid.', deadLetterId);
     }
 
     for (const [field, ids, kind] of [
