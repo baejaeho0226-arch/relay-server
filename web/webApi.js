@@ -37,7 +37,7 @@ const deviceControl = require('../services/deviceControl');
 const featureFlags = require('../services/featureFlags');
 const protocolReadiness = require('../services/protocolReadiness');
 const deviceAuth = require('../services/deviceAuth');
-const { LicenseQr } = require('../services/qrCode');
+const qrApproval = require('../services/qrApproval');
 const loadSimulator = require('../services/loadSimulator');
 const storageMigration = require('../services/storageMigration');
 const releaseManager = require('../services/releaseManager');
@@ -99,13 +99,13 @@ function RequireOperation(res, session, operation) {
 }
 
 
-async function ReadJsonBody(req) {
+async function ReadJsonBody(req, maxBytes = 128 * 1024) {
     return new Promise((resolve, reject) => {
         const chunks = [];
         let size = 0;
         req.on('data', chunk => {
             size += chunk.length;
-            if (size > 128 * 1024) {
+            if (size > maxBytes) {
                 reject(new Error('BODY_TOO_LARGE'));
                 req.destroy();
                 return;
@@ -168,6 +168,7 @@ function BuildDashboard() {
             expired,
             suspended
         },
+        qrAuth: qrApproval.Summary(),
         ack: {
             pending: state.pendingRequests.size,
             ok: state.runtimeStats.ackOk,
@@ -396,7 +397,10 @@ async function HandleApiRequest(req, res, session) {
     let body = {};
 
     if (!['GET', 'HEAD'].includes(method)) {
-        try { body = await ReadJsonBody(req); }
+        const maxBodyBytes = pathname === '/api/qr-auth/scan'
+            ? Math.ceil(config.QR_AUTH_MAX_IMAGE_BYTES * 1.4) + 64 * 1024
+            : 128 * 1024;
+        try { body = await ReadJsonBody(req, maxBodyBytes); }
         catch (error) { ApiError(res, error.message === 'BODY_TOO_LARGE' ? 413 : 400, error.message); return; }
     }
 
@@ -414,6 +418,54 @@ async function HandleApiRequest(req, res, session) {
     if (method === 'GET' && pathname === '/api/dashboard') {
         if (!RequireOperation(res, session, 'DASHBOARD')) return;
         Json(res, 200, { ok: true, dashboard: BuildDashboard() });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/qr-auth') {
+        if (!RequireAdmin(res, session)) return;
+        Json(res, 200, { ok: true, requests: qrApproval.List(), summary: qrApproval.Summary() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/qr-auth/scan') {
+        if (!RequireAdmin(res, session)) return;
+        try {
+            const result = qrApproval.ScanImage(body.imageData || '');
+            LogEvent('QR_AUTH_SCANNED', `${result.request.requestId} -> ${result.request.clientId} / ${session.role}`);
+            Json(res, 200, { ok: true, ...result });
+        } catch (error) {
+            const code = String(error && error.message || 'QR_SCAN_FAILED');
+            LogEvent('QR_AUTH_SCAN_FAILED', `${code} / ${session.role}`);
+            ApiError(res, code.includes('EXPIRED') || code.includes('APPROVED') || code.includes('REJECTED') ? 409 : 400, code);
+        }
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/qr-auth/approve') {
+        if (!RequireAdmin(res, session)) return;
+        const result = qrApproval.Approve(body.requestId, body.approvalToken, {
+            days: body.days,
+            memo: body.memo,
+            tags: body.tags
+        }, session.role);
+        if (!result.ok) {
+            LogEvent('QR_AUTH_APPROVE_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);
+            ApiError(res, 409, result.reason);
+            return;
+        }
+        Json(res, 200, result);
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/qr-auth/reject') {
+        if (!RequireAdmin(res, session)) return;
+        const result = qrApproval.Reject(body.requestId, body.reason, session.role);
+        if (!result.ok) {
+            LogEvent('QR_AUTH_REJECT_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);
+            ApiError(res, 409, result.reason);
+            return;
+        }
+        Json(res, 200, result);
         return;
     }
 
@@ -1064,7 +1116,7 @@ if (method === 'GET' && pathname === '/api/control/devices') {
     if (method === 'GET' && pathname === '/api/control/security/rotations') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,rotations:secretRotation.Overview()});return; }
     if (method === 'POST' && pathname === '/api/control/security/rotate') { if(!RequireAdmin(res,session))return;const r=secretRotation.Start(body.type,body.id);if(!r.ok){ApiError(res,409,r.reason);return;}SaveDatabase();LogEvent('DEVICE_SECRET_ROTATION_START',`${String(body.type||'').toUpperCase()} ${NormalizeID(body.id)} ${r.rotation.rotationId}`);Json(res,200,r);return; }
     m=pathname.match(/^\/api\/licenses\/([^/]+)\/qr$/);
-    if(method==='GET'&&m){if(!RequireOperation(res,session,'VIEW'))return;const key=NormalizeLicenseKey(DecodePart(m[1]));if(!state.licenses.has(key)){ApiError(res,404,'LICENSE_NOT_FOUND');return;}try{const qr=await LicenseQr(key);Json(res,200,{ok:true,...qr});}catch(e){ApiError(res,500,'QR_FAILED',e.message);}return;}
+    if(method==='GET'&&m){if(!RequireOperation(res,session,'VIEW'))return;ApiError(res,410,'LEGACY_LICENSE_QR_DISABLED','Use the QR device approval page.');return;}
 
     if (method === 'GET' && pathname === '/api/load-simulator') {
         if (!RequireAdmin(res, session)) return;

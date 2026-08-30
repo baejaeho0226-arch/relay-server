@@ -95,6 +95,7 @@ module.exports = {
     dailyHealthAccumulator: null,
     pendingDeviceCommands: new Map(),
     licenseRevision: 0,
+    qrAuthRequests: new Map(),
 
     runtimeStats: {
         startedAt: Date.now(),

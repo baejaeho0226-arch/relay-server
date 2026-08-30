@@ -19,12 +19,14 @@ function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 function staticSourceChecks() {
     const apk = fs.readFileSync(path.join(PRODUCT_ROOT, 'ApkWinSock_Android64', 'ApkWinSock.pas'), 'utf8');
-    const send = apk.slice(apk.indexOf('procedure TForm1.BtnSendClick'), apk.indexOf('\nend.', apk.indexOf('procedure TForm1.BtnSendClick')));
+    const send = apk.slice(apk.indexOf('procedure TForm1.SendButtonClick'), apk.indexOf('\nend;', apk.indexOf('procedure TForm1.SendButtonClick')) + 5);
     assert.ok(apk.includes('procedure TForm1.BuildWebStyleUI'));
-    assert.ok(apk.includes('FNumberOne: TCheckBox'));
-    assert.ok(apk.includes('FNumberTwo: TCheckBox'));
-    assert.ok(apk.includes("if FNumberTwo.IsChecked then NumberText := '2' else NumberText := '1'"));
-    assert.ok(!send.includes('Trim(EditNumber.Text)'));
+    assert.ok(apk.includes('FQrImage: TImage'));
+    assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
+    assert.ok(apk.includes("BuildSendLine(RequestID, FState.ClientID, '1')"));
+    assert.ok(!apk.includes('TCheckBox'));
+    assert.ok(!apk.includes('FLicenseEdit'));
+    assert.ok(!send.includes('NumberText'));
     assert.ok(!apk.includes('{$R *.fmx}'));
 
     const update = fs.readFileSync(path.join(PRODUCT_ROOT, 'WinSockServer_Win64', 'UpdateAgent.pas'), 'utf8');
@@ -170,7 +172,7 @@ async function run() {
     console.log('- SQLite primary + JSON auto-migration/recovery mirror: PASS');
     console.log('- Relay A/B replication + promotion + revision-safe failback: PASS');
     console.log('- Win64/Android primary-backup endpoint source: PASS');
-    console.log('- APK source-built Web-style license/fixed 1-2 UI: PASS');
+    console.log('- APK source-built QR-only approval / fixed value 1 UI: PASS');
     console.log('- ShellExecute/cmd/Winapi.Windows removal: PASS');
 }
 

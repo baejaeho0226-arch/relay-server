@@ -117,6 +117,7 @@ setInterval(() => {
     EvaluateEmergencyFailover();
     ProcessOfflineQueue();
     require('./services/dailyHealth').EnsureCurrent();
+    require('./services/qrApproval').Cleanup();
 }, 1000);
 
 setInterval(() => {

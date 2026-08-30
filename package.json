@@ -1,7 +1,7 @@
 {
   "name": "pure-tcp-relay",
-  "version": "6.0.0",
-  "description": "Pure TCP Relay with SQLite primary storage, active/standby HA, endpoint failover and operator-grade clients",
+  "version": "6.1.0",
+  "description": "Pure TCP Relay with signed one-time QR device approval, SQLite storage, active/standby HA and endpoint failover",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,12 +9,16 @@
     "test:roadmap14": "node scripts/test-roadmap11-14.js",
     "test:roadmap18": "node scripts/test-roadmap15-18.js",
     "test:roadmap23": "node scripts/test-roadmap19-23.js",
+    "test:qrauth": "node scripts/test-qr-auth.js",
     "loadtest": "node tools/load-simulator.js"
   },
   "engines": {
     "node": ">=22.13"
   },
   "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
     "qrcode": "^1.5.4",
     "web-push": "^3.6.7"
   },

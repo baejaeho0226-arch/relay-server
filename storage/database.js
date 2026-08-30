@@ -19,7 +19,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 119,
+        version: 120,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -61,6 +61,7 @@ function BuildDatabaseObject() {
         pushSubscriptions: Object.fromEntries(state.pushSubscriptions),
         dailyHealthReports: Object.fromEntries(state.dailyHealthReports),
         dailyHealthAccumulator: state.dailyHealthAccumulator,
+        qrAuthRequests: Object.fromEntries(state.qrAuthRequests),
         licenseRevision: Number(state.licenseRevision) || 0,
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
@@ -190,7 +191,7 @@ function ImportDatabaseObject(data) {
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
     state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
-    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -292,6 +293,7 @@ function ImportDatabaseObject(data) {
     require('../services/processorCenter').ImportPersisted(data);
     require('../services/pushManager').ImportPersisted(data);
     require('../services/dailyHealth').ImportPersisted(data);
+    require('../services/qrApproval').ImportPersisted(data);
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
 
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;

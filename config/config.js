@@ -8,7 +8,7 @@ const HEALTH_PORT = Number(process.env.HEALTH_PORT || 0);
 const WEB_ADMIN_PORT = Number(process.env.WEB_ADMIN_PORT || 8080);
 const WEB_ADMIN_SESSION_MS = Number(process.env.WEB_ADMIN_SESSION_MS || 30 * 60 * 1000);
 const ENABLE_LEGACY_TCP_ADMIN = String(process.env.ENABLE_LEGACY_TCP_ADMIN || '') === '1';
-const WEB_ADMIN_VERSION = '3.0.0';
+const WEB_ADMIN_VERSION = '3.1.0';
 const UPDATE_BASE_URL = String(process.env.UPDATE_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')).replace(/\/+$/, '');
 
 const DATA_DIR = process.env.DATA_DIR
@@ -78,6 +78,12 @@ const HA_SHARED_SECRET = String(process.env.HA_SHARED_SECRET || '');
 const HA_POLL_MS = Math.max(500, Number(process.env.HA_POLL_MS || 2000));
 const HA_FAILOVER_TIMEOUT_MS = Math.max(3000, Number(process.env.HA_FAILOVER_TIMEOUT_MS || 10000));
 
+const QR_AUTH_TTL_MS = Math.max(60 * 1000, Math.min(15 * 60 * 1000, Number(process.env.QR_AUTH_TTL_MS || 10 * 60 * 1000)));
+const QR_AUTH_MAX_IMAGE_BYTES = Math.max(512 * 1024, Math.min(12 * 1024 * 1024, Number(process.env.QR_AUTH_MAX_IMAGE_BYTES || 8 * 1024 * 1024)));
+const QR_AUTH_MAX_REQUESTS = Math.max(100, Math.min(5000, Number(process.env.QR_AUTH_MAX_REQUESTS || 500)));
+const QR_AUTH_DEFAULT_DAYS = Math.max(1, Math.min(3650, Number(process.env.QR_AUTH_DEFAULT_DAYS || 30)));
+const QR_APPROVAL_SECRET = String(process.env.QR_APPROVAL_SECRET || '');
+
 const DANGEROUS_PREFIXES = [
     'SERVICE_STOP',
     'BACKUP_RESTORE|',
@@ -103,5 +109,6 @@ module.exports = {
     DAILY_REPORT_TIMEZONE, DAILY_REPORT_RETENTION_DAYS,
     VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
     HA_ENABLED, HA_INSTANCE_ID, HA_PRIORITY, HA_PEER_URL, HA_SHARED_SECRET, HA_POLL_MS, HA_FAILOVER_TIMEOUT_MS,
+    QR_AUTH_TTL_MS, QR_AUTH_MAX_IMAGE_BYTES, QR_AUTH_MAX_REQUESTS, QR_AUTH_DEFAULT_DAYS, QR_APPROVAL_SECRET,
     DANGEROUS_PREFIXES
 };

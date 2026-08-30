@@ -1,6 +1,6 @@
 'use strict';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SQLITE_SCHEMA = `PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
@@ -66,6 +66,18 @@ CREATE TABLE IF NOT EXISTS licenses (
 
 CREATE INDEX IF NOT EXISTS idx_licenses_bound_client ON licenses(bound_client);
 CREATE INDEX IF NOT EXISTS idx_licenses_expires_at ON licenses(expires_at);
+
+CREATE TABLE IF NOT EXISTS qr_auth_requests (
+  request_id TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  issued_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  request_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_qr_auth_client ON qr_auth_requests(client_id);
+CREATE INDEX IF NOT EXISTS idx_qr_auth_expires ON qr_auth_requests(expires_at);
 
 CREATE TABLE IF NOT EXISTS device_secrets (
   device_key TEXT PRIMARY KEY,

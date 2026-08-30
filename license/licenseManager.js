@@ -63,21 +63,8 @@ function GetUsableLicenseForConnection(connection) {
     return { key: connection.licenseKey, license };
 }
 
-function AuthorizeClient(connection, licenseKey) {
-    if (!state.serviceEnabled) { SendLine(connection.socket, 'SERVICE_STATE|DISABLED'); return; }
-    if (state.maintenanceMode && !connection.licenseAuthorized) { SendLine(connection.socket, 'SERVICE_STATE|MAINTENANCE'); return; }
-    if (!connection.connected || !connection.clientId) { SendLine(connection.socket, 'LICENSE_ERROR|CLIENT_NOT_CONNECTED'); return; }
-
-    licenseKey = NormalizeLicenseKey(licenseKey);
-    const license = FindLicense(licenseKey);
-    if (!licenseKey || !license) { SendLine(connection.socket, 'LICENSE_ERROR|INVALID_KEY'); return; }
-    if (license.suspended) { SendLine(connection.socket, 'LICENSE_ERROR|SUSPENDED'); NotifyServerUnauthorized(connection.clientId, 'SUSPENDED'); return; }
-    if (Now() >= license.expiresAt) { SendLine(connection.socket, 'LICENSE_ERROR|EXPIRED'); NotifyServerUnauthorized(connection.clientId, 'EXPIRED'); return; }
-    if (license.boundClient && license.boundClient !== connection.clientId) { SendLine(connection.socket, 'LICENSE_ERROR|BOUND_OTHER'); return; }
-
-    const already = GetBoundLicenseEntry(connection.clientId);
-    if (already && already.key !== licenseKey) { SendLine(connection.socket, 'LICENSE_ERROR|CLIENT_ALREADY_LICENSED'); return; }
-
+function CompleteAuthorization(connection, licenseKey, license, source = 'LICENSE', requestId = '') {
+    const eventSource = source === 'QR' || source === 'QR_RESUME' ? source : 'LICENSE';
     if (!license.boundClient) {
         license.boundClient = connection.clientId;
         license.boundAt = Now();
@@ -103,15 +90,54 @@ function AuthorizeClient(connection, licenseKey) {
     connection.lastServerAuthState = '';
     SaveDatabase();
 
-    SendLine(connection.socket, `LICENSE_OK|${licenseKey}|${license.expiresAt}`);
-    NotifyServerAuthorized(connection.clientId, connection.serverId, license.expiresAt);
+    if (eventSource === 'LICENSE') SendLine(connection.socket, `LICENSE_OK|${licenseKey}|${license.expiresAt}`);
+    else SendLine(connection.socket, `QR_AUTH_OK|${requestId || 'RESUME'}|${license.expiresAt}`);
+    NotifyServerAuthorized(connection.clientId, connection.serverId, license.expiresAt, eventSource);
 
     const remainingDays = Math.ceil((license.expiresAt - Now()) / 86400000);
     if (remainingDays <= 7) SendLine(connection.socket, `LICENSE_WARNING|${remainingDays}|${license.expiresAt}`);
-    LogEvent('LICENSE_AUTH', `${licenseKey} -> ${connection.clientId}`);
+    const auditReference = eventSource === 'LICENSE' ? licenseKey : `QR-${String(licenseKey).slice(-8)}`;
+    LogEvent(eventSource === 'LICENSE' ? 'LICENSE_AUTH' : 'QR_LICENSE_AUTH', `${auditReference} -> ${connection.clientId} / ${eventSource}`);
+    return true;
 }
 
-function CreateLicense(days, memo, tags = []) {
+function ValidateAuthorizationTarget(connection, licenseKey) {
+    if (!state.serviceEnabled) { SendLine(connection.socket, 'SERVICE_STATE|DISABLED'); return; }
+    if (state.maintenanceMode && !connection.licenseAuthorized) { SendLine(connection.socket, 'SERVICE_STATE|MAINTENANCE'); return; }
+    if (!connection.connected || !connection.clientId) { SendLine(connection.socket, 'LICENSE_ERROR|CLIENT_NOT_CONNECTED'); return; }
+
+    licenseKey = NormalizeLicenseKey(licenseKey);
+    const license = FindLicense(licenseKey);
+    if (!licenseKey || !license) { SendLine(connection.socket, 'LICENSE_ERROR|INVALID_KEY'); return null; }
+    if (license.suspended) { SendLine(connection.socket, 'LICENSE_ERROR|SUSPENDED'); NotifyServerUnauthorized(connection.clientId, 'SUSPENDED'); return null; }
+    if (Now() >= license.expiresAt) { SendLine(connection.socket, 'LICENSE_ERROR|EXPIRED'); NotifyServerUnauthorized(connection.clientId, 'EXPIRED'); return null; }
+    if (license.boundClient && license.boundClient !== connection.clientId) { SendLine(connection.socket, 'LICENSE_ERROR|BOUND_OTHER'); return null; }
+
+    const already = GetBoundLicenseEntry(connection.clientId);
+    if (already && already.key !== licenseKey) { SendLine(connection.socket, 'LICENSE_ERROR|CLIENT_ALREADY_LICENSED'); return null; }
+    return { licenseKey, license };
+}
+
+function AuthorizeClient(connection, licenseKey) {
+    const target = ValidateAuthorizationTarget(connection, licenseKey);
+    if (!target) return false;
+    return CompleteAuthorization(connection, target.licenseKey, target.license, 'LICENSE', '');
+}
+
+function AuthorizeClientByQr(connection, licenseKey, requestId = '') {
+    const target = ValidateAuthorizationTarget(connection, licenseKey);
+    if (!target) return false;
+    return CompleteAuthorization(connection, target.licenseKey, target.license, requestId === 'RESUME' ? 'QR_RESUME' : 'QR', requestId);
+}
+
+function AuthorizeBoundClientByQr(connection, requestId = 'RESUME') {
+    if (!connection || !connection.clientId) return false;
+    const bound = GetBoundLicenseEntry(connection.clientId);
+    if (!bound) return false;
+    return AuthorizeClientByQr(connection, bound.key, requestId);
+}
+
+function CreateLicense(days, memo, tags = [], source = 'LICENSE') {
     let key;
     do { key = RandomLicenseKey(); } while (licenses.has(key));
     const now = Now();
@@ -122,7 +148,7 @@ function CreateLicense(days, memo, tags = []) {
     };
     licenses.set(key, license);
     if (!PersistLicenseChange()) { licenses.delete(key); return null; }
-    LogEvent('LICENSE_CREATE', key);
+    LogEvent(source === 'QR' ? 'QR_LICENSE_CREATE' : 'LICENSE_CREATE', source === 'QR' ? `QR-${key.slice(-8)}` : key);
     setImmediate(() => { try { require('../services/licenseMonitor').ScanLicenseExpiryAlerts(); } catch (_) {} });
     return { key, expiresAt: license.expiresAt };
 }
@@ -306,6 +332,8 @@ module.exports = {
     GetLicenseStatus,
     GetUsableLicenseForConnection,
     AuthorizeClient,
+    AuthorizeClientByQr,
+    AuthorizeBoundClientByQr,
     CreateLicense,
     SetLicenseTags,
     ExtendLicense,

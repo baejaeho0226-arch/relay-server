@@ -17,14 +17,15 @@ function NormalizeID(...args) { return require('../core/utils').NormalizeID(...a
 function SafeField(...args) { return require('../core/utils').SafeField(...args); }
 function SendLine(...args) { return require('../core/utils').SendLine(...args); }
 
-function NotifyServerAuthorized(clientId, serverId, expiresAt) {
+function NotifyServerAuthorized(clientId, serverId, expiresAt, source = 'LICENSE') {
     const server = GetOnlineServer(serverId);
     if (!server) return;
     const client = GetOnlineClient(clientId);
-    const state = `AUTHORIZED|${expiresAt}`;
+    source = String(source || 'LICENSE').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24) || 'LICENSE';
+    const state = `AUTHORIZED|${expiresAt}|${source}`;
     if (client && client.lastServerAuthState === state) return;
     if (client) client.lastServerAuthState = state;
-    SendLine(server.socket, `CLIENT_AUTHORIZED|${clientId}|${expiresAt}`);
+    SendLine(server.socket, `CLIENT_AUTHORIZED|${clientId}|${expiresAt}|${source}`);
 }
 
 function NotifyServerUnauthorized(clientId, reason) {

@@ -43,37 +43,64 @@
         <div class="brand-mark small">&gt;_</div>
         <div><strong>RELAY // OPS</strong><span>WEB CONTROL NODE</span></div>
       </div>
+      <div class="nav-search"><input id="nav-filter" type="search" placeholder="기능 검색" autocomplete="off"></div>
       <nav id="nav">
-        <button data-view="dashboard" class="active">Dashboard</button>
-        <button data-view="console">Live Console</button>
-        <button data-view="trace">Request Trace</button>
-        <button data-view="monitor">Health Monitor</button>
-        <button data-view="terminal">Command Terminal</button>
-        <button data-view="distribution">Distribution</button>
-        <button data-view="failover" data-admin-only>Emergency Failover</button>
-        <button data-view="recovery">Request Recovery</button>
-        <button data-view="notifications">Notifications <span id="notification-badge" class="nav-count hidden">0</span></button>
-        <button data-view="processors">Number Processing</button>
-        <button data-view="reports">Push / Daily Report</button>
-        <button data-view="servers">Servers</button>
-        <button data-view="clients">Clients</button>
-        <button data-view="licenses">Licenses</button>
-        <button data-view="releases" data-admin-only>Releases / Updates</button>
-        <button data-view="features" data-admin-only>Feature Flags</button>
-        <button data-view="confighistory" data-admin-only>Config History</button>
-        <button data-view="enrollment" data-admin-only>Device Enrollment</button>
-        <button data-view="protocol">Protocol / Security</button>
-        <button data-view="security">Security Center</button>
-        <button data-view="audit">Audit Log</button>
-        <button data-view="activity" data-admin-only>Admin Activity</button>
-        <button data-view="sessions" data-admin-only>Sessions</button>
-        <button data-view="backups">Backups</button>
-        <button data-view="health">System Health</button>
-        <button data-view="ha">Relay HA</button>
-        <button data-view="loadlab" data-admin-only>Load Simulator</button>
-        <button data-view="storage" data-admin-only>SQLite Storage</button>
-        <button data-view="system">System</button>
-        <button data-view="danger" data-admin-only class="danger-nav">Danger Zone</button>
+        <details class="nav-group" open>
+          <summary>관제</summary>
+          <div class="nav-items">
+            <button data-view="dashboard" class="active">Dashboard</button>
+            <button data-view="console">Live Console</button>
+            <button data-view="monitor">Health Monitor</button>
+            <button data-view="notifications">Notifications <span id="notification-badge" class="nav-count hidden">0</span></button>
+          </div>
+        </details>
+        <details class="nav-group">
+          <summary>트래픽 · 처리</summary>
+          <div class="nav-items">
+            <button data-view="trace">Request Trace</button>
+            <button data-view="recovery">Request Recovery</button>
+            <button data-view="processors">Number Processing</button>
+            <button data-view="distribution">Distribution</button>
+            <button data-view="failover" data-admin-only>Emergency Failover</button>
+            <button data-view="terminal">Command Terminal</button>
+          </div>
+        </details>
+        <details class="nav-group" open>
+          <summary>기기 · QR 인증</summary>
+          <div class="nav-items">
+            <button data-view="qrauth" data-admin-only class="qr-nav">QR 인증 <span id="qr-auth-badge" class="nav-count hidden">0</span></button>
+            <button data-view="servers">Servers</button>
+            <button data-view="clients">Clients</button>
+            <button data-view="licenses">QR Licenses</button>
+            <button data-view="enrollment" data-admin-only>Device Enrollment</button>
+            <button data-view="protocol">Protocol / Security</button>
+            <button data-view="security">Security Center</button>
+          </div>
+        </details>
+        <details class="nav-group">
+          <summary>배포 · 정책</summary>
+          <div class="nav-items">
+            <button data-view="releases" data-admin-only>Releases / Updates</button>
+            <button data-view="features" data-admin-only>Feature Flags</button>
+            <button data-view="confighistory" data-admin-only>Config History</button>
+            <button data-view="reports">Push / Daily Report</button>
+          </div>
+        </details>
+        <details class="nav-group">
+          <summary>관리 · 시스템</summary>
+          <div class="nav-items">
+            <button data-view="audit">Audit Log</button>
+            <button data-view="activity" data-admin-only>Admin Activity</button>
+            <button data-view="sessions" data-admin-only>Sessions</button>
+            <button data-view="backups">Backups</button>
+            <button data-view="health">System Health</button>
+            <button data-view="ha">Relay HA</button>
+            <button data-view="loadlab" data-admin-only>Load Simulator</button>
+            <button data-view="storage" data-admin-only>SQLite Storage</button>
+            <button data-view="system">System</button>
+            <button data-view="danger" data-admin-only class="danger-nav">Danger Zone</button>
+          </div>
+        </details>
       </nav>
       <div class="sidebar-footer">
         <div><span class="muted">Role</span><strong id="role-label">-</strong></div>

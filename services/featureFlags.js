@@ -9,7 +9,7 @@ const DEFAULTS = Object.freeze({
     ADVANCED_NOTICE: true,
     PROCESS_RESULT: true,
     UI_STATE: true,
-    LICENSE_QR_DEEPLINK: true,
+    QR_DEVICE_APPROVAL: true,
     PROTOCOL_V3_PREVIEW: false,
     DEVICE_HMAC_ENFORCE: false,
     EVENT_SEQUENCE: false

@@ -25,7 +25,7 @@ function Open() {
 }
 
 function InsertNormalized(db, snapshot) {
-    db.exec('DELETE FROM clients; DELETE FROM servers; DELETE FROM licenses; DELETE FROM device_secrets; DELETE FROM feature_overrides; DELETE FROM protocol_profiles;');
+    db.exec('DELETE FROM clients; DELETE FROM servers; DELETE FROM licenses; DELETE FROM qr_auth_requests; DELETE FROM device_secrets; DELETE FROM feature_overrides; DELETE FROM protocol_profiles;');
     const serverInsert = db.prepare('INSERT INTO servers(device_key,server_id,alias,note,disabled,draining,drain_meta_json) VALUES(?,?,?,?,?,?,?)');
     for (const [deviceKey, serverId] of Object.entries(snapshot.servers || {})) {
         serverInsert.run(deviceKey, serverId, (snapshot.serverAliases || {})[serverId] || '', (snapshot.serverNotes || {})[serverId] || '', (snapshot.disabledServers || []).includes(serverId) ? 1 : 0, (snapshot.drainingServers || []).includes(serverId) ? 1 : 0, JSON.stringify((snapshot.serverDrainMeta || {})[serverId] || {}));
@@ -37,6 +37,10 @@ function InsertNormalized(db, snapshot) {
     const licenseInsert = db.prepare('INSERT INTO licenses(license_key,created_at,expires_at,bound_client,bound_at,last_auth_at,last_seen_at,last_ip,auth_count,send_count,suspended,memo,tags_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
     for (const [key, value] of Object.entries(snapshot.licenses || {})) {
         licenseInsert.run(key, Number(value.createdAt) || 0, Number(value.expiresAt) || 0, String(value.boundClient || ''), Number(value.boundAt) || 0, Number(value.lastAuthAt) || 0, Number(value.lastSeenAt) || 0, String(value.lastIP || ''), Number(value.authCount) || 0, Number(value.sendCount) || 0, value.suspended ? 1 : 0, String(value.memo || ''), JSON.stringify(value.tags || []));
+    }
+    const qrInsert = db.prepare('INSERT INTO qr_auth_requests(request_id,client_id,status,issued_at,expires_at,request_json) VALUES(?,?,?,?,?,?)');
+    for (const [requestId, value] of Object.entries(snapshot.qrAuthRequests || {})) {
+        qrInsert.run(requestId, String(value.clientId || ''), String(value.status || 'UNKNOWN'), Number(value.issuedAt) || 0, Number(value.expiresAt) || 0, JSON.stringify(value));
     }
     const secretInsert = db.prepare('INSERT INTO device_secrets(device_key,secret_value,created_at,updated_at) VALUES(?,?,?,?)');
     for (const [key, secret] of Object.entries(snapshot.deviceSecrets || {})) {

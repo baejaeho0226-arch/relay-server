@@ -242,6 +242,22 @@ function HandleClientLine(connection, line) {
         return;
     }
 
+    if (line.startsWith('QR_AUTH_RESUME|')) {
+        const parts = line.split('|');
+        const requestedClient = parts.length >= 2 ? NormalizeID(parts[1]) : '';
+        if (requestedClient && requestedClient !== connection.clientId) { SendLine(connection.socket, 'QR_AUTH_ERROR|CLIENT_NOT_OWNER'); return; }
+        require('../services/qrApproval').Resume(connection);
+        return;
+    }
+
+    if (line.startsWith('QR_AUTH_STATUS|')) {
+        const parts = line.split('|');
+        const requestedClient = parts.length >= 3 ? NormalizeID(parts[2]) : '';
+        if (requestedClient && requestedClient !== connection.clientId) { SendLine(connection.socket, 'QR_AUTH_ERROR|CLIENT_NOT_OWNER'); return; }
+        require('../services/qrApproval').Status(connection, parts[1] || '');
+        return;
+    }
+
     if (line === 'PONG' || line.startsWith('PONG|')) { HandlePong(connection, line.split('|')); return; }
     if (line.startsWith('SEND|')) { HandleClientSend(connection, line); return; }
     SendLine(connection.socket, 'ERROR|UNKNOWN_COMMAND');
