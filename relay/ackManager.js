@@ -57,16 +57,24 @@ function HandleServerAck(connection, line) {
     if (result === 'OK') {
         runtimeStats.ackOk++;
         RecordAck(connection.serverId, clientId, 'OK');
-        CompleteTrace(clientId, requestId, 'OK', '', Now());
-        if (client) SendLine(client.socket, `ACK|OK|${requestId}`);
+        const processingMs = parts.length >= 5 && /^\d+$/.test(parts[4]) ? Number(parts[4]) : 0;
+        const processor = parts.length >= 6 ? SafeField(parts[5]) : '';
+        const detail = parts.length >= 7 ? SafeField(parts.slice(6).join(' ')) : '';
+        const trace=CompleteTrace(clientId, requestId, 'OK', '', Now());
+        if(trace){trace.processingMs=processingMs;trace.processor=processor;trace.resultDetail=detail;}
+        if (client) SendLine(client.socket, processingMs||processor||detail ? `ACK|OK|${requestId}|${processingMs}|${processor}|${detail}` : `ACK|OK|${requestId}`);
         SendLine(connection.socket, `ACK_RESULT|OK|${requestId}`);
         LogEvent('ACK_OK', `${requestId} / ${clientId}`);
     } else {
         runtimeStats.ackError++;
         RecordAck(connection.serverId, clientId, 'ERROR');
-        const reason = parts.length >= 5 ? SafeField(parts.slice(4).join(' ')) : 'PROCESS_FAILED';
-        CompleteTrace(clientId, requestId, 'ERROR', reason, Now());
-        if (client) SendLine(client.socket, `ACK|ERROR|${requestId}|${reason}`);
+        const reason = parts.length >= 5 ? SafeField(parts[4]) : 'PROCESS_FAILED';
+        const processingMs = parts.length >= 6 && /^\d+$/.test(parts[5]) ? Number(parts[5]) : 0;
+        const processor = parts.length >= 7 ? SafeField(parts[6]) : '';
+        const detail = parts.length >= 8 ? SafeField(parts.slice(7).join(' ')) : '';
+        const trace=CompleteTrace(clientId, requestId, 'ERROR', reason, Now());
+        if(trace){trace.processingMs=processingMs;trace.processor=processor;trace.resultDetail=detail;}
+        if (client) SendLine(client.socket, processingMs||processor||detail ? `ACK|ERROR|${requestId}|${reason}|${processingMs}|${processor}|${detail}` : `ACK|ERROR|${requestId}|${reason}`);
         SendLine(connection.socket, `ACK_RESULT|ERROR|${requestId}`);
         LogEvent('ACK_ERROR', `${requestId} / ${clientId} / ${reason}`);
     }

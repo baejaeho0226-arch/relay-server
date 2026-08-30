@@ -22,6 +22,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 function SafeIP(...args) { return require('../core/utils').SafeIP(...args); }
 function SaveDatabase(...args) { return require('../storage/database').SaveDatabase(...args); }
 function SendLine(...args) { return require('../core/utils').SendLine(...args); }
+function PersistLicenseChange() { state.licenseRevision = Math.max(0, Number(state.licenseRevision) || 0) + 1; return SaveDatabase(); }
 
 function NormalizeTags(value) {
     const items = Array.isArray(value) ? value : String(value || '').split(',');
@@ -120,7 +121,7 @@ function CreateLicense(days, memo, tags = []) {
         authCount: 0, sendCount: 0, suspended: false, memo: SafeField(memo), tags: NormalizeTags(tags)
     };
     licenses.set(key, license);
-    SaveDatabase();
+    if (!PersistLicenseChange()) { licenses.delete(key); return null; }
     LogEvent('LICENSE_CREATE', key);
     setImmediate(() => { try { require('../services/licenseMonitor').ScanLicenseExpiryAlerts(); } catch (_) {} });
     return { key, expiresAt: license.expiresAt };
@@ -131,7 +132,7 @@ function SetLicenseTags(key, tags) {
     const license = FindLicense(key);
     if (!license) return false;
     license.tags = NormalizeTags(tags);
-    SaveDatabase();
+    PersistLicenseChange();
     LogEvent('LICENSE_TAGS', `${NormalizeLicenseKey(key)} -> ${license.tags.join(',') || '(cleared)'}`);
     return license.tags;
 }
@@ -148,6 +149,7 @@ function ExtendLicense(key, days) {
             NotifyServerAuthorized(client.clientId, client.serverId, license.expiresAt);
         }
     }
+    PersistLicenseChange();
     return true;
 }
 
@@ -173,6 +175,7 @@ function UnbindLicense(key) {
     license.lastSeenAt = 0;
     license.lastIP = '';
     if (oldClient) RevokeLiveLicense(oldClient, 'UNBOUND');
+    PersistLicenseChange();
     return true;
 }
 
@@ -181,6 +184,7 @@ function SuspendLicense(key) {
     if (!license) return false;
     license.suspended = true;
     if (license.boundClient) RevokeLiveLicense(license.boundClient, 'SUSPENDED');
+    PersistLicenseChange();
     return true;
 }
 
@@ -192,6 +196,7 @@ function ResumeLicense(key) {
         const client = GetOnlineClient(license.boundClient);
         if (client) SendLine(client.socket, `LICENSE_STATE|RESUMED|${license.expiresAt}`);
     }
+    PersistLicenseChange();
     return true;
 }
 
@@ -202,6 +207,7 @@ function DeleteLicense(key) {
     const clientId = license.boundClient;
     licenses.delete(key);
     if (clientId) RevokeLiveLicense(clientId, 'REVOKED');
+    PersistLicenseChange();
     return true;
 }
 
@@ -238,7 +244,7 @@ function TransferLicense(key, newClientId) {
     if (oldClient && oldClient !== newClientId) RevokeLiveLicense(oldClient, 'TRANSFERRED');
     const target = GetOnlineClient(newClientId);
     if (target) NotifyServerUnauthorized(newClientId, 'LICENSE_REQUIRED');
-    SaveDatabase();
+    PersistLicenseChange();
     LogEvent('LICENSE_TRANSFER', `${key} -> ${newClientId}`);
     return { ok: true };
 }

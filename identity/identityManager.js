@@ -109,6 +109,7 @@ function FindAvailableServer() {
         if (!server.registered || !server.socket || server.socket.destroyed) continue;
         if (disabledServers.has(server.serverId) || drainingServers.has(server.serverId)) continue;
         if (GetKickUntil(kickedServers, server.serverId) > Now()) continue;
+        try { const da=require('../services/deviceAuth'); if(da.Enforced('SERVER',server.serverId)&&!da.Verified('SERVER',server.serverId)) continue; } catch (_) {}
         if (server.clients.size >= MAX_CLIENTS_PER_SERVER) continue;
         list.push(server);
     }

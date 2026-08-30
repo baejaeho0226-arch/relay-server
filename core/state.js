@@ -38,6 +38,28 @@ module.exports = {
     clientNotes: new Map(),
     serverDrainMeta: new Map(),
 
+    desiredRuntimeConfig: {
+        revision: 1,
+        reconnectBaseMs: 500,
+        reconnectMaxMs: 30000,
+        reconnectJitterPct: 25,
+        heartbeatMs: 10000,
+        featureFlags: {}
+    },
+    serverFeatureOverrides: new Map(),
+    clientFeatureOverrides: new Map(),
+    serverProtocolProfiles: new Map(),
+    clientProtocolProfiles: new Map(),
+    deviceSecrets: new Map(),
+    deviceAuthStatus: new Map(),
+    deviceAuthChallenges: new Map(),
+    deviceInfo: new Map(),
+    deviceCapabilities: new Map(),
+    deviceDiagnostics: new Map(),
+    clientUiStates: new Map(),
+    pendingDeviceCommands: new Map(),
+    licenseRevision: 0,
+
     runtimeStats: {
         startedAt: Date.now(),
         totalConnections: 0,

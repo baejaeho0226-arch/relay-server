@@ -33,6 +33,13 @@ const { GetReconnectStatus } = require('../services/reconnectMonitor');
 const { GetExpirySummary, MatchesExpiryFilter } = require('../services/licenseMonitor');
 const { ListNotifications, NotificationSummary, MarkRead, MarkAllRead, ClearNotifications } = require('../services/notificationCenter');
 const { Can, IsAdmin, ClientIP, ListSessions, RevokeSession, RevokeOtherSessions, RevokeAllSessions } = require('./webAuth');
+const deviceControl = require('../services/deviceControl');
+const featureFlags = require('../services/featureFlags');
+const protocolReadiness = require('../services/protocolReadiness');
+const deviceAuth = require('../services/deviceAuth');
+const { LicenseQr } = require('../services/qrCode');
+const loadSimulator = require('../services/loadSimulator');
+const storageMigration = require('../services/storageMigration');
 
 const {
     BACKUP_DIR, DATA_DIR, CURRENT_PROTOCOL_VERSION,
@@ -79,11 +86,6 @@ function RequireOperation(res, session, operation) {
     return false;
 }
 
-function RequireConfirm(res, body, expected) {
-    if (String(body && body.confirmText || '').trim().toUpperCase() === expected) return true;
-    ApiError(res, 409, 'CONFIRM_REQUIRED', expected);
-    return false;
-}
 
 async function ReadJsonBody(req) {
     return new Promise((resolve, reject) => {
@@ -740,7 +742,6 @@ async function HandleApiRequest(req, res, session) {
         if (!RequireAdmin(res, session)) return;
         const file = path.basename(DecodePart(match[1]));
         const action = match[2];
-        if (!RequireConfirm(res, body, action === 'restore' ? 'RESTORE' : 'DELETE')) return;
         if (action === 'restore') {
             const result = RestoreBackup(file);
             if (!result.ok) { ApiError(res, 400, result.reason); return; }
@@ -817,6 +818,64 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
+
+    if (method === 'GET' && pathname === '/api/control/devices') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, devices: deviceControl.DeviceOverview(), config: state.desiredRuntimeConfig }); return;
+    }
+    if (method === 'POST' && pathname === '/api/control/config') {
+        if (!RequireAdmin(res, session)) return;
+        const cfg=deviceControl.UpdateDesiredConfig(body); SaveDatabase();
+        for(const d of deviceControl.DeviceOverview()) if(d.online) deviceControl.PushDesiredConfig(d.type,d.id);
+        Json(res,200,{ok:true,config:cfg}); return;
+    }
+    let m=pathname.match(/^\/api\/control\/(server|client)\/([0-9A-Fa-f]{16})\/command$/);
+    if(method==='POST'&&m){ if(!RequireAdmin(res,session))return; const r=deviceControl.SendCommand(m[1],m[2],body.command,body.arg||''); if(!r.ok){ApiError(res,409,r.reason);return;} Json(res,200,r);return; }
+    if (method === 'GET' && pathname === '/api/control/features') { if(!RequireOperation(res,session,'VIEW'))return; Json(res,200,{ok:true,defaults:featureFlags.DEFAULTS,global:featureFlags.GlobalFlags(),serverOverrides:Object.fromEntries(state.serverFeatureOverrides),clientOverrides:Object.fromEntries(state.clientFeatureOverrides)});return; }
+    if (method === 'POST' && pathname === '/api/control/features/global') { if(!RequireAdmin(res,session))return; const flags=featureFlags.SetGlobalFlags(body.flags||{}); SaveDatabase(); for(const d of deviceControl.DeviceOverview())if(d.online)deviceControl.PushDesiredConfig(d.type,d.id);Json(res,200,{ok:true,flags});return; }
+    if (method === 'POST' && pathname === '/api/control/features/device') { if(!RequireAdmin(res,session))return; const type=String(body.type||'').toUpperCase(),id=NormalizeID(body.id); if(!['SERVER','CLIENT'].includes(type)||!id){ApiError(res,400,'INVALID_DEVICE');return;} const overrides=featureFlags.SetDeviceOverrides(type,id,body.flags||{});SaveDatabase();deviceControl.PushDesiredConfig(type,id);Json(res,200,{ok:true,overrides,effective:featureFlags.EffectiveFlags(type,id)});return; }
+    if (method === 'GET' && pathname === '/api/control/protocol-readiness') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,readiness:protocolReadiness.Overview()});return; }
+    if (method === 'GET' && pathname === '/api/control/security') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,devices:deviceAuth.Overview()});return; }
+    if (method === 'GET' && pathname === '/api/control/sequences') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,devices:require('../services/eventSequence').Overview()});return; }
+    if (method === 'POST' && pathname === '/api/control/security/challenge') { if(!RequireAdmin(res,session))return;const r=deviceAuth.IssueChallenge(body.type,body.id);if(!r.ok){ApiError(res,409,r.reason);return;}Json(res,200,r);return; }
+    if (method === 'POST' && pathname === '/api/control/security/reset') { if(!RequireAdmin(res,session))return;const r=deviceAuth.Reset(body.type,body.id);if(!r.ok){ApiError(res,409,r.reason);return;}Json(res,200,r);return; }
+    m=pathname.match(/^\/api\/licenses\/([^/]+)\/qr$/);
+    if(method==='GET'&&m){if(!RequireOperation(res,session,'VIEW'))return;const key=NormalizeLicenseKey(DecodePart(m[1]));if(!state.licenses.has(key)){ApiError(res,404,'LICENSE_NOT_FOUND');return;}try{const qr=await LicenseQr(key);Json(res,200,{ok:true,...qr});}catch(e){ApiError(res,500,'QR_FAILED',e.message);}return;}
+
+    if (method === 'GET' && pathname === '/api/load-simulator') {
+        if (!RequireAdmin(res, session)) return;
+        Json(res, 200, { ok: true, simulator: loadSimulator.Overview() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/load-simulator/command') {
+        if (!RequireAdmin(res, session)) return;
+        const options = loadSimulator.NormalizeOptions(body || {});
+        Json(res, 200, { ok: true, options, command: loadSimulator.BuildCommand(options) });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/storage/migration/status') {
+        if (!RequireAdmin(res, session)) return;
+        Json(res, 200, { ok: true, migration: storageMigration.Status() });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/storage/migration/schema') {
+        if (!RequireAdmin(res, session)) return;
+        Json(res, 200, { ok: true, schema: storageMigration.Schema() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/storage/migration/export') {
+        if (!RequireAdmin(res, session)) return;
+        const result = storageMigration.ExportBundle();
+        if (!result.ok) { ApiError(res, 409, result.reason); return; }
+        LogEvent('SQLITE_MIGRATION_EXPORT', `${result.directory} ${result.checksum}`);
+        Json(res, 201, result);
+        return;
+    }
+
     if (method === 'GET' && pathname === '/api/system/health') {
         if (!RequireOperation(res, session, 'VIEW')) return;
         Json(res, 200, { ok: true, health: BuildSystemHealth() });
@@ -841,7 +900,7 @@ async function HandleApiRequest(req, res, session) {
     }
 
     if (method === 'POST' && pathname === '/api/system/service/stop') {
-        if (!RequireAdmin(res, session) || !RequireConfirm(res, body, 'STOP')) return;
+        if (!RequireAdmin(res, session)) return;
         state.serviceEnabled = false;
         state.maintenanceMode = false;
         SaveDatabase();
@@ -901,7 +960,7 @@ async function HandleApiRequest(req, res, session) {
     }
 
     if (method === 'POST' && pathname === '/api/system/version') {
-        if (!RequireAdmin(res, session) || !RequireConfirm(res, body, 'VERSION')) return;
+        if (!RequireAdmin(res, session)) return;
         const protocol = Number(body.protocol);
         const serverVersion = NormalizeVersion(body.serverVersion);
         const clientVersion = NormalizeVersion(body.clientVersion);

@@ -111,25 +111,19 @@ setInterval(() => {
 }, 1000);
 
 setInterval(() => {
+    const now=Date.now(), hb=Math.max(1000,Number(state.desiredRuntimeConfig.heartbeatMs)||10000);
     for (const c of Array.from(servers.values())) {
         if (!c.socket || c.socket.destroyed) continue;
-        if (Date.now() - c.lastSeen > 30000) {
-            c.socket.destroy();
-            continue;
-        }
-        SendPing(c);
+        if (now - c.lastSeen > Math.max(30000,hb*3)) { c.socket.destroy(); continue; }
+        if(!c.nextPingAt||now>=c.nextPingAt){SendPing(c);c.nextPingAt=now+hb;}
     }
-
     for (const c of Array.from(clients.values())) {
         if (!c.socket || c.socket.destroyed) continue;
-        if (Date.now() - c.lastSeen > 30000) {
-            c.socket.destroy();
-            continue;
-        }
+        if (now - c.lastSeen > Math.max(30000,hb*3)) { c.socket.destroy(); continue; }
         ValidateClientLicense(c);
-        SendPing(c);
+        if(!c.nextPingAt||now>=c.nextPingAt){SendPing(c);c.nextPingAt=now+hb;}
     }
-}, 10000);
+}, 1000);
 
 setInterval(() => SaveDatabase(), 30000);
 setInterval(() => ScanLicenseExpiryAlerts(), 60000);

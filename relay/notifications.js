@@ -39,28 +39,33 @@ function NotifyServerUnauthorized(clientId, reason) {
     SendLine(server.socket, `CLIENT_UNAUTHORIZED|${clientId}|${reason}`);
 }
 
-function NoticeAll(text) {
+function NoticePayload(client, level, text) { const caps=require('../services/deviceControl').Capabilities('CLIENT', client.clientId); const clean=SafeField(text); return caps.includes('NOTICE_LEVELS') ? `NOTICE|${String(level||'INFO').toUpperCase()}|${clean}` : `NOTICE|${clean}`; }
+
+function NoticeAll(text, level = 'INFO') {
     const clean = SafeField(text);
     let count = 0;
-    for (const client of clients.values()) if (SendLine(client.socket, `NOTICE|${clean}`)) count++;
+    for (const client of clients.values()) if (SendLine(client.socket, NoticePayload(client, level, clean))) count++;
     runtimeStats.notices += count;
     LogEvent('NOTICE_ALL', `${count} / ${clean}`);
     return count;
 }
 
-function NoticeClient(clientId, text) {
+function NoticeClient(clientId, text, level = 'INFO') {
     clientId = NormalizeID(clientId);
     const client = GetOnlineClient(clientId);
     if (!client) return false;
     const clean = SafeField(text);
-    const ok = SendLine(client.socket, `NOTICE|${clean}`);
+    const ok = SendLine(client.socket, NoticePayload(client, level, clean));
     if (ok) { runtimeStats.notices++; LogEvent('NOTICE_CLIENT', `${clientId} / ${clean}`); }
     return ok;
 }
+
+function NoticeServer(serverId, text, level='INFO') { serverId=NormalizeID(serverId); const server=GetOnlineServer(serverId); if(!server)return 0; let count=0; for(const clientId of server.clients){const c=GetOnlineClient(clientId);if(c&&SendLine(c.socket,NoticePayload(c,level,text)))count++;} runtimeStats.notices+=count; LogEvent('NOTICE_SERVER',`${serverId} / ${count} / ${SafeField(text)}`); return count;}
 
 module.exports = {
     NotifyServerAuthorized,
     NotifyServerUnauthorized,
     NoticeAll,
-    NoticeClient
+    NoticeClient,
+    NoticeServer
 };

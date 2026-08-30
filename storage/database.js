@@ -34,6 +34,13 @@ function BuildDatabaseObject() {
         serverNotes: Object.fromEntries(state.serverNotes),
         clientNotes: Object.fromEntries(state.clientNotes),
         serverDrainMeta: Object.fromEntries(state.serverDrainMeta),
+        desiredRuntimeConfig: state.desiredRuntimeConfig,
+        serverFeatureOverrides: Object.fromEntries(state.serverFeatureOverrides),
+        clientFeatureOverrides: Object.fromEntries(state.clientFeatureOverrides),
+        serverProtocolProfiles: Object.fromEntries(state.serverProtocolProfiles),
+        clientProtocolProfiles: Object.fromEntries(state.clientProtocolProfiles),
+        deviceSecrets: Object.fromEntries(state.deviceSecrets),
+        licenseRevision: Number(state.licenseRevision) || 0,
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
         licenses: Object.fromEntries(licenses)
@@ -52,6 +59,7 @@ function SaveDatabase() {
         state.runtimeStats.lastDatabaseSaveAt = Date.now();
         state.runtimeStats.lastDatabaseSaveOk = true;
         try { state.runtimeStats.lastDatabaseSize = fs.statSync(DB_FILE).size; } catch (_) {}
+        try { require('./licenseSnapshot').SaveLicenseSnapshot(); } catch (_) {}
         return true;
     } catch (error) {
         state.runtimeStats.lastDatabaseSaveAt = Date.now();
@@ -136,6 +144,8 @@ function ImportDatabaseObject(data) {
     state.serverNotes.clear();
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
+    state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -194,6 +204,21 @@ function ImportDatabaseObject(data) {
         }
     }
 
+
+    if (data.desiredRuntimeConfig && typeof data.desiredRuntimeConfig === 'object') {
+        const d=data.desiredRuntimeConfig;
+        state.desiredRuntimeConfig={
+            revision:Math.max(1,Number(d.revision)||1), reconnectBaseMs:Math.max(100,Number(d.reconnectBaseMs)||500),
+            reconnectMaxMs:Math.max(100,Number(d.reconnectMaxMs)||30000), reconnectJitterPct:Math.max(0,Math.min(100,Number(d.reconnectJitterPct)||0)),
+            heartbeatMs:Math.max(1000,Number(d.heartbeatMs)||10000), featureFlags:(d.featureFlags&&typeof d.featureFlags==='object')?d.featureFlags:{}
+        };
+    }
+    for (const [src,map] of [[data.serverFeatureOverrides,state.serverFeatureOverrides],[data.clientFeatureOverrides,state.clientFeatureOverrides],[data.serverProtocolProfiles,state.serverProtocolProfiles],[data.clientProtocolProfiles,state.clientProtocolProfiles]]) {
+        if(src&&typeof src==='object') for(const [id,v] of Object.entries(src)){const n=NormalizeID(id);if(n&&v&&typeof v==='object')map.set(n,v);}
+    }
+    if(data.deviceSecrets&&typeof data.deviceSecrets==='object') for(const [key,secret] of Object.entries(data.deviceSecrets)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&/^[A-Za-z0-9_-]{40,64}$/.test(String(secret||'')))state.deviceSecrets.set(key,String(secret));}
+    state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
+
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;
     if (typeof data.maintenanceMode === 'boolean') state.maintenanceMode = data.maintenanceMode;
 
@@ -242,6 +267,7 @@ function LoadDatabase() {
         const data = TryLoadJson(file);
         if (data && ImportDatabaseObject(data)) {
             if (file !== DB_FILE) LogEvent('DATABASE_AUTO_RECOVER', path.basename(file));
+            try { if (require('./licenseSnapshot').RecoverIfNewer()) LogEvent('LICENSE_SNAPSHOT_RECOVER', `revision=${state.licenseRevision}`); } catch (_) {}
             SaveDatabase();
             return;
         }

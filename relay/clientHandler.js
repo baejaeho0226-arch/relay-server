@@ -45,6 +45,7 @@ function AttachClient(connection, saved) {
     connection.licenseKey = '';
     connection.licenseExpiresAt = 0;
     connection.lastServerAuthState = '';
+    connection.deviceAuthVerified = false;
     connection.lastSeen = Now();
     connection.lastIP = SafeIP(connection.socket);
     clients.set(saved.id, connection);
@@ -107,6 +108,8 @@ function IsRateLimited(connection) {
 
 function HandleClientSend(connection, line) {
     if (!state.serviceEnabled) { SendLine(connection.socket, 'SERVICE_STATE|DISABLED'); return; }
+    const deviceAuth = require('../services/deviceAuth');
+    if (deviceAuth.Enforced('CLIENT',connection.clientId) && !deviceAuth.Verified('CLIENT',connection.clientId)) { SendLine(connection.socket,'ERROR|DEVICE_AUTH_REQUIRED'); deviceAuth.IssueChallenge('CLIENT',connection.clientId); return; }
     // Maintenance intentionally allows already-authorized live sessions to continue.
     if (state.maintenanceMode && !connection.licenseAuthorized) { SendLine(connection.socket, 'SERVICE_STATE|MAINTENANCE'); return; }
     if (IsRateLimited(connection)) { SendLine(connection.socket, 'ERROR|RATE_LIMIT'); return; }
@@ -136,6 +139,7 @@ function HandleClientSend(connection, line) {
     const server = saved ? GetOnlineServer(saved.serverId) : null;
     if (!saved) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND'); return; }
     if (!server) { SendLine(connection.socket, 'ERROR|SERVER_OFFLINE'); return; }
+    if (deviceAuth.Enforced('SERVER',saved.serverId) && !deviceAuth.Verified('SERVER',saved.serverId)) { SendLine(connection.socket,'ERROR|SERVER_AUTH_REQUIRED'); deviceAuth.IssueChallenge('SERVER',saved.serverId); return; }
 
     const payload = `NUMBER|${requestId}|${clientId}|${number}`;
     if (!SendLine(server.socket, payload)) { SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED'); return; }
@@ -164,6 +168,18 @@ function HandleClientLine(connection, line) {
     line = line.trim();
     if (!line) return;
 
+    if (connection.clientId) {
+        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('CLIENT', connection.clientId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('CLIENT', connection.clientId); require('../services/deviceAuth').SendEnrollmentSecret('CLIENT', connection.clientId, false); return; }
+        if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('CLIENT', connection.clientId, line.split('|').slice(1)); return; }
+        if (line.startsWith('PROTOCOL_PROFILE|')) { const p=line.split('|'); require('../services/protocolReadiness').RecordProfile('CLIENT', connection.clientId, p[1], p[2], p.slice(3).join('|')); return; }
+        if (line === 'DEVICE_SECRET_ACK' || line.startsWith('DEVICE_SECRET_ACK|')) { require('../services/deviceAuth').HandleSecretAck('CLIENT', connection.clientId); return; }
+        if (line.startsWith('DEVICE_AUTH|')) { const p=line.split('|'); require('../services/deviceAuth').HandleAuth('CLIENT', connection.clientId, p[1], p[2]); return; }
+        if (line.startsWith('COMMAND_ACK|')) { require('../services/deviceControl').RecordCommandAck('CLIENT', connection.clientId, line.split('|')); return; }
+        if (line.startsWith('DIAGNOSTICS|')) { require('../services/deviceControl').RecordDiagnostics('CLIENT', connection.clientId, line.split('|').slice(2).join('|')); return; }
+        if (line.startsWith('CONFIG_ACK|')) {  connection.configAck = line; return; }
+        if (line.startsWith('UI_STATE|')) { const p=line.split('|'); require('../services/deviceControl').RecordUiState(connection.clientId,p[1],p.slice(2).join('|')); return; }
+    }
+
     if (line === 'CONNECT' || line.startsWith('CONNECT|')) {
         const parts = line.split('|');
         let protocolVersion = 1, appVersion = '1.0.0', deviceKey = '';
@@ -182,6 +198,8 @@ function HandleClientLine(connection, line) {
         const parts = line.split('|');
         const requestedClient = parts.length >= 3 ? NormalizeID(parts[2]) : '';
         if (requestedClient && requestedClient !== connection.clientId) { SendLine(connection.socket, 'LICENSE_ERROR|CLIENT_NOT_OWNER'); return; }
+        const da=require('../services/deviceAuth');
+        if (da.Enforced('CLIENT',connection.clientId) && !da.Verified('CLIENT',connection.clientId)) { SendLine(connection.socket,'ERROR|DEVICE_AUTH_REQUIRED'); da.IssueChallenge('CLIENT',connection.clientId); return; }
         AuthorizeClient(connection, parts[1] || '');
         return;
     }

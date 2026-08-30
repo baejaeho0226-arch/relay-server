@@ -54,6 +54,7 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     connection.lastSeen = Now();
     connection.lastIP = SafeIP(connection.socket);
     connection.clients = new Set();
+    connection.deviceAuthVerified = false;
     connection.reconnectCount = (runtimeStats.serverReconnects.get(serverId) || 0) + 1;
     runtimeStats.serverReconnects.set(serverId, connection.reconnectCount);
     require('../services/reconnectMonitor').RecordReconnect('SERVER', serverId);
@@ -82,6 +83,17 @@ function HandleServerLine(connection, line) {
     line = line.trim();
     if (!line) return;
 
+    if (connection.serverId) {
+        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('SERVER', connection.serverId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('SERVER', connection.serverId); require('../services/deviceAuth').SendEnrollmentSecret('SERVER', connection.serverId, false); return; }
+        if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('SERVER', connection.serverId, line.split('|').slice(1)); return; }
+        if (line.startsWith('PROTOCOL_PROFILE|')) { const p=line.split('|'); require('../services/protocolReadiness').RecordProfile('SERVER', connection.serverId, p[1], p[2], p.slice(3).join('|')); return; }
+        if (line === 'DEVICE_SECRET_ACK' || line.startsWith('DEVICE_SECRET_ACK|')) { require('../services/deviceAuth').HandleSecretAck('SERVER', connection.serverId); return; }
+        if (line.startsWith('DEVICE_AUTH|')) { const p=line.split('|'); require('../services/deviceAuth').HandleAuth('SERVER', connection.serverId, p[1], p[2]); return; }
+        if (line.startsWith('COMMAND_ACK|')) { require('../services/deviceControl').RecordCommandAck('SERVER', connection.serverId, line.split('|')); return; }
+        if (line.startsWith('DIAGNOSTICS|')) { require('../services/deviceControl').RecordDiagnostics('SERVER', connection.serverId, line.split('|').slice(2).join('|')); return; }
+        if (line.startsWith('CONFIG_ACK|')) {  connection.configAck = line; return; }
+    }
+
     if (line === 'REGISTER' || line.startsWith('REGISTER|')) {
         if (connection.registered) { SendLine(connection.socket, 'ERROR|ALREADY_REGISTERED'); return; }
         const parts = line.split('|');
@@ -99,7 +111,7 @@ function HandleServerLine(connection, line) {
     }
 
     if (line === 'PONG' || line.startsWith('PONG|')) { HandlePong(connection, line.split('|')); return; }
-    if (line.startsWith('ACK|')) { HandleServerAck(connection, line); return; }
+    if (line.startsWith('ACK|')) { const da=require('../services/deviceAuth'); if(da.Enforced('SERVER',connection.serverId)&&!da.Verified('SERVER',connection.serverId)){ SendLine(connection.socket,'ERROR|DEVICE_AUTH_REQUIRED'); da.IssueChallenge('SERVER',connection.serverId); return; } HandleServerAck(connection, line); return; }
     SendLine(connection.socket, 'ERROR|UNKNOWN_COMMAND');
 }
 

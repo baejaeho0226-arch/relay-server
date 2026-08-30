@@ -15,9 +15,9 @@ function SendLine(...args) { return require('../core/utils').SendLine(...args); 
 
 function SendPing(connection) {
     if (!connection || !connection.socket || connection.socket.destroyed) return;
-    const token = RandomHex(6);
-    connection.pendingPingToken = token;
-    connection.pendingPingAt = Now();
+    connection.heartbeatStats = connection.heartbeatStats || {sent:0,received:0,missed:0,consecutiveMisses:0,rttMin:-1,rttMax:-1,rttSum:0,rttSamples:0,lastRtt:-1,jitterSum:0,jitterSamples:0};
+    if (connection.pendingPingToken && connection.pendingPingAt > 0) { connection.heartbeatStats.missed++; connection.heartbeatStats.consecutiveMisses++; }
+    const token = RandomHex(6); connection.pendingPingToken = token; connection.pendingPingAt = Now(); connection.heartbeatStats.sent++;
     SendLine(connection.socket, `PING|${token}|${connection.pendingPingAt}`);
 }
 
@@ -26,8 +26,10 @@ function HandlePong(connection, parts) {
     const token = parts[1] || '';
     if (token && token === connection.pendingPingToken && connection.pendingPingAt > 0) {
         connection.rttMs = Math.max(0, Now() - connection.pendingPingAt);
-        connection.pendingPingToken = '';
-        connection.pendingPingAt = 0;
+        const h=connection.heartbeatStats||(connection.heartbeatStats={sent:0,received:0,missed:0,consecutiveMisses:0,rttMin:-1,rttMax:-1,rttSum:0,rttSamples:0,lastRtt:-1,jitterSum:0,jitterSamples:0});
+        h.received++; h.consecutiveMisses=0; h.rttMin=h.rttMin<0?connection.rttMs:Math.min(h.rttMin,connection.rttMs); h.rttMax=Math.max(h.rttMax,connection.rttMs); h.rttSum+=connection.rttMs; h.rttSamples++;
+        if(h.lastRtt>=0){h.jitterSum+=Math.abs(connection.rttMs-h.lastRtt);h.jitterSamples++;}h.lastRtt=connection.rttMs;h.lastPongAt=Now();
+        connection.pendingPingToken = ''; connection.pendingPingAt = 0;
     }
 }
 

@@ -24,8 +24,9 @@ function CreateConnection(socket) {
         protocolVersion:0,appVersion:'',licenseAuthorized:false,licenseKey:'',licenseExpiresAt:0,lastExpiryWarningDay:null,
         lastServerAuthState:'',adminAuthenticated:false,adminAuthenticatedAt:0,adminNonce:'',adminNonceCreatedAt:0,
         adminRole:'',pendingAdminRole:'',lastSeen:Now(),lastIP:SafeIP(socket),clients:new Set(),buffer:'',
-        pendingPingToken:'',pendingPingAt:0,rttMs:-1,reconnectCount:0,disconnected:false
+        pendingPingToken:'',pendingPingAt:0,rttMs:-1,reconnectCount:0,disconnected:false,deviceAuthVerified:false,sequenceStats:{tx:0,rxLast:0,rxReceived:0,rxMissing:0,rxDuplicates:0,rxOutOfOrder:0,lastGapAt:0,lastRxAt:0,lastTxAt:0},heartbeatStats:{sent:0,received:0,missed:0,consecutiveMisses:0,rttMin:-1,rttMax:-1,rttSum:0,rttSamples:0,lastRtt:-1,jitterSum:0,jitterSamples:0}
     };
+    socket.__relayConnection = connection;
     socket.setNoDelay(true);socket.setKeepAlive(true,10000);
     socket.on('data',data=>{
         connection.buffer+=data.toString('utf8');
@@ -45,6 +46,11 @@ function CreateConnection(socket) {
                     connection.type='admin';
                 }
                 else{SendLine(socket,'ERROR|UNKNOWN_COMMAND');continue;}
+            }
+            if (connection.type !== 'admin' && line.startsWith('SEQ|')) {
+                const unwrapped = require('../services/eventSequence').UnwrapInbound(connection, line);
+                if (!unwrapped.ok) { SendLine(socket, `ERROR|${unwrapped.reason}`); continue; }
+                line = unwrapped.line;
             }
             if(connection.type==='server')HandleServerLine(connection,line);else if(connection.type==='client')HandleClientLine(connection,line);else HandleAdminLine(connection,line);
         }

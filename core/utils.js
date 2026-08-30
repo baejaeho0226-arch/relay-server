@@ -75,7 +75,12 @@ function SafeIP(socket) {
 function SendLine(socket, text) {
     if (!socket || socket.destroyed) return false;
     try {
-        socket.write(String(text) + '\n');
+        let output = String(text);
+        const connection = socket.__relayConnection;
+        if (connection && connection.type !== 'admin') {
+            try { output = require('../services/eventSequence').WrapOutbound(connection, output); } catch (_) {}
+        }
+        socket.write(output + '\n');
         return true;
     } catch (_) {
         return false;

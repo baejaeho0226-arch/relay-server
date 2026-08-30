@@ -21,6 +21,7 @@ const modalBody = document.getElementById('modal-body');
 const modalCancel = document.getElementById('modal-cancel');
 const modalConfirm = document.getElementById('modal-confirm');
 const notificationBadge = document.getElementById('notification-badge');
+const installPwaBtn = document.getElementById('install-pwa-btn');
 
 let session = null;
 let currentView = 'dashboard';
@@ -43,6 +44,7 @@ let paletteTimer = null;
 let terminalLines = [];
 let terminalHistory = [];
 let terminalHistoryIndex = -1;
+let deferredInstallPrompt = null;
 
 const titles = {
   dashboard: ['Dashboard', 'Relay 전체 상태와 최근 이벤트를 확인합니다.'],
@@ -55,11 +57,15 @@ const titles = {
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
   licenses: ['Licenses', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
+  features: ['Feature Flags', '전역 기능과 Server / Client별 Override를 관리합니다.'],
+  protocol: ['Protocol / Security', 'Protocol v3 준비도, Device HMAC, Event Sequence 상태를 확인합니다.'],
   audit: ['Audit Log', '최근 서버 이벤트와 관리 작업 기록입니다.'],
   activity: ['Admin Activity', 'Web Admin에서 수행된 관리 작업과 결과를 추적합니다.'],
   sessions: ['Sessions', '현재 Web Admin 로그인 세션을 확인하고 종료합니다.'],
   backups: ['Backups', 'Relay 데이터베이스 백업과 복원을 관리합니다.'],
   health: ['System Health', 'Node / DB / Backup / Audit / Relay 상태를 진단합니다.'],
+  loadlab: ['Load Simulator', '별도 프로세스에서 Relay 연결/프로토콜 부하 테스트 명령을 생성합니다.'],
+  storage: ['Storage Migration', 'JSON 안정판을 유지한 채 SQLite 전환 준비 상태와 Migration Bundle을 관리합니다.'],
   system: ['System', '서비스, 유지보수 및 최소 버전 정책을 관리합니다.'],
   danger: ['Danger Zone', '복구 영향이 큰 작업만 별도로 실행합니다.']
 };
@@ -190,7 +196,7 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    if (['dashboard', 'monitor', 'distribution', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'danger'].includes(currentView)) renderCurrent(true);
+    if (['dashboard', 'monitor', 'distribution', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'features', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
     updateNotificationBadge();
   });
   eventSource.addEventListener('session', () => showLogin());
@@ -262,11 +268,15 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
     else if (currentView === 'licenses') await renderLicenses();
+    else if (currentView === 'features') await renderFeatureFlags();
+    else if (currentView === 'protocol') await renderProtocolSecurity();
     else if (currentView === 'audit') await renderAudit();
     else if (currentView === 'activity') await renderActivity();
     else if (currentView === 'sessions') await renderSessions();
     else if (currentView === 'backups') await renderBackups();
     else if (currentView === 'health') await renderSystemHealth();
+    else if (currentView === 'loadlab') await renderLoadSimulator();
+    else if (currentView === 'storage') await renderStorageMigration();
     else if (currentView === 'system') await renderSystem();
     else if (currentView === 'danger') await renderDangerZone();
   } catch (error) {
@@ -467,11 +477,11 @@ async function renderDistribution() {
 async function renderDangerZone() {
   if (!roleIsAdmin()) { content.innerHTML='<div class="empty">FORBIDDEN</div>'; return; }
   const [{ system:s }, { backups }, { licenses }] = await Promise.all([api('/api/system'), api('/api/backups'), api('/api/licenses?status=ALL&expiry=ALL')]);
-  content.innerHTML = `<div class="danger-banner"><strong>!! DANGER ZONE !!</strong><span>이 화면의 작업은 서비스/데이터/접속 상태에 직접 영향을 줍니다. 확인 문구가 정확히 일치해야 실행됩니다.</span></div><div class="danger-grid">
-    <div class="section-card danger-card"><div class="section-head"><h3>Service Stop</h3>${badge(s.serviceEnabled?'ONLINE':'OFFLINE')}</div><div class="section-body"><p class="muted">모든 Client 인증을 해제하고 Relay 서비스를 중지합니다.</p><label>확인 문구<input id="danger-stop-confirm" placeholder="STOP"></label><button id="danger-service-stop" class="danger">STOP SERVICE</button></div></div>
-    <div class="section-card danger-card"><div class="section-head"><h3>Backup Restore</h3><span class="small-note">${backups.length} FILES</span></div><div class="section-body"><label>Backup<select id="danger-backup-file">${backups.map(b=>`<option value="${esc(b.file)}">${esc(b.file)} // ${esc(fmtBytes(b.size))}</option>`).join('')}</select></label><label>Restore 확인 문구<input id="danger-restore-confirm" placeholder="RESTORE"></label><div class="actions"><button id="danger-backup-restore" class="danger" ${backups.length?'':'disabled'}>RESTORE BACKUP</button></div><label>Delete 확인 문구<input id="danger-backup-delete-confirm" placeholder="DELETE"></label><div class="actions"><button id="danger-backup-delete" class="danger" ${backups.length?'':'disabled'}>DELETE BACKUP</button></div></div></div>
-    <div class="section-card danger-card"><div class="section-head"><h3>Version Force Apply</h3><span class="small-note">CURRENT P${s.currentProtocolVersion}</span></div><div class="section-body"><div class="form-grid"><label>Protocol<input id="danger-version-protocol" type="number" min="1" max="${s.currentProtocolVersion}" value="${s.minProtocolVersion}"></label><label>Server<input id="danger-version-server" value="${esc(s.minServerVersion)}"></label><label>Client<input id="danger-version-client" value="${esc(s.minClientVersion)}"></label></div><label>확인 문구<input id="danger-version-confirm" placeholder="VERSION"></label><button id="danger-version-apply" class="danger">APPLY VERSION POLICY</button></div></div>
-    <div class="section-card danger-card"><div class="section-head"><h3>Bulk License Delete</h3><span class="small-note">${licenses.length} TOTAL</span></div><div class="section-body"><p class="muted">License Key를 줄바꿈/쉼표로 입력합니다. 최대 500개.</p><label>License Keys<textarea id="danger-license-keys" placeholder="KEY1\nKEY2"></textarea></label><label>확인 문구<input id="danger-license-confirm" placeholder="DELETE"></label><button id="danger-license-delete" class="danger">DELETE LICENSES</button></div></div>
+  content.innerHTML = `<div class="danger-banner"><strong>!! DANGER ZONE !!</strong><span>위험 작업은 영향 범위를 확인한 뒤 Web 모달에서 한 번 더 승인합니다. 별도 확인 문구 입력은 사용하지 않습니다.</span></div><div class="danger-grid">
+    <div class="section-card danger-card"><div class="section-head"><h3>Service Stop</h3>${badge(s.serviceEnabled?'ONLINE':'OFFLINE')}</div><div class="section-body"><p class="muted">모든 Client 인증을 해제하고 Relay 서비스를 중지합니다.</p><button id="danger-service-stop" class="danger">STOP SERVICE</button></div></div>
+    <div class="section-card danger-card"><div class="section-head"><h3>Backup Restore / Delete</h3><span class="small-note">${backups.length} FILES</span></div><div class="section-body"><label>Backup<select id="danger-backup-file">${backups.map(b=>`<option value="${esc(b.file)}">${esc(b.file)} // ${esc(fmtBytes(b.size))}</option>`).join('')}</select></label><div class="actions"><button id="danger-backup-restore" class="danger" ${backups.length?'':'disabled'}>RESTORE BACKUP</button><button id="danger-backup-delete" class="danger" ${backups.length?'':'disabled'}>DELETE BACKUP</button></div></div></div>
+    <div class="section-card danger-card"><div class="section-head"><h3>Version Force Apply</h3><span class="small-note">CURRENT P${s.currentProtocolVersion}</span></div><div class="section-body"><div class="form-grid"><label>Protocol<input id="danger-version-protocol" type="number" min="1" max="${s.currentProtocolVersion}" value="${s.minProtocolVersion}"></label><label>Server<input id="danger-version-server" value="${esc(s.minServerVersion)}"></label><label>Client<input id="danger-version-client" value="${esc(s.minClientVersion)}"></label></div><button id="danger-version-apply" class="danger">APPLY VERSION POLICY</button></div></div>
+    <div class="section-card danger-card"><div class="section-head"><h3>Bulk License Delete</h3><span class="small-note">${licenses.length} TOTAL</span></div><div class="section-body"><p class="muted">License Key를 줄바꿈/쉼표로 입력합니다. 최대 500개.</p><label>License Keys<textarea id="danger-license-keys" placeholder="KEY1\nKEY2"></textarea></label><button id="danger-license-delete" class="danger">DELETE LICENSES</button></div></div>
   </div><div class="section-card danger-card future-danger"><div class="section-head"><h3>Database Reset</h3>${badge('DISABLED')}</div><div class="section-body"><p class="muted">의도적으로 구현하지 않았습니다. DB 삭제/초기화는 Web Admin에서 제공하지 않습니다.</p></div></div>`;
 }
 
@@ -557,10 +567,67 @@ async function renderLicenses() {
       ${operator ? '<button id="license-bulk-btn">선택 작업</button>' : ''}
     </div>
     <div class="table-wrap"><table><thead><tr><th><input id="license-check-all" type="checkbox"></th><th>KEY</th><th>Status</th><th>Client</th><th>Expires</th><th>Tags</th><th>Memo</th><th>Auth</th><th>Send</th><th>Action</th></tr></thead><tbody>
-      ${licenses.map(l => `<tr><td><input class="license-check" type="checkbox" data-key="${esc(l.key)}" ${selectedLicenses.has(l.key) ? 'checked' : ''}></td><td class="code">${esc(l.key)}</td><td>${badge(l.status)}</td><td class="code">${esc(l.boundClient || '-')}</td><td>${esc(fmtTime(l.expiresAt))}</td><td><div class="tag-list">${tagsHtml(l.tags)}</div></td><td>${esc(l.memo || '-')}</td><td>${l.authCount}</td><td>${l.sendCount}</td><td><div class="actions">${operator ? `<button data-license-action="tags" data-key="${esc(l.key)}">Tags</button><button data-license-action="extend" data-key="${esc(l.key)}">연장</button><button data-license-action="unbind" data-key="${esc(l.key)}">Unbind</button><button data-license-action="suspend" data-key="${esc(l.key)}">Suspend</button><button data-license-action="resume" data-key="${esc(l.key)}">Resume</button><button data-license-action="transfer" data-key="${esc(l.key)}">Transfer</button>` : ''}${roleIsAdmin() ? `<button data-license-action="reissue" data-key="${esc(l.key)}">Reissue</button><button class="danger" data-license-action="delete" data-key="${esc(l.key)}">Delete</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="10" class="empty">License 없음</td></tr>'}
+      ${licenses.map(l => `<tr><td><input class="license-check" type="checkbox" data-key="${esc(l.key)}" ${selectedLicenses.has(l.key) ? 'checked' : ''}></td><td class="code">${esc(l.key)}</td><td>${badge(l.status)}</td><td class="code">${esc(l.boundClient || '-')}</td><td>${esc(fmtTime(l.expiresAt))}</td><td><div class="tag-list">${tagsHtml(l.tags)}</div></td><td>${esc(l.memo || '-')}</td><td>${l.authCount}</td><td>${l.sendCount}</td><td><div class="actions">${operator ? `<button data-license-action="tags" data-key="${esc(l.key)}">Tags</button><button data-license-action="extend" data-key="${esc(l.key)}">연장</button><button data-license-action="unbind" data-key="${esc(l.key)}">Unbind</button><button data-license-action="suspend" data-key="${esc(l.key)}">Suspend</button><button data-license-action="resume" data-key="${esc(l.key)}">Resume</button><button data-license-action="transfer" data-key="${esc(l.key)}">Transfer</button>` : ''}${roleCanOperate() ? `<button data-license-action="qr" data-key="${esc(l.key)}">QR</button>` : ''}${roleIsAdmin() ? `<button data-license-action="reissue" data-key="${esc(l.key)}">Reissue</button><button class="danger" data-license-action="delete" data-key="${esc(l.key)}">Delete</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="10" class="empty">License 없음</td></tr>'}
     </tbody></table></div>`;
   document.getElementById('license-status').value = licenseStatus;
   document.getElementById('license-expiry').value = licenseExpiry;
+}
+
+
+function flagSelect(name, value) {
+  const v = value === true ? 'ON' : value === false ? 'OFF' : 'INHERIT';
+  return `<select data-flag-name="${esc(name)}"><option value="INHERIT" ${v==='INHERIT'?'selected':''}>INHERIT</option><option value="ON" ${v==='ON'?'selected':''}>ON</option><option value="OFF" ${v==='OFF'?'selected':''}>OFF</option></select>`;
+}
+
+async function renderFeatureFlags() {
+  if (!roleIsAdmin()) { content.innerHTML = '<div class="empty">FORBIDDEN</div>'; return; }
+  const [{ defaults, global, serverOverrides, clientOverrides }, { devices }] = await Promise.all([api('/api/control/features'), api('/api/control/devices')]);
+  const names = Object.keys(defaults || {});
+  const globalRows = names.map(name => `<tr><td class="code">${esc(name)}</td><td>${badge(defaults[name] ? 'ON' : 'OFF')}</td><td><select data-global-flag="${esc(name)}"><option value="ON" ${global[name]?'selected':''}>ON</option><option value="OFF" ${!global[name]?'selected':''}>OFF</option></select></td></tr>`).join('');
+  const deviceOptions = (devices || []).map(d => `<option value="${esc(d.type)}|${esc(d.id)}">${esc(d.type)} // ${esc(d.id)}${d.info && d.info.name ? ` // ${esc(d.info.name)}` : ''}${d.online ? ' // ONLINE' : ' // OFFLINE'}</option>`).join('');
+  content.innerHTML = `<div class="panel-grid">
+    <div class="section-card"><div class="section-head"><h3>Global Feature Flags</h3><span class="small-note">CONFIG SYNC // GLOBAL DEFAULT</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Flag</th><th>Default</th><th>Global</th></tr></thead><tbody>${globalRows}</tbody></table></div><div class="toolbar"><button id="feature-global-save" class="primary">SAVE GLOBAL FLAGS</button></div></div></div>
+    <div class="section-card"><div class="section-head"><h3>Device Override</h3><span class="small-note">INHERIT = GLOBAL</span></div><div class="section-body"><label>Device<select id="feature-device-select"><option value="">SELECT DEVICE</option>${deviceOptions}</select></label><div id="feature-device-editor" class="empty">Server / Client를 선택하세요.</div></div></div>
+  </div><div class="section-card"><div class="section-head"><h3>Flag Semantics</h3></div><div class="section-body"><div class="kv">${names.map(name=>`<div class="code">${esc(name)}</div><div>${badge(global[name]?'ON':'OFF')}</div>`).join('')}</div><p class="small-note">Runtime Config 저장과 Feature Flags 저장은 독립적입니다. Device Override는 해당 장비에만 적용되고 나머지는 Global 값을 상속합니다.</p></div></div>`;
+  const select = document.getElementById('feature-device-select');
+  if (select) select.onchange = () => renderFeatureDeviceEditor(names, serverOverrides || {}, clientOverrides || {});
+}
+
+function renderFeatureDeviceEditor(names, serverOverrides, clientOverrides) {
+  const select = document.getElementById('feature-device-select');
+  const editor = document.getElementById('feature-device-editor');
+  if (!select || !editor || !select.value) { if (editor) editor.innerHTML='<div class="empty">Server / Client를 선택하세요.</div>'; return; }
+  const [type,id] = select.value.split('|');
+  const source = type === 'SERVER' ? serverOverrides : clientOverrides;
+  const override = source[id] || {};
+  editor.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Flag</th><th>Override</th></tr></thead><tbody>${names.map(name=>`<tr><td class="code">${esc(name)}</td><td>${flagSelect(name,Object.prototype.hasOwnProperty.call(override,name)?override[name]:null)}</td></tr>`).join('')}</tbody></table></div><div class="toolbar"><button id="feature-device-save" class="primary" data-type="${esc(type)}" data-id="${esc(id)}">SAVE OVERRIDE</button><button id="feature-device-clear" data-type="${esc(type)}" data-id="${esc(id)}">CLEAR OVERRIDE</button></div>`;
+}
+
+
+async function renderProtocolSecurity() {
+  const [{ readiness }, { devices: security }, { devices: sequences }] = await Promise.all([
+    api('/api/control/protocol-readiness'), api('/api/control/security'), api('/api/control/sequences')
+  ]);
+  const secMap = new Map((security || []).map(x => [`${x.type}:${x.id}`, x]));
+  const seqMap = new Map((sequences || []).map(x => [`${x.type}:${x.id}`, x]));
+  const rows = (readiness.devices || []).map(r => {
+    const key = `${r.type}:${r.id}`;
+    const sec = secMap.get(key) || {};
+    const seq = seqMap.get(key) || {};
+    const st = seq.stats || {};
+    const actions = roleIsAdmin() && sec.online ? `<div class="actions"><button data-security-challenge data-type="${esc(r.type)}" data-id="${esc(r.id)}">Challenge</button><button class="warning" data-security-reset data-type="${esc(r.type)}" data-id="${esc(r.id)}">Rotate Secret</button></div>` : '-';
+    return `<tr><td>${badge(r.type)}</td><td class="code">${esc(r.id)}</td><td>${r.ready ? badge('READY') : badge('BLOCKED')}</td><td>${esc((r.profile && `${r.profile.current} → ${r.profile.candidate}`) || '-')}</td><td>${sec.hasSecret ? badge('ENROLLED') : badge('NONE')}</td><td>${sec.verified ? badge('VERIFIED') : badge(sec.online ? 'UNVERIFIED' : 'OFFLINE')}</td><td>${sec.enforced ? badge('ENFORCED') : badge('OPTIONAL')}</td><td>${seq.capable ? badge(seq.enabled ? 'ON' : 'OFF') : badge('LEGACY')}</td><td>${st.rxLast || 0}</td><td>${st.rxMissing || 0}</td><td>${st.rxDuplicates || 0}</td><td>${st.rxOutOfOrder || 0}</td><td>${esc((r.blockers || []).join(', ') || '-')}</td><td>${actions}</td></tr>`;
+  }).join('');
+  const verified = (security || []).filter(x => x.verified).length;
+  const enrolled = (security || []).filter(x => x.hasSecret).length;
+  const missing = (sequences || []).reduce((a,x)=>a+Number(x.stats&&x.stats.rxMissing||0),0);
+  const anomalies = (sequences || []).reduce((a,x)=>a+Number(x.stats&&x.stats.rxDuplicates||0)+Number(x.stats&&x.stats.rxOutOfOrder||0),0);
+  content.innerHTML = `<div class="cards">
+    <div class="card"><div class="stat-label">V3 READY</div><div class="stat-value">${readiness.ready} / ${readiness.total}</div><div class="stat-sub">Candidate Protocol ${readiness.candidateProtocol}</div></div>
+    <div class="card"><div class="stat-label">HMAC VERIFIED</div><div class="stat-value">${verified}</div><div class="stat-sub">Enrolled ${enrolled}</div></div>
+    <div class="card"><div class="stat-label">SEQ MISSING</div><div class="stat-value">${missing}</div><div class="stat-sub">Detected gaps</div></div>
+    <div class="card"><div class="stat-label">SEQ ANOMALY</div><div class="stat-value">${anomalies}</div><div class="stat-sub">Duplicate / Out-of-order</div></div>
+  </div><div class="section-card"><div class="section-head"><h3>Protocol v3 Readiness / Device Security / Sequence</h3><span class="small-note">Protocol 2 remains active. This page only measures readiness.</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Type</th><th>ID</th><th>V3</th><th>Profile</th><th>Secret</th><th>HMAC</th><th>Policy</th><th>SEQ</th><th>RX Last</th><th>Missing</th><th>Dup</th><th>OOO</th><th>Blockers</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="14" class="empty">Device 없음</td></tr>'}</tbody></table></div></div></div>`;
 }
 
 async function renderAudit() {
@@ -615,6 +682,29 @@ async function renderBackups() {
   <div class="table-wrap"><table><thead><tr><th>File</th><th>Size</th><th>Created</th><th>Action</th></tr></thead><tbody>${backups.map(b => `<tr><td class="code">${esc(b.file)}</td><td>${esc(fmtBytes(b.size))}</td><td>${esc(fmtTime(b.mtimeMs))}</td><td><div class="actions"><button data-backup-action="verify" data-file="${esc(b.file)}">Verify</button>${roleIsAdmin() ? `<button data-open-view="danger" class="warning">Danger Zone</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="4" class="empty">Backup 없음</td></tr>'}</tbody></table></div>`;
 }
 
+async function renderLoadSimulator() {
+  if (!roleIsAdmin()) throw new Error('FORBIDDEN');
+  const { simulator } = await api('/api/load-simulator');
+  const p = simulator.presets || {};
+  content.innerHTML = `<div class="section-card"><div class="section-head"><h3>External Load Simulator</h3>${badge('STAGING ONLY')}</div><div class="section-body">
+    <p class="muted">운영 Relay 프로세스 내부에서 부하를 만들지 않습니다. 별도 PC/프로세스에서 <span class="code">tools/load-simulator.js</span>를 실행합니다.</p>
+    <div class="warning-box">전용 Staging 배포에서 실행을 권장합니다. Simulator Client Identity는 테스트 DB에 남을 수 있습니다. FULL 모드는 임시 License를 생성하고 종료 시 자동 삭제합니다.</div>
+    <div class="grid-2"><label>Relay Host<input id="load-relay-host" value="127.0.0.1"></label><label>Relay Port<input id="load-relay-port" type="number" value="3000"></label><label>Web Admin URL<input id="load-web-url" value="http://127.0.0.1:8080"></label><label>Mode<select id="load-mode"><option value="connect">CONNECT ONLY</option><option value="full">FULL LICENSE + SEND + ACK</option></select></label><label>Servers<input id="load-servers" type="number" min="1" max="500" value="${p.medium?.servers || 10}"></label><label>Clients<input id="load-clients" type="number" min="1" max="5000" value="${p.medium?.clients || 100}"></label><label>Requests / Client<input id="load-requests" type="number" min="0" max="100" value="${p.medium?.requestsPerClient || 1}"></label></div>
+    <div class="actions"><button id="load-preset-smoke">SMOKE</button><button id="load-preset-medium">MEDIUM</button><button id="load-preset-heavy">HEAVY</button><button id="load-command-btn" class="primary">GENERATE COMMAND</button></div>
+    <div class="terminal-box"><div class="small-note">COMMAND // FULL 모드에서는 마지막에 <span class="code">--admin-secret YOUR_SECRET</span>을 추가하거나 실행 환경에 ADMIN_SECRET을 설정하세요.</div><pre id="load-command-output" class="code-block">${esc(simulator.example || '')}</pre><button id="load-copy-btn">COPY</button></div>
+  </div></div>`;
+}
+
+async function renderStorageMigration() {
+  if (!roleIsAdmin()) throw new Error('FORBIDDEN');
+  const { migration: m } = await api('/api/storage/migration/status');
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">ACTIVE STORAGE</div><div class="stat-value">${esc(m.activeProvider)}</div><div class="stat-sub">현재 안정판 유지</div></div><div class="card"><div class="stat-label">TARGET</div><div class="stat-value">${esc(m.targetProvider)}</div><div class="stat-sub">Schema v${m.schemaVersion}</div></div><div class="card"><div class="stat-label">READINESS</div><div class="stat-value">${m.ready ? 'READY' : 'BLOCKED'}</div><div class="stat-sub">자동 Cutover 없음</div></div><div class="card"><div class="stat-label">LICENSE REV</div><div class="stat-value">${m.licenseRevision}</div><div class="stat-sub">Migration snapshot 기준</div></div></div>
+    <div class="section-card"><div class="section-head"><h3>SQLite Migration Preparation</h3>${badge(m.ready ? 'GOOD' : 'WARNING')}</div><div class="section-body"><div class="kv"><div>Strategy</div><div class="code">${esc(m.strategy)}</div><div>Servers</div><div>${m.counts.servers}</div><div>Clients</div><div>${m.counts.clients}</div><div>Licenses</div><div>${m.counts.licenses}</div><div>Device Secrets</div><div>${m.counts.deviceSecrets}</div><div>Data Dir</div><div class="code">${esc(m.dataDir)}</div></div>
+    <p class="muted">현재 Relay는 계속 JSON을 사용합니다. Export는 <span class="code">schema.sql + data.json + SHA256.txt</span>만 생성하며 DB를 전환하지 않습니다.</p>
+    ${m.blockers?.length ? `<div class="warning-box">BLOCKERS: ${esc(m.blockers.join(', '))}</div>` : ''}
+    <div class="actions"><button id="storage-schema-btn">VIEW SCHEMA</button><button id="storage-export-btn" class="primary" ${m.ready ? '' : 'disabled'}>CREATE MIGRATION BUNDLE</button></div><div id="storage-export-result" class="small-note"></div></div></div>`;
+}
+
 async function renderSystem() {
   const { system: s } = await api('/api/system');
   const schedule = s.maintenanceSchedule;
@@ -667,31 +757,39 @@ content.addEventListener('click', async event => {
     if (event.target.id === 'terminal-help-btn') { await executeTerminalCommand('help'); await renderTerminal(); return; }
     if (event.target.id === 'terminal-clear-btn') { terminalLines = []; await renderTerminal(); return; }
     if (event.target.id === 'danger-service-stop') {
-      const confirmText=document.getElementById('danger-stop-confirm').value.trim();
-      if(confirmText.toUpperCase()!=='STOP') throw new Error('CONFIRM_REQUIRED (STOP)');
-      await api('/api/system/service/stop',{method:'POST',body:{confirmText}}); toast('Service OFFLINE'); await renderDangerZone(); return;
+      const v=await openModal({title:'Service Stop',message:'모든 Client 인증을 해제하고 Relay 서비스를 중지합니다.',danger:true,confirmLabel:'STOP SERVICE'});
+      if(!v)return; await api('/api/system/service/stop',{method:'POST',body:{}}); toast('Service OFFLINE'); await renderDangerZone(); return;
     }
     if (event.target.id === 'danger-backup-restore') {
-      const file=document.getElementById('danger-backup-file').value; const confirmText=document.getElementById('danger-restore-confirm').value.trim();
-      if(confirmText.toUpperCase()!=='RESTORE') throw new Error('CONFIRM_REQUIRED (RESTORE)');
+      const file=document.getElementById('danger-backup-file').value; const v=await openModal({title:'Backup Restore',message:`${file} 로 DB를 복원합니다. 현재 연결이 재설정될 수 있습니다.`,danger:true,confirmLabel:'RESTORE'}); if(!v)return;
       const verify=await api(`/api/backups/${encodeURIComponent(file)}/verify`); if(!verify.verification.ok) throw new Error('BACKUP_VERIFY_FAILED');
-      await api(`/api/backups/${encodeURIComponent(file)}/restore`,{method:'POST',body:{confirmText}}); toast('Backup Restore 완료'); await renderDangerZone(); return;
+      await api(`/api/backups/${encodeURIComponent(file)}/restore`,{method:'POST',body:{}}); toast('Backup Restore 완료'); await renderDangerZone(); return;
     }
     if (event.target.id === 'danger-backup-delete') {
-      const file=document.getElementById('danger-backup-file').value; const confirmText=document.getElementById('danger-backup-delete-confirm').value.trim();
-      if(confirmText.toUpperCase()!=='DELETE') throw new Error('CONFIRM_REQUIRED (DELETE)');
-      await api(`/api/backups/${encodeURIComponent(file)}/delete`,{method:'POST',body:{confirmText}}); toast('Backup Delete 완료'); await renderDangerZone(); return;
+      const file=document.getElementById('danger-backup-file').value; const v=await openModal({title:'Backup Delete',message:`${file} 백업 파일을 삭제합니다.`,danger:true,confirmLabel:'DELETE'}); if(!v)return;
+      await api(`/api/backups/${encodeURIComponent(file)}/delete`,{method:'POST',body:{}}); toast('Backup Delete 완료'); await renderDangerZone(); return;
     }
     if (event.target.id === 'danger-version-apply') {
-      const confirmText=document.getElementById('danger-version-confirm').value.trim(); if(confirmText.toUpperCase()!=='VERSION') throw new Error('CONFIRM_REQUIRED (VERSION)');
       const protocol=Number(document.getElementById('danger-version-protocol').value), serverVersion=document.getElementById('danger-version-server').value.trim(), clientVersion=document.getElementById('danger-version-client').value.trim();
-      await api('/api/system/version',{method:'POST',body:{protocol,serverVersion,clientVersion,confirmText}}); toast('Version Policy 적용 완료'); await renderDangerZone(); return;
+      const v=await openModal({title:'Version Policy',message:`Protocol >= ${protocol} // Server >= ${serverVersion} // Client >= ${clientVersion} 로 적용합니다. 기준 미달 연결이 종료될 수 있습니다.`,danger:true,confirmLabel:'APPLY'}); if(!v)return;
+      await api('/api/system/version',{method:'POST',body:{protocol,serverVersion,clientVersion}}); toast('Version Policy 적용 완료'); await renderDangerZone(); return;
     }
     if (event.target.id === 'danger-license-delete') {
-      const confirmText=document.getElementById('danger-license-confirm').value.trim(); if(confirmText.toUpperCase()!=='DELETE') throw new Error('CONFIRM_REQUIRED (DELETE)');
       const keys=document.getElementById('danger-license-keys').value.split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean).slice(0,500); if(!keys.length) throw new Error('NO_KEYS');
+      const v=await openModal({title:'Bulk License Delete',message:`${keys.length}개 License를 삭제합니다.`,danger:true,confirmLabel:'DELETE'}); if(!v)return;
       const r=await api('/api/licenses/bulk',{method:'POST',body:{action:'delete',keys}}); toast(`${r.success}/${r.total} License 삭제`); await renderDangerZone(); return;
     }
+    if (event.target.id && event.target.id.startsWith('load-preset-')) {
+      const name=event.target.id.replace('load-preset-','').toLowerCase(); const presets={smoke:[2,10,1],medium:[10,100,1],heavy:[100,1000,1]}; const v=presets[name]; if(v){document.getElementById('load-servers').value=v[0];document.getElementById('load-clients').value=v[1];document.getElementById('load-requests').value=v[2];} return;
+    }
+    if (event.target.id === 'load-command-btn') {
+      const body={relayHost:document.getElementById('load-relay-host').value,relayPort:Number(document.getElementById('load-relay-port').value),webUrl:document.getElementById('load-web-url').value,mode:document.getElementById('load-mode').value,servers:Number(document.getElementById('load-servers').value),clients:Number(document.getElementById('load-clients').value),requestsPerClient:Number(document.getElementById('load-requests').value)};
+      const r=await api('/api/load-simulator/command',{method:'POST',body}); document.getElementById('load-command-output').textContent=r.command; return;
+    }
+    if (event.target.id === 'load-copy-btn') { const t=document.getElementById('load-command-output')?.textContent||''; if(navigator.clipboard) await navigator.clipboard.writeText(t); toast('Command copied'); return; }
+    if (event.target.id === 'storage-schema-btn') { const r=await api('/api/storage/migration/schema'); await openModal({title:`SQLite Schema v${r.schema.version}`,html:`<pre class="code-block schema-preview">${esc(r.schema.sql)}</pre>`,confirmLabel:'닫기'}); return; }
+    if (event.target.id === 'storage-export-btn') { const v=await openModal({title:'Create SQLite Migration Bundle',message:'현재 JSON DB는 그대로 유지하고 Migration용 schema/data/checksum 파일만 생성합니다.',confirmLabel:'EXPORT'}); if(!v)return; const r=await api('/api/storage/migration/export',{method:'POST',body:{}}); const out=document.getElementById('storage-export-result'); if(out)out.textContent=`${r.directory} // SHA256 ${r.checksum}`; toast('Migration Bundle 생성 완료'); return; }
+
     const serverBtn = event.target.closest('[data-server-action]');
     if (serverBtn) { await serverAction(serverBtn.dataset.serverAction, serverBtn.dataset.id); return; }
     const clientBtn = event.target.closest('[data-client-action]');
@@ -750,6 +848,35 @@ content.addEventListener('click', async event => {
       return;
     }
 
+    if (event.target.id === 'feature-global-save') {
+      const flags = {};
+      document.querySelectorAll('[data-global-flag]').forEach(el => flags[el.dataset.globalFlag] = el.value === 'ON');
+      await api('/api/control/features/global', { method: 'POST', body: { flags } });
+      toast('Global Feature Flags 저장'); await renderFeatureFlags(); return;
+    }
+    if (event.target.id === 'feature-device-save') {
+      const btn=event.target, flags={};
+      document.querySelectorAll('[data-flag-name]').forEach(el => { if(el.value==='ON') flags[el.dataset.flagName]=true; else if(el.value==='OFF') flags[el.dataset.flagName]=false; });
+      await api('/api/control/features/device', { method:'POST', body:{ type:btn.dataset.type, id:btn.dataset.id, flags } });
+      toast('Device Feature Override 저장'); await renderFeatureFlags(); return;
+    }
+    if (event.target.id === 'feature-device-clear') {
+      const btn=event.target;
+      await api('/api/control/features/device', { method:'POST', body:{ type:btn.dataset.type, id:btn.dataset.id, flags:{} } });
+      toast('Device Feature Override 초기화'); await renderFeatureFlags(); return;
+    }
+    const securityChallenge = event.target.closest('[data-security-challenge]');
+    if (securityChallenge) {
+      await api('/api/control/security/challenge', { method:'POST', body:{ type:securityChallenge.dataset.type, id:securityChallenge.dataset.id } });
+      toast('HMAC Challenge 전송'); setTimeout(()=>renderProtocolSecurity(),350); return;
+    }
+    const securityReset = event.target.closest('[data-security-reset]');
+    if (securityReset) {
+      const v=await openModal({title:'Rotate Device Secret',message:`${securityReset.dataset.type} ${securityReset.dataset.id}의 Device Secret을 교체하고 새 HMAC 등록을 시작합니다.`,danger:true,confirmLabel:'ROTATE'}); if(!v)return;
+      await api('/api/control/security/reset', { method:'POST', body:{ type:securityReset.dataset.type, id:securityReset.dataset.id } });
+      toast('Device Secret Rotation 시작'); setTimeout(()=>renderProtocolSecurity(),350); return;
+    }
+
     if (event.target.id === 'license-search-btn') {
       licenseQuery = document.getElementById('license-search').value.trim();
       licenseStatus = document.getElementById('license-status').value;
@@ -791,8 +918,8 @@ content.addEventListener('click', async event => {
     }
     if (event.target.id === 'service-start-btn') { await api('/api/system/service/start', { method: 'POST', body: {} }); toast('Service ONLINE'); renderSystem(); return; }
     if (event.target.id === 'service-stop-btn') {
-      const v = await openModal({ title: 'Service Stop', message: '현재 Client 인증을 해제하고 서비스를 중지합니다. 확인하려면 STOP을 입력하세요.', fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: '중지' });
-      if (!v) return; await api('/api/system/service/stop', { method: 'POST', body: v }); toast('Service OFFLINE'); renderSystem(); return;
+      const v = await openModal({ title: 'Service Stop', message: '현재 Client 인증을 해제하고 서비스를 중지합니다.', danger: true, confirmLabel: '중지' });
+      if (!v) return; await api('/api/system/service/stop', { method: 'POST', body: {} }); toast('Service OFFLINE'); renderSystem(); return;
     }
     if (event.target.id === 'maint-on-btn') { await api('/api/system/maintenance/on', { method: 'POST', body: {} }); toast('Maintenance ON'); renderSystem(); return; }
     if (event.target.id === 'maint-off-btn') { await api('/api/system/maintenance/off', { method: 'POST', body: {} }); toast('Maintenance OFF'); renderSystem(); return; }
@@ -946,6 +1073,11 @@ async function createLicense() {
 
 async function licenseAction(action, key) {
   let body = {};
+  if (action === 'qr') {
+    const r = await api(`/api/licenses/${encodeURIComponent(key)}/qr`);
+    await openModal({ title: 'License QR', html: `<div class="license-qr-wrap"><div class="license-qr">${r.svg}</div><div class="kv"><div>License</div><div class="code">${esc(r.key)}</div><div>Deep Link</div><div class="code qr-payload">${esc(r.payload)}</div></div><p class="small-note">QR 내용은 Relay 서버 내부에서 생성됩니다. 외부 QR 서비스로 License Key를 전송하지 않습니다.</p></div>`, confirmLabel: '닫기' });
+    return;
+  }
   if (action === 'tags') {
     const { licenses } = await api(`/api/licenses?query=${encodeURIComponent(key)}&status=ALL&expiry=ALL`);
     const current = licenses.find(x => x.key === key);
@@ -993,10 +1125,11 @@ async function backupAction(action, file) {
     await openModal({ title: `Backup Verify // ${file}`, html: `<div class="kv"><div>Result</div><div>${badge(v.ok ? 'GOOD' : 'ERROR')}</div><div>Servers</div><div>${v.stats.servers || 0}</div><div>Clients</div><div>${v.stats.clients || 0}</div><div>Licenses</div><div>${v.stats.licenses || 0}</div><div>Errors</div><div>${(v.errors || []).length}</div><div>Warnings</div><div>${(v.warnings || []).length}</div></div>${issues.length ? `<div class="integrity-list">${issues.map(x=>`<div class="integrity-row">${badge(x.severity)}<span class="code">${esc(x.code)}</span><span>${esc(x.message)}</span><span class="code">${esc(x.entity || '-')}</span></div>`).join('')}</div>` : '<div class="integrity-ok">[ BACKUP_HEALTHY ] Restore structure verified.</div>'}`, confirmLabel: '닫기' });
     return;
   }
-  const word = action === 'restore' ? 'RESTORE' : 'DELETE';
-  const v = await openModal({ title: `Backup ${action}`, message: `${file}\n계속하려면 ${word}를 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: '실행' });
+  const label = action === 'restore' ? 'Restore' : 'Delete';
+  const v = await openModal({ title: `Backup ${label}`, message: `${file}\n${action === 'restore' ? 'DB 상태를 이 Backup으로 복원하며 연결이 재설정될 수 있습니다.' : '이 Backup 파일을 삭제합니다.'}`, danger: true, confirmLabel: label.toUpperCase() });
   if (!v) return;
-  await api(`/api/backups/${encodeURIComponent(file)}/${action}`, { method: 'POST', body: v });
+  if (action === 'restore') { const verify=await api(`/api/backups/${encodeURIComponent(file)}/verify`); if(!verify.verification.ok) throw new Error('BACKUP_VERIFY_FAILED'); }
+  await api(`/api/backups/${encodeURIComponent(file)}/${action}`, { method: 'POST', body: {} });
   toast(`Backup ${action} 완료`); renderBackups();
 }
 
@@ -1004,9 +1137,9 @@ async function applyVersion() {
   const protocol = Number(document.getElementById('version-protocol').value);
   const serverVersion = document.getElementById('version-server').value.trim();
   const clientVersion = document.getElementById('version-client').value.trim();
-  const v = await openModal({ title: 'Version Policy 적용', message: '기준 미달 Server/Client 연결이 종료될 수 있습니다. VERSION을 입력하세요.', fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: '적용' });
+  const v = await openModal({ title: 'Version Policy 적용', message: `Protocol >= ${protocol} // Server >= ${serverVersion} // Client >= ${clientVersion}. 기준 미달 연결이 종료될 수 있습니다.`, danger: true, confirmLabel: '적용' });
   if (!v) return;
-  await api('/api/system/version', { method: 'POST', body: { protocol, serverVersion, clientVersion, confirmText: v.confirmText } });
+  await api('/api/system/version', { method: 'POST', body: { protocol, serverVersion, clientVersion } });
   toast('Version Policy 적용 완료'); renderSystem();
 }
 
@@ -1089,3 +1222,24 @@ document.addEventListener('keydown', event => {
 });
 
 restoreSession();
+
+// PWA: cache only the static application shell. Authenticated API responses are network-only.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => {}));
+}
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  if (installPwaBtn) installPwaBtn.classList.remove('hidden');
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  if (installPwaBtn) installPwaBtn.classList.add('hidden');
+});
+if (installPwaBtn) installPwaBtn.addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  try { await deferredInstallPrompt.userChoice; } catch (_) {}
+  deferredInstallPrompt = null;
+  installPwaBtn.classList.add('hidden');
+});

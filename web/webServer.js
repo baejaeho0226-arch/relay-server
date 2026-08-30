@@ -31,7 +31,7 @@ function SecurityHeaders(req, res) {
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
 }
 
 function ServeFile(req, res, fileName) {
@@ -49,11 +49,14 @@ function ServeFile(req, res, fileName) {
     }
     const ext = path.extname(full).toLowerCase();
     const stat = fs.statSync(full);
-    res.writeHead(200, {
+    const headers = {
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Content-Length': stat.size,
-        'Cache-Control': 'no-store'
-    });
+        'Cache-Control': safeName === 'service-worker.js' ? 'no-cache, no-store, must-revalidate' : 'no-cache'
+    };
+    if (safeName === 'service-worker.js') headers['Service-Worker-Allowed'] = '/';
+    res.writeHead(200, headers);
+    if (String(req.method || 'GET').toUpperCase() === 'HEAD') { res.end(); return; }
     fs.createReadStream(full).pipe(res);
 }
 

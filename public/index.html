@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#04110a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <title>RELAY // Operations Console</title>
   <link rel="stylesheet" href="/admin.css">
 </head>
@@ -47,11 +54,15 @@
         <button data-view="servers">Servers</button>
         <button data-view="clients">Clients</button>
         <button data-view="licenses">Licenses</button>
+        <button data-view="features" data-admin-only>Feature Flags</button>
+        <button data-view="protocol">Protocol / Security</button>
         <button data-view="audit">Audit Log</button>
         <button data-view="activity" data-admin-only>Admin Activity</button>
         <button data-view="sessions" data-admin-only>Sessions</button>
         <button data-view="backups">Backups</button>
         <button data-view="health">System Health</button>
+        <button data-view="loadlab" data-admin-only>Load Simulator</button>
+        <button data-view="storage" data-admin-only>Storage Migration</button>
         <button data-view="system">System</button>
         <button data-view="danger" data-admin-only class="danger-nav">Danger Zone</button>
       </nav>
@@ -69,6 +80,7 @@
         </div>
         <div class="topbar-actions">
           <span id="live-state" class="live-pill">LIVE</span>
+          <button id="install-pwa-btn" class="ghost hidden">INSTALL APP</button>
           <button id="refresh-btn" class="ghost">새로고침</button>
         </div>
       </header>

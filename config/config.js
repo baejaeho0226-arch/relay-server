@@ -8,13 +8,15 @@ const HEALTH_PORT = Number(process.env.HEALTH_PORT || 0);
 const WEB_ADMIN_PORT = Number(process.env.WEB_ADMIN_PORT || 8080);
 const WEB_ADMIN_SESSION_MS = Number(process.env.WEB_ADMIN_SESSION_MS || 30 * 60 * 1000);
 const ENABLE_LEGACY_TCP_ADMIN = String(process.env.ENABLE_LEGACY_TCP_ADMIN || '') === '1';
-const WEB_ADMIN_VERSION = '1.7.0';
+const WEB_ADMIN_VERSION = '2.3.0';
 
 const DATA_DIR = process.env.DATA_DIR
     ? path.resolve(process.env.DATA_DIR)
     : path.resolve(__dirname, '..');
 const DB_FILE = path.join(DATA_DIR, 'relay-identities.json');
 const DB_BAK_FILE = path.join(DATA_DIR, 'relay-identities.bak.json');
+const LICENSE_SNAPSHOT_FILE = path.join(DATA_DIR, 'relay-licenses.json');
+const LICENSE_SNAPSHOT_BAK_FILE = path.join(DATA_DIR, 'relay-licenses.bak.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const AUDIT_DIR = path.join(DATA_DIR, 'audit');
 
@@ -68,7 +70,7 @@ const DANGEROUS_PREFIXES = [
 
 module.exports = {
     HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT, WEB_ADMIN_SESSION_MS, ENABLE_LEGACY_TCP_ADMIN, WEB_ADMIN_VERSION,
-    DATA_DIR, DB_FILE, DB_BAK_FILE, BACKUP_DIR, AUDIT_DIR,
+    DATA_DIR, DB_FILE, DB_BAK_FILE, LICENSE_SNAPSHOT_FILE, LICENSE_SNAPSHOT_BAK_FILE, BACKUP_DIR, AUDIT_DIR,
     CURRENT_PROTOCOL_VERSION,
     DEFAULT_MIN_PROTOCOL_VERSION, DEFAULT_MIN_SERVER_VERSION, DEFAULT_MIN_CLIENT_VERSION,
     ADMIN_CREDENTIALS, ADMIN_AUTH_WINDOW_SECONDS, ADMIN_SESSION_TIMEOUT_MS, CONFIRM_TOKEN_TTL_MS,
