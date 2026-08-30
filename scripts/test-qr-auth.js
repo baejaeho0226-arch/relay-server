@@ -100,7 +100,7 @@ async function run() {
     assert.strictEqual(state.servers.size, 0);
     assert.strictEqual(state.serverIdentities.size, 0);
     const clientHandlerModule = require('../relay/clientHandler');
-    clientHandlerModule.HandleClientConnect(serverlessConnection, 'ANDROID-NO-WINSOCK', 2, '2.3.3');
+    clientHandlerModule.HandleClientConnect(serverlessConnection, 'ANDROID-NO-WINSOCK', 2, '2.3.4');
     assert.strictEqual(serverlessConnection.connected, true);
     assert.strictEqual(serverlessConnection.serverId, '');
     assert.ok(serverlessWrites.some(line => line.startsWith(`CONNECTED|${serverlessConnection.clientId}||`)));
@@ -131,6 +131,7 @@ async function run() {
 
     const productRoot = path.resolve(__dirname, '..', '..');
     const apk = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkWinSock.pas'), 'utf8');
+    const qrRenderer = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkQrRenderer.pas'), 'utf8');
     const protocol = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkProtocol.pas'), 'utf8');
     const deepLink = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkDeepLink.pas'), 'utf8');
     const serverProtocol = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'RelayProtocol.pas'), 'utf8');
@@ -145,9 +146,13 @@ async function run() {
     assert.ok(apk.includes('FQrTimeLabel: TLabel'));
     assert.ok(apk.includes('procedure TForm1.ResizeQrLayout'));
     assert.ok(apk.includes('Fill.Color := COLOR_QR_BG'));
+    assert.ok(apk.includes('FQrBackground: TRectangle'));
+    assert.ok(apk.includes('FQrBackground.Fill.Color := COLOR_QR_BG'));
     assert.ok(apk.includes('FQrPanel.SetBounds(0, 0, RootWidth, RootHeight)'));
     assert.ok(apk.includes('FQrImage.SetBounds(LeftPos, TopPos, QrSize, QrSize)'));
     assert.ok(apk.includes('TopPos + QrSize + QR_TIME_GAP'));
+    assert.ok(qrRenderer.includes('Image.Bitmap.BitmapScale := 1'));
+    assert.ok(qrRenderer.includes('QUIET_ZONE_MODULES = 8'));
     assert.ok(apk.includes("ALine.StartsWith('SERVER_ASSIGNED|')"));
     assert.ok(apk.includes("Format('QR 남은 시간"));
     assert.ok(apk.includes("BuildSendLine(RequestID, FState.ClientID, '1')"));
