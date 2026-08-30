@@ -32,8 +32,17 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
 
     let serverId = serverIdentities.get(deviceKey);
     if (!serverId) {
+        const enrollment = require('../services/deviceEnrollment').Request('SERVER', deviceKey, { ip: SafeIP(connection.socket), appVersion, protocolVersion });
+        if (!enrollment.allowed) {
+            SaveDatabase();
+            const requestId = enrollment.record && enrollment.record.requestId ? enrollment.record.requestId : '';
+            SendLine(connection.socket, enrollment.rejected ? 'ERROR|ENROLLMENT_REJECTED' : `ERROR|ENROLLMENT_PENDING|${requestId}`);
+            LogEvent(enrollment.rejected ? 'SERVER_ENROLLMENT_REJECTED' : 'SERVER_ENROLLMENT_PENDING', `${deviceKey} ${requestId}`);
+            return false;
+        }
         serverId = MakeUniqueID();
         serverIdentities.set(deviceKey, serverId);
+        require('../services/deviceEnrollment').MarkBound('SERVER', deviceKey, serverId);
         SaveDatabase();
         LogEvent('SERVER_CREATE', `${serverId} -> ${deviceKey}`);
     }
@@ -84,13 +93,15 @@ function HandleServerLine(connection, line) {
     if (!line) return;
 
     if (connection.serverId) {
-        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('SERVER', connection.serverId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('SERVER', connection.serverId); require('../services/deviceAuth').SendEnrollmentSecret('SERVER', connection.serverId, false); return; }
+        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('SERVER', connection.serverId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('SERVER', connection.serverId); require('../services/releaseManager').NotifyDevice('SERVER', connection.serverId); require('../services/deviceAuth').SendEnrollmentSecret('SERVER', connection.serverId, false); return; }
         if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('SERVER', connection.serverId, line.split('|').slice(1)); return; }
         if (line.startsWith('PROTOCOL_PROFILE|')) { const p=line.split('|'); require('../services/protocolReadiness').RecordProfile('SERVER', connection.serverId, p[1], p[2], p.slice(3).join('|')); return; }
         if (line === 'DEVICE_SECRET_ACK' || line.startsWith('DEVICE_SECRET_ACK|')) { require('../services/deviceAuth').HandleSecretAck('SERVER', connection.serverId); return; }
         if (line.startsWith('DEVICE_AUTH|')) { const p=line.split('|'); require('../services/deviceAuth').HandleAuth('SERVER', connection.serverId, p[1], p[2]); return; }
         if (line.startsWith('COMMAND_ACK|')) { require('../services/deviceControl').RecordCommandAck('SERVER', connection.serverId, line.split('|')); return; }
         if (line.startsWith('DIAGNOSTICS|')) { require('../services/deviceControl').RecordDiagnostics('SERVER', connection.serverId, line.split('|').slice(2).join('|')); return; }
+        if (line.startsWith('UPDATE_ACK|')) { require('../services/releaseManager').RecordUpdateAck('SERVER', connection.serverId, line.split('|')); return; }
+        if (line.startsWith('DEVICE_SECRET_ROTATE_ACK|')) { const r=require('../services/deviceSecretRotation').HandleAck('SERVER',connection.serverId,line.split('|')); if(!r.ok) SendLine(connection.socket,`DEVICE_SECRET_ROTATE_ERROR|${line.split('|')[1]||''}|${r.reason}`); return; }
         if (line.startsWith('CONFIG_ACK|')) {  connection.configAck = line; return; }
     }
 

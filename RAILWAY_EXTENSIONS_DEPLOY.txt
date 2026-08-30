@@ -1,0 +1,35 @@
+PURE TCP RELAY / WEB ADMIN v2.3.1 - Railway Extension Ready
+
+1. Replace the Railway GitHub repository contents with this folder contents.
+2. Keep the repository root as:
+   server.js
+   package.json
+   relay/
+   services/
+   web/
+   public/
+   ...
+3. Railway Variables must include ADMIN_SECRET.
+4. Existing TCP proxy target remains the current Relay PORT.
+5. Web Admin domain target remains WEB_ADMIN_PORT (default 8080).
+6. Redeploy after upload.
+
+Expected startup log:
+Web Admin: v2.3.1
+Device Extensions: ENABLED (CAPABILITIES / DEVICE_INFO / HMAC / CONFIG / SEQUENCE)
+
+Expected WinSockServer after redeploy:
+Relay Extensions: SUPPORTED
+
+This build accepts:
+CAPABILITIES
+DEVICE_INFO
+PROTOCOL_PROFILE
+DEVICE_SECRET_ACK
+DEVICE_AUTH
+COMMAND_ACK
+DIAGNOSTICS
+CONFIG_ACK
+UI_STATE (client)
+
+Protocol remains 2 and app version remains 2.0.0 for Delphi clients.

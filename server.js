@@ -75,6 +75,7 @@ relayServer.listen(PORT, HOST, () => {
     console.log('Service:', state.serviceEnabled ? 'ONLINE' : 'OFFLINE', 'Maintenance:', state.maintenanceMode ? 'ON' : 'OFF');
     console.log('Web Admin:', `v${WEB_ADMIN_VERSION}`, 'Port:', WEB_ADMIN_PORT);
     console.log('Legacy TCP Admin:', ENABLE_LEGACY_TCP_ADMIN ? 'ENABLED' : 'DISABLED');
+    console.log('Device Extensions:', 'ENABLED (CAPABILITIES / DEVICE_INFO / HMAC / CONFIG / SEQUENCE)');
     console.log('================================');
 });
 

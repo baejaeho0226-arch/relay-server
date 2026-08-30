@@ -40,6 +40,13 @@ function BuildDatabaseObject() {
         serverProtocolProfiles: Object.fromEntries(state.serverProtocolProfiles),
         clientProtocolProfiles: Object.fromEntries(state.clientProtocolProfiles),
         deviceSecrets: Object.fromEntries(state.deviceSecrets),
+        releaseCatalog: Object.fromEntries(state.releaseCatalog),
+        deviceReleaseChannels: Object.fromEntries(state.deviceReleaseChannels),
+        configHistory: state.configHistory,
+        enrollmentPolicy: state.enrollmentPolicy,
+        deviceEnrollments: Object.fromEntries(state.deviceEnrollments),
+        deviceSecretRotations: Object.fromEntries(state.deviceSecretRotations),
+        deviceSecretMeta: Object.fromEntries(state.deviceSecretMeta),
         licenseRevision: Number(state.licenseRevision) || 0,
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
@@ -145,7 +152,7 @@ function ImportDatabaseObject(data) {
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
     state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
-    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -217,6 +224,13 @@ function ImportDatabaseObject(data) {
         if(src&&typeof src==='object') for(const [id,v] of Object.entries(src)){const n=NormalizeID(id);if(n&&v&&typeof v==='object')map.set(n,v);}
     }
     if(data.deviceSecrets&&typeof data.deviceSecrets==='object') for(const [key,secret] of Object.entries(data.deviceSecrets)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&/^[A-Za-z0-9_-]{40,64}$/.test(String(secret||'')))state.deviceSecrets.set(key,String(secret));}
+    if(data.releaseCatalog&&typeof data.releaseCatalog==='object') for(const [key,value] of Object.entries(data.releaseCatalog)){if(/^(SERVER|CLIENT):(STABLE|BETA|TEST)$/.test(key)&&value&&typeof value==='object')state.releaseCatalog.set(key,{...value});}
+    if(data.deviceReleaseChannels&&typeof data.deviceReleaseChannels==='object') for(const [key,value] of Object.entries(data.deviceReleaseChannels)){const ch=String(value||'').toUpperCase();if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&['STABLE','BETA','TEST'].includes(ch))state.deviceReleaseChannels.set(key,ch);}
+    if(Array.isArray(data.configHistory)) state.configHistory.push(...data.configHistory.slice(0,100).filter(x=>x&&typeof x==='object'));
+    if(data.enrollmentPolicy&&typeof data.enrollmentPolicy==='object') state.enrollmentPolicy={enabled:!!data.enrollmentPolicy.enabled,updatedAt:Number(data.enrollmentPolicy.updatedAt)||0};
+    if(data.deviceEnrollments&&typeof data.deviceEnrollments==='object') for(const [key,value] of Object.entries(data.deviceEnrollments)){if(/^(SERVER|CLIENT):/.test(key)&&value&&typeof value==='object')state.deviceEnrollments.set(key,{...value});}
+    if(data.deviceSecretRotations&&typeof data.deviceSecretRotations==='object') for(const [key,value] of Object.entries(data.deviceSecretRotations)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&value&&typeof value==='object')state.deviceSecretRotations.set(key,{...value});}
+    if(data.deviceSecretMeta&&typeof data.deviceSecretMeta==='object') for(const [key,value] of Object.entries(data.deviceSecretMeta)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&value&&typeof value==='object')state.deviceSecretMeta.set(key,{createdAt:Number(value.createdAt)||0,rotatedAt:Number(value.rotatedAt)||0,rotationCount:Math.max(0,Number(value.rotationCount)||0)});}
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
 
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;

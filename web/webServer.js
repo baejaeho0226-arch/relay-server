@@ -13,6 +13,7 @@ const {
 const { Json, ApiError, ReadJsonBody, HandleApiRequest } = require('./webApi');
 const { OpenEventStream } = require('./webEvents');
 const { RecordAdminActivity } = require('../services/adminActivity');
+const releaseManager = require('../services/releaseManager');
 
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 
@@ -32,6 +33,75 @@ function SecurityHeaders(req, res) {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+}
+
+
+function ReadReleaseUpload(req, meta) {
+    return new Promise((resolve, reject) => {
+        releaseManager.SigningSecret();
+        const crypto = require('crypto');
+        const os = require('os');
+        const tmpDir = require('path').join(config.DATA_DIR, 'releases', '.tmp');
+        fs.mkdirSync(tmpDir, { recursive: true });
+        const tmp = require('path').join(tmpDir, `upload-${Date.now()}-${crypto.randomBytes(8).toString('hex')}.tmp`);
+        const out = fs.createWriteStream(tmp, { flags: 'wx', mode: 0o600 });
+        const hash = crypto.createHash('sha256');
+        let size = 0;
+        let failed = false;
+        const fail = error => {
+            if (failed) return;
+            failed = true;
+            try { out.destroy(); } catch (_) {}
+            try { fs.unlinkSync(tmp); } catch (_) {}
+            reject(error);
+        };
+        req.on('data', chunk => {
+            if (failed) return;
+            size += chunk.length;
+            if (size > releaseManager.MAX_RELEASE_BYTES) {
+                fail(new Error('RELEASE_TOO_LARGE'));
+                try { req.destroy(); } catch (_) {}
+                return;
+            }
+            hash.update(chunk);
+            if (!out.write(chunk)) req.pause(), out.once('drain', () => req.resume());
+        });
+        req.on('end', () => {
+            if (failed) return;
+            out.end(() => resolve({ tmp, size, sha256: hash.digest('hex'), meta }));
+        });
+        req.on('error', fail);
+        out.on('error', fail);
+    });
+}
+
+function ServeUpdateArtifact(req, res, pathname, url) {
+    const match = pathname.match(/^\/updates\/([A-Za-z0-9]+)$/);
+    if (!match) return false;
+    const artifactId = match[1];
+    if (!releaseManager.VerifyDownload(artifactId, url.searchParams.get('exp'), url.searchParams.get('sig'))) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end('Forbidden');
+        return true;
+    }
+    const release = releaseManager.FindArtifact(artifactId);
+    const file = releaseManager.ArtifactPath(release);
+    if (!release || !file || !fs.existsSync(file)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end('Not found');
+        return true;
+    }
+    const stat = fs.statSync(file);
+    res.writeHead(200, {
+        'Content-Type': release.type === 'CLIENT' && file.toLowerCase().endsWith('.apk') ? 'application/vnd.android.package-archive' : 'application/octet-stream',
+        'Content-Length': stat.size,
+        'Content-Disposition': `attachment; filename="${release.originalName || release.fileName}"`,
+        'Cache-Control': 'private, no-store',
+        'X-Content-SHA256': release.sha256
+    });
+    if (String(req.method || 'GET').toUpperCase() === 'HEAD') { res.end(); return true; }
+    fs.createReadStream(file).pipe(res);
+    return true;
 }
 
 function ServeFile(req, res, fileName) {
@@ -70,6 +140,10 @@ async function RequestHandler(req, res) {
         const body = HealthSnapshot();
         Json(res, body.ok ? 200 : 503, body);
         return;
+    }
+
+    if ((method === 'GET' || method === 'HEAD') && pathname.startsWith('/updates/')) {
+        if (ServeUpdateArtifact(req, res, pathname, url)) return;
     }
 
     if (pathname === '/api/login' && method === 'POST') {
@@ -112,6 +186,27 @@ async function RequestHandler(req, res) {
 
         if (pathname === '/api/events' && method === 'GET') {
             OpenEventStream(req, res, session);
+            return;
+        }
+
+        if (pathname === '/api/releases/upload' && method === 'POST') {
+            if (!ValidateCsrf(req, session)) { ApiError(res, 403, 'CSRF_FAILED'); return; }
+            if (session.role !== 'admin') { ApiError(res, 403, 'FORBIDDEN'); return; }
+            const meta = {
+                type: url.searchParams.get('type'), channel: url.searchParams.get('channel'), version: url.searchParams.get('version'),
+                fileName: url.searchParams.get('fileName'), mandatory: url.searchParams.get('mandatory') === '1',
+                rolloutPercent: Number(url.searchParams.get('rolloutPercent') || 100), notes: url.searchParams.get('notes') || ''
+            };
+            try {
+                const upload = await ReadReleaseUpload(req, meta);
+                const release = releaseManager.PublishFromTemp(meta, upload.tmp, upload.sha256, upload.size);
+                require('../storage/database').SaveDatabase();
+                LogEvent('RELEASE_PUBLISHED', `${release.type}/${release.channel} ${release.version} ${release.sha256}`);
+                RecordAdminActivity(session.role, session.ip, method, pathname, 200, 'RELEASE_UPLOAD');
+                Json(res, 200, { ok: true, release });
+            } catch (error) {
+                ApiError(res, error.message === 'RELEASE_TOO_LARGE' ? 413 : 400, error.message || 'RELEASE_UPLOAD_FAILED');
+            }
             return;
         }
 

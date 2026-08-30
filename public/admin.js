@@ -57,8 +57,12 @@ const titles = {
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
   licenses: ['Licenses', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
+  releases: ['Releases / Updates', 'Auto Update, Release Channel, Canary Rollout을 관리합니다.'],
   features: ['Feature Flags', '전역 기능과 Server / Client별 Override를 관리합니다.'],
+  confighistory: ['Config History', 'Runtime Config와 Feature Flag 변경 이력 및 Rollback을 관리합니다.'],
+  enrollment: ['Device Enrollment', '새 Server / Client의 최초 등록 승인 정책을 관리합니다.'],
   protocol: ['Protocol / Security', 'Protocol v3 준비도, Device HMAC, Event Sequence 상태를 확인합니다.'],
+  security: ['Security Center', 'HMAC 검증, Enrollment, Device Secret 수명과 인증 이상을 한 화면에서 확인합니다.'],
   audit: ['Audit Log', '최근 서버 이벤트와 관리 작업 기록입니다.'],
   activity: ['Admin Activity', 'Web Admin에서 수행된 관리 작업과 결과를 추적합니다.'],
   sessions: ['Sessions', '현재 Web Admin 로그인 세션을 확인하고 종료합니다.'],
@@ -196,7 +200,7 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    if (['dashboard', 'monitor', 'distribution', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'features', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
+    if (['dashboard', 'monitor', 'distribution', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
     updateNotificationBadge();
   });
   eventSource.addEventListener('session', () => showLogin());
@@ -268,8 +272,12 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
     else if (currentView === 'licenses') await renderLicenses();
+    else if (currentView === 'releases') await renderReleases();
     else if (currentView === 'features') await renderFeatureFlags();
+    else if (currentView === 'confighistory') await renderConfigHistory();
+    else if (currentView === 'enrollment') await renderEnrollment();
     else if (currentView === 'protocol') await renderProtocolSecurity();
+    else if (currentView === 'security') await renderSecurityCenter();
     else if (currentView === 'audit') await renderAudit();
     else if (currentView === 'activity') await renderActivity();
     else if (currentView === 'sessions') await renderSessions();
@@ -523,7 +531,7 @@ async function renderServers() {
   };
 
   content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Drain은 신규 Client 배정만 중지 · Disable은 Enable 전까지 차단</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>SERVER-ID</th><th>Status</th><th>Health</th><th>Accept</th><th>Clients</th><th>Drain</th><th>RTT</th><th>Version</th><th>IP</th><th>Last Seen</th><th>Reconnect</th><th>Note</th><th>Action</th></tr></thead><tbody>
-    ${servers.map(s => `<tr><td>${esc(s.alias || '-')}</td><td class="code">${esc(s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.health)}</td><td>${s.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</td><td>${s.clients} / ${s.savedClients}</td><td>${s.drain && s.drain.active ? `<div class="drain-inline"><strong>${s.drain.ready ? 'READY' : `${s.drain.progress}%`}</strong><span>${s.drain.currentClients} live</span></div>` : '-'}</td><td>${s.rttMs >= 0 ? `${s.rttMs} ms` : '-'}</td><td>${esc(s.appVersion || '-')}</td><td>${esc(s.lastIP || '-')}</td><td>${esc(fmtTime(s.lastSeen))}</td><td>${s.reconnectCount}</td><td class="note-cell" title="${esc(s.note || '')}">${esc(s.note || '-')}</td><td>${actions(s)}</td></tr>`).join('') || '<tr><td colspan="14" class="empty">Server 없음</td></tr>'}
+    ${servers.map(s => `<tr><td>${esc(s.alias || '-')}</td><td class="code">${esc(s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.health)}</td><td>${s.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</td><td>${s.clients} / ${s.savedClients}</td><td>${s.drain && s.drain.active ? `<div class="drain-inline"><strong>${s.drain.ready ? 'READY' : `${s.drain.progress}%`}</strong><span>${s.drain.currentClients} live</span></div>` : '-'}</td><td>${s.rttMs >= 0 ? `${s.rttMs} ms` : '-'}</td><td>${esc(s.appVersion || '-')}</td><td>${esc(s.lastIP || '-')}</td><td>${esc(fmtTime(s.lastSeen))}</td><td>${s.reconnectCount}</td><td class="note-cell" title="${esc(s.note || '')}">${esc(s.note || '-')}</td><td>${actions(s)}</td></tr>`).join('') || '<tr><td colspan="15" class="empty">Server 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
@@ -579,6 +587,44 @@ function flagSelect(name, value) {
   return `<select data-flag-name="${esc(name)}"><option value="INHERIT" ${v==='INHERIT'?'selected':''}>INHERIT</option><option value="ON" ${v==='ON'?'selected':''}>ON</option><option value="OFF" ${v==='OFF'?'selected':''}>OFF</option></select>`;
 }
 
+
+async function renderReleases() {
+  const { releases:r } = await api('/api/releases');
+  const relMap = new Map((r.releases || []).map(x => [`${x.type}:${x.channel}`, x]));
+  const releaseRows = ['SERVER','CLIENT'].flatMap(type => ['STABLE','BETA','TEST'].map(channel => {
+    const x=relMap.get(`${type}:${channel}`);
+    return `<tr><td>${type}</td><td>${channel}</td><td>${x?esc(x.version):'-'}</td><td>${x?fmtBytes(x.size):'-'}</td><td>${x?`${x.rolloutPercent}%`:'-'}</td><td>${x?badge(x.enabled?'ONLINE':'OFFLINE'):'-'}</td><td>${x?`<code>${esc(String(x.sha256||'').slice(0,16))}...</code>`:'-'}</td><td>${x?`<div class="actions"><button data-release-rollout data-type="${type}" data-channel="${channel}">ROLLOUT</button><button data-release-toggle data-type="${type}" data-channel="${channel}" data-enabled="${x.enabled?'0':'1'}">${x.enabled?'PAUSE':'ENABLE'}</button><button data-release-push data-type="${type}" data-channel="${channel}">PUSH</button></div>`:'-'}</td></tr>`;
+  })).join('');
+  const assignments=(r.assignments||[]).map(d=>`<tr><td>${d.type}</td><td><code>${esc(d.id)}</code></td><td>${d.online?badge('ONLINE'):badge('OFFLINE')}</td><td>${esc(d.currentVersion||'-')}</td><td><select data-release-channel-select data-type="${d.type}" data-id="${d.id}">${['STABLE','BETA','TEST'].map(ch=>`<option value="${ch}" ${ch===d.channel?'selected':''}>${ch}</option>`).join('')}</select></td><td>${d.bucket}</td><td>${d.update&&d.update.available?badge('UPDATE'):esc(d.update&&d.update.reason||'-')}<div class="small-note code">${d.updateStatus?esc(`${d.updateStatus.version||''} ${d.updateStatus.status||''}`):''}</div></td><td><button data-release-device-push data-type="${d.type}" data-id="${d.id}">CHECK/PUSH</button></td></tr>`).join('');
+  content.innerHTML=`
+    <div class="section-card"><div class="section-head"><h3>Publish Release</h3><span class="small-note">Admin upload / SHA-256 / signed download URL</span></div><div class="section-body">
+      <div class="form-grid release-upload-grid">
+        <label>Target<select id="release-type"><option>SERVER</option><option>CLIENT</option></select></label>
+        <label>Channel<select id="release-channel"><option>STABLE</option><option>BETA</option><option>TEST</option></select></label>
+        <label>Version<input id="release-version" value="2.1.0" placeholder="2.1.0"></label>
+        <label>Canary %<input id="release-rollout" type="number" min="0" max="100" value="100"></label>
+        <label>Mandatory<select id="release-mandatory"><option value="0">NO</option><option value="1">YES</option></select></label>
+        <label>Artifact<input id="release-file" type="file" accept=".zip,.exe,.apk"></label>
+      </div>
+      <label>Release Notes<input id="release-notes" placeholder="변경사항 / 주의사항"></label>
+      <div class="actions"><button id="release-upload-btn" class="primary">UPLOAD & PUBLISH</button><span id="release-upload-status" class="muted"></span></div>
+    </div></div>
+    <div class="section-card"><div class="section-head"><h3>Release Matrix</h3></div><div class="table-wrap"><table><thead><tr><th>TYPE</th><th>CHANNEL</th><th>VERSION</th><th>SIZE</th><th>CANARY</th><th>STATE</th><th>SHA-256</th><th>ACTION</th></tr></thead><tbody>${releaseRows}</tbody></table></div></div>
+    <div class="section-card"><div class="section-head"><h3>Device Release Channel</h3><span class="small-note">Deterministic Canary bucket 0-99</span></div><div class="table-wrap"><table><thead><tr><th>TYPE</th><th>ID</th><th>LINK</th><th>VERSION</th><th>CHANNEL</th><th>BUCKET</th><th>UPDATE</th><th>ACTION</th></tr></thead><tbody>${assignments||'<tr><td colspan="8">No devices</td></tr>'}</tbody></table></div></div>`;
+}
+
+async function uploadRelease() {
+  const file=document.getElementById('release-file').files[0]; if(!file){toast('Release 파일을 선택하세요.',true);return;}
+  const type=document.getElementById('release-type').value, channel=document.getElementById('release-channel').value, version=document.getElementById('release-version').value.trim();
+  const rolloutPercent=Number(document.getElementById('release-rollout').value||100), mandatory=document.getElementById('release-mandatory').value;
+  const notes=document.getElementById('release-notes').value.trim(); const status=document.getElementById('release-upload-status');
+  const q=new URLSearchParams({type,channel,version,fileName:file.name,rolloutPercent:String(rolloutPercent),mandatory,notes});
+  status.textContent=`UPLOADING ${fmtBytes(file.size)}...`;
+  const response=await fetch(`/api/releases/upload?${q.toString()}`,{method:'POST',headers:{'X-CSRF-Token':session.csrf,'Content-Type':'application/octet-stream'},credentials:'same-origin',body:file});
+  let data={}; try{data=await response.json();}catch(_){} if(!response.ok||data.ok===false)throw new Error(data.error||`HTTP_${response.status}`);
+  toast(`${type}/${channel} ${version} published`); await renderReleases();
+}
+
 async function renderFeatureFlags() {
   if (!roleIsAdmin()) { content.innerHTML = '<div class="empty">FORBIDDEN</div>'; return; }
   const [{ defaults, global, serverOverrides, clientOverrides }, { devices }] = await Promise.all([api('/api/control/features'), api('/api/control/devices')]);
@@ -604,19 +650,56 @@ function renderFeatureDeviceEditor(names, serverOverrides, clientOverrides) {
 }
 
 
+async function renderConfigHistory() {
+  if (!roleIsAdmin()) throw new Error('FORBIDDEN');
+  const { current, history } = await api('/api/control/config-history?limit=100');
+  const rows = (history || []).map(h => `<tr><td>${esc(fmtTime(h.at))}</td><td class="code">${esc(h.id)}</td><td>${esc(h.action)}</td><td>${esc(h.actor)}</td><td>${h.revision}</td><td>${esc(h.detail || '-')}</td><td>${h.action === 'ROLLBACK' ? '-' : `<button data-config-rollback="${esc(h.id)}">ROLLBACK</button>`}</td></tr>`).join('');
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">CURRENT REVISION</div><div class="stat-value">${current.revision}</div><div class="stat-sub">Runtime Config</div></div><div class="card"><div class="stat-label">HISTORY</div><div class="stat-value">${history.length}</div><div class="stat-sub">Max 100 snapshots</div></div></div><div class="section-card"><div class="section-head"><h3>Configuration Timeline</h3><span class="small-note">Rollback creates a NEW revision so connected devices always apply it.</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Time</th><th>ID</th><th>Action</th><th>Actor</th><th>Rev</th><th>Detail</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="empty">History 없음</td></tr>'}</tbody></table></div></div></div>`;
+}
+
+async function renderEnrollment() {
+  if (!roleIsAdmin()) throw new Error('FORBIDDEN');
+  const { enrollment:e } = await api('/api/enrollment');
+  const rows=(e.records||[]).map(r=>`<tr><td>${badge(r.type)}</td><td class="code">${esc(r.deviceKey)}</td><td>${badge(r.status)}</td><td class="code">${esc(r.requestId)}</td><td>${esc(r.appVersion||'-')}</td><td>${r.protocolVersion||'-'}</td><td class="code">${esc(r.ip||'-')}</td><td>${esc(fmtTime(r.lastSeenAt))}</td><td class="code">${esc(r.assignedId||'-')}</td><td><div class="actions">${r.status==='PENDING'?`<button class="primary" data-enroll-decision="APPROVED" data-request-id="${esc(r.requestId)}">APPROVE</button><button class="danger" data-enroll-decision="REJECTED" data-request-id="${esc(r.requestId)}">REJECT</button>`:''}<button data-enroll-reset="${esc(r.requestId)}">RESET</button></div></td></tr>`).join('');
+  content.innerHTML=`<div class="cards"><div class="card"><div class="stat-label">POLICY</div><div class="stat-value">${e.policy.enabled?'ON':'OFF'}</div><div class="stat-sub">Existing devices are grandfathered</div></div><div class="card"><div class="stat-label">PENDING</div><div class="stat-value">${e.pending}</div></div><div class="card"><div class="stat-label">APPROVED</div><div class="stat-value">${e.approved}</div></div><div class="card"><div class="stat-label">REJECTED</div><div class="stat-value">${e.rejected}</div></div></div><div class="section-card"><div class="section-head"><h3>New Device Approval</h3><div class="actions"><button id="enrollment-policy-btn" class="${e.policy.enabled?'warning':'primary'}">${e.policy.enabled?'DISABLE POLICY':'ENABLE POLICY'}</button></div></div><div class="section-body"><p class="muted">정책 ON 이후 처음 보는 Device Key만 PENDING 처리됩니다. 이미 등록된 Server / Client는 재접속에 영향 없습니다.</p><div class="table-wrap"><table><thead><tr><th>Type</th><th>Device Key</th><th>Status</th><th>Request</th><th>App</th><th>Proto</th><th>IP</th><th>Last Seen</th><th>Assigned ID</th><th>Action</th></tr></thead><tbody>${rows||'<tr><td colspan="10" class="empty">Enrollment 기록 없음</td></tr>'}</tbody></table></div></div></div>`;
+}
+
+async function renderSecurityCenter() {
+  const { security:s } = await api('/api/security/dashboard');
+  const alerts=(s.alerts||[]).map(a=>`<div class="integrity-row">${badge(a.severity)}<span class="code">${esc(a.code)}</span><span>COUNT ${a.count}</span><span>${esc(a.message||'')}</span></div>`).join('');
+  const rows=(s.devices||[]).map(d=>{
+    const age=d.hasSecret?(d.secretAgeUnknown?'UNKNOWN':`${d.secretAgeDays}d`):'-';
+    const hmac=!d.capable?badge('LEGACY'):(d.verified?badge('VERIFIED'):badge(d.online?'UNVERIFIED':'OFFLINE'));
+    const secret=!d.hasSecret?badge('NONE'):(d.secretStale?badge('STALE'):badge('OK'));
+    return `<tr><td>${badge(d.type)}</td><td class="code">${esc(d.id)}</td><td>${d.online?badge('ONLINE'):badge('OFFLINE')}</td><td>${hmac}</td><td>${d.enforced?badge('ENFORCED'):badge('OPTIONAL')}</td><td>${secret}</td><td>${esc(age)}</td><td>${esc(d.authStatus||'-')}</td><td>${d.verifiedAt?esc(fmtTime(d.verifiedAt)):'-'}</td><td>${d.rotationStatus?badge(d.rotationStatus):'-'}</td></tr>`;
+  }).join('');
+  content.innerHTML=`<div class="cards">
+    <div class="card"><div class="stat-label">SECURITY SCORE</div><div class="stat-value">${s.score}</div><div class="stat-sub">${esc(s.label)}</div></div>
+    <div class="card"><div class="stat-label">HMAC VERIFIED</div><div class="stat-value">${s.verified} / ${s.onlineHmacCapable}</div><div class="stat-sub">Online HMAC-capable devices</div></div>
+    <div class="card"><div class="stat-label">ENROLLMENT</div><div class="stat-value">${s.enrollment.pending}</div><div class="stat-sub">Pending · Rejected ${s.enrollment.rejected}</div></div>
+    <div class="card"><div class="stat-label">AUTH FAIL 24H</div><div class="stat-value">${s.authFailures24h}</div><div class="stat-sub">Online unverified ${s.unverifiedOnline}</div></div>
+    <div class="card"><div class="stat-label">SECRET AGE</div><div class="stat-value">${s.staleSecrets}</div><div class="stat-sub">90d+ · Unknown ${s.unknownSecretAge}</div></div>
+    <div class="card"><div class="stat-label">LEGACY</div><div class="stat-value">${s.legacy}</div><div class="stat-sub">Active rotations ${s.activeRotations}</div></div>
+  </div>
+  <div class="section-card"><div class="section-head"><h3>Security Alerts</h3>${badge(s.label)}</div><div class="section-body">${alerts||'<div class="integrity-ok">[ SECURITY_HEALTHY ] No active security warnings.</div>'}</div></div>
+  <div class="section-card"><div class="section-head"><h3>Device Security Matrix</h3><span class="small-note">HMAC / ENROLLMENT / SECRET AGE / ROTATION</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Type</th><th>ID</th><th>Link</th><th>HMAC</th><th>Policy</th><th>Secret</th><th>Age</th><th>Auth State</th><th>Last Verified</th><th>Rotation</th></tr></thead><tbody>${rows||'<tr><td colspan="10" class="empty">Device 없음</td></tr>'}</tbody></table></div></div></div>`;
+}
+
 async function renderProtocolSecurity() {
-  const [{ readiness }, { devices: security }, { devices: sequences }] = await Promise.all([
-    api('/api/control/protocol-readiness'), api('/api/control/security'), api('/api/control/sequences')
+  const [{ readiness }, { devices: security }, { devices: sequences }, { rotations }] = await Promise.all([
+    api('/api/control/protocol-readiness'), api('/api/control/security'), api('/api/control/sequences'), api('/api/control/security/rotations')
   ]);
   const secMap = new Map((security || []).map(x => [`${x.type}:${x.id}`, x]));
   const seqMap = new Map((sequences || []).map(x => [`${x.type}:${x.id}`, x]));
+  const rotationMap = new Map((rotations || []).map(x => [`${x.type}:${x.id}`, x]));
   const rows = (readiness.devices || []).map(r => {
     const key = `${r.type}:${r.id}`;
     const sec = secMap.get(key) || {};
     const seq = seqMap.get(key) || {};
     const st = seq.stats || {};
-    const actions = roleIsAdmin() && sec.online ? `<div class="actions"><button data-security-challenge data-type="${esc(r.type)}" data-id="${esc(r.id)}">Challenge</button><button class="warning" data-security-reset data-type="${esc(r.type)}" data-id="${esc(r.id)}">Rotate Secret</button></div>` : '-';
-    return `<tr><td>${badge(r.type)}</td><td class="code">${esc(r.id)}</td><td>${r.ready ? badge('READY') : badge('BLOCKED')}</td><td>${esc((r.profile && `${r.profile.current} → ${r.profile.candidate}`) || '-')}</td><td>${sec.hasSecret ? badge('ENROLLED') : badge('NONE')}</td><td>${sec.verified ? badge('VERIFIED') : badge(sec.online ? 'UNVERIFIED' : 'OFFLINE')}</td><td>${sec.enforced ? badge('ENFORCED') : badge('OPTIONAL')}</td><td>${seq.capable ? badge(seq.enabled ? 'ON' : 'OFF') : badge('LEGACY')}</td><td>${st.rxLast || 0}</td><td>${st.rxMissing || 0}</td><td>${st.rxDuplicates || 0}</td><td>${st.rxOutOfOrder || 0}</td><td>${esc((r.blockers || []).join(', ') || '-')}</td><td>${actions}</td></tr>`;
+    const rot = rotationMap.get(key) || null;
+    const actions = roleIsAdmin() && sec.online ? `<div class="actions"><button data-security-challenge data-type="${esc(r.type)}" data-id="${esc(r.id)}">Challenge</button><button class="warning" data-security-rotate data-type="${esc(r.type)}" data-id="${esc(r.id)}">Rotate Secret</button><button class="danger" data-security-reset data-type="${esc(r.type)}" data-id="${esc(r.id)}">Re-enroll</button></div>` : '-';
+    return `<tr><td>${badge(r.type)}</td><td class="code">${esc(r.id)}</td><td>${r.ready ? badge('READY') : badge('BLOCKED')}</td><td>${esc((r.profile && `${r.profile.current} → ${r.profile.candidate}`) || '-')}</td><td>${sec.hasSecret ? badge('ENROLLED') : badge('NONE')}</td><td>${sec.verified ? badge('VERIFIED') : badge(sec.online ? 'UNVERIFIED' : 'OFFLINE')}</td><td>${sec.enforced ? badge('ENFORCED') : badge('OPTIONAL')}</td><td>${rot ? badge(rot.status) : badge('NONE')}</td><td>${seq.capable ? badge(seq.enabled ? 'ON' : 'OFF') : badge('LEGACY')}</td><td>${st.rxLast || 0}</td><td>${st.rxMissing || 0}</td><td>${st.rxDuplicates || 0}</td><td>${st.rxOutOfOrder || 0}</td><td>${esc((r.blockers || []).join(', ') || '-')}</td><td>${actions}</td></tr>`;
   }).join('');
   const verified = (security || []).filter(x => x.verified).length;
   const enrolled = (security || []).filter(x => x.hasSecret).length;
@@ -627,7 +710,7 @@ async function renderProtocolSecurity() {
     <div class="card"><div class="stat-label">HMAC VERIFIED</div><div class="stat-value">${verified}</div><div class="stat-sub">Enrolled ${enrolled}</div></div>
     <div class="card"><div class="stat-label">SEQ MISSING</div><div class="stat-value">${missing}</div><div class="stat-sub">Detected gaps</div></div>
     <div class="card"><div class="stat-label">SEQ ANOMALY</div><div class="stat-value">${anomalies}</div><div class="stat-sub">Duplicate / Out-of-order</div></div>
-  </div><div class="section-card"><div class="section-head"><h3>Protocol v3 Readiness / Device Security / Sequence</h3><span class="small-note">Protocol 2 remains active. This page only measures readiness.</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Type</th><th>ID</th><th>V3</th><th>Profile</th><th>Secret</th><th>HMAC</th><th>Policy</th><th>SEQ</th><th>RX Last</th><th>Missing</th><th>Dup</th><th>OOO</th><th>Blockers</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="14" class="empty">Device 없음</td></tr>'}</tbody></table></div></div></div>`;
+  </div><div class="section-card"><div class="section-head"><h3>Protocol v3 Readiness / Device Security / Sequence</h3><span class="small-note">Protocol 2 remains active. This page only measures readiness.</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Type</th><th>ID</th><th>V3</th><th>Profile</th><th>Secret</th><th>HMAC</th><th>Policy</th><th>Rotation</th><th>SEQ</th><th>RX Last</th><th>Missing</th><th>Dup</th><th>OOO</th><th>Blockers</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="15" class="empty">Device 없음</td></tr>'}</tbody></table></div></div></div>`;
 }
 
 async function renderAudit() {
@@ -790,6 +873,19 @@ content.addEventListener('click', async event => {
     if (event.target.id === 'storage-schema-btn') { const r=await api('/api/storage/migration/schema'); await openModal({title:`SQLite Schema v${r.schema.version}`,html:`<pre class="code-block schema-preview">${esc(r.schema.sql)}</pre>`,confirmLabel:'닫기'}); return; }
     if (event.target.id === 'storage-export-btn') { const v=await openModal({title:'Create SQLite Migration Bundle',message:'현재 JSON DB는 그대로 유지하고 Migration용 schema/data/checksum 파일만 생성합니다.',confirmLabel:'EXPORT'}); if(!v)return; const r=await api('/api/storage/migration/export',{method:'POST',body:{}}); const out=document.getElementById('storage-export-result'); if(out)out.textContent=`${r.directory} // SHA256 ${r.checksum}`; toast('Migration Bundle 생성 완료'); return; }
 
+    if (event.target.id === 'release-upload-btn') { await uploadRelease(); return; }
+    const releaseRollout=event.target.closest('[data-release-rollout]');
+    if(releaseRollout){
+      const cur=await api('/api/releases'); const item=(cur.releases.releases||[]).find(x=>x.type===releaseRollout.dataset.type&&x.channel===releaseRollout.dataset.channel); const v=await openModal({title:'Canary Rollout',message:`${releaseRollout.dataset.type}/${releaseRollout.dataset.channel} 배포 비율`,fields:[{name:'percent',label:'Rollout %',type:'number',value:String(item?.rolloutPercent??100)}],confirmLabel:'APPLY'}); if(!v)return;
+      await api('/api/releases/rollout',{method:'POST',body:{type:releaseRollout.dataset.type,channel:releaseRollout.dataset.channel,rolloutPercent:Number(v.percent)}}); toast('Canary rollout 적용'); await renderReleases(); return;
+    }
+    const releaseToggle=event.target.closest('[data-release-toggle]');
+    if(releaseToggle){ await api('/api/releases/enabled',{method:'POST',body:{type:releaseToggle.dataset.type,channel:releaseToggle.dataset.channel,enabled:releaseToggle.dataset.enabled==='1'}}); toast('Release 상태 변경'); await renderReleases(); return; }
+    const releasePush=event.target.closest('[data-release-push]');
+    if(releasePush){ const r=await api('/api/releases/push',{method:'POST',body:{}}); toast(`Update check pushed: ${(r.results||[]).filter(x=>x.available).length}`); return; }
+    const releaseDevicePush=event.target.closest('[data-release-device-push]');
+    if(releaseDevicePush){ const r=await api('/api/releases/push',{method:'POST',body:{type:releaseDevicePush.dataset.type,id:releaseDevicePush.dataset.id}}); toast(r.result?.available?'UPDATE_AVAILABLE 전송':'대상 업데이트 없음'); return; }
+
     const serverBtn = event.target.closest('[data-server-action]');
     if (serverBtn) { await serverAction(serverBtn.dataset.serverAction, serverBtn.dataset.id); return; }
     const clientBtn = event.target.closest('[data-client-action]');
@@ -870,11 +966,30 @@ content.addEventListener('click', async event => {
       await api('/api/control/security/challenge', { method:'POST', body:{ type:securityChallenge.dataset.type, id:securityChallenge.dataset.id } });
       toast('HMAC Challenge 전송'); setTimeout(()=>renderProtocolSecurity(),350); return;
     }
+    const configRollback = event.target.closest('[data-config-rollback]');
+    if (configRollback) {
+      const v=await openModal({title:'Config Rollback',message:'선택한 설정 Snapshot을 새 revision으로 복원하고 온라인 기기에 즉시 Sync합니다.',danger:true,confirmLabel:'ROLLBACK'}); if(!v)return;
+      const r=await api('/api/control/config-history/rollback',{method:'POST',body:{id:configRollback.dataset.configRollback}}); toast(`Rollback 완료 → revision ${r.currentRevision}`); await renderConfigHistory(); return;
+    }
+    if (event.target.id === 'enrollment-policy-btn') {
+      const { enrollment:e }=await api('/api/enrollment'); const enabled=!e.policy.enabled;
+      const v=await openModal({title:'Device Enrollment Policy',message:enabled?'새 Device Key를 승인 전 PENDING으로 전환합니다. 기존 등록 기기는 영향 없습니다.':'새 Device 자동 등록을 다시 허용합니다.',danger:enabled,confirmLabel:enabled?'ENABLE':'DISABLE'});if(!v)return;
+      await api('/api/enrollment/policy',{method:'POST',body:{enabled}});toast(`Enrollment ${enabled?'ON':'OFF'}`);await renderEnrollment();return;
+    }
+    const enrollDecision=event.target.closest('[data-enroll-decision]');
+    if(enrollDecision){await api('/api/enrollment/decision',{method:'POST',body:{requestId:enrollDecision.dataset.requestId,status:enrollDecision.dataset.enrollDecision}});toast(`Enrollment ${enrollDecision.dataset.enrollDecision}`);await renderEnrollment();return;}
+    const enrollReset=event.target.closest('[data-enroll-reset]');
+    if(enrollReset){await api('/api/enrollment/reset',{method:'POST',body:{requestId:enrollReset.dataset.enrollReset}});toast('Enrollment 기록 초기화');await renderEnrollment();return;}
+    const securityRotate = event.target.closest('[data-security-rotate]');
+    if (securityRotate) {
+      const v=await openModal({title:'Zero-Downtime Secret Rotation',message:`${securityRotate.dataset.type} ${securityRotate.dataset.id}의 현재 Secret에서 새 Secret을 파생하고 2단계 Commit합니다. Secret 원문은 네트워크로 다시 보내지 않습니다.`,danger:true,confirmLabel:'ROTATE'});if(!v)return;
+      const r=await api('/api/control/security/rotate',{method:'POST',body:{type:securityRotate.dataset.type,id:securityRotate.dataset.id}});toast(`Rotation ${r.rotation.rotationId} 시작`);setTimeout(()=>renderProtocolSecurity(),350);return;
+    }
     const securityReset = event.target.closest('[data-security-reset]');
     if (securityReset) {
-      const v=await openModal({title:'Rotate Device Secret',message:`${securityReset.dataset.type} ${securityReset.dataset.id}의 Device Secret을 교체하고 새 HMAC 등록을 시작합니다.`,danger:true,confirmLabel:'ROTATE'}); if(!v)return;
+      const v=await openModal({title:'Re-enroll Device Secret',message:`${securityReset.dataset.type} ${securityReset.dataset.id}의 기존 Secret을 폐기하고 새 Secret을 다시 등록합니다. 연결 장애 복구용입니다.`,danger:true,confirmLabel:'RE-ENROLL'}); if(!v)return;
       await api('/api/control/security/reset', { method:'POST', body:{ type:securityReset.dataset.type, id:securityReset.dataset.id } });
-      toast('Device Secret Rotation 시작'); setTimeout(()=>renderProtocolSecurity(),350); return;
+      toast('Device Secret Re-enrollment 시작'); setTimeout(()=>renderProtocolSecurity(),350); return;
     }
 
     if (event.target.id === 'license-search-btn') {
@@ -1219,6 +1334,18 @@ async function runPaletteSearch(query) {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'k') { event.preventDefault(); openPalette(); return; }
   if (event.key === 'Escape') closePalette();
+});
+
+
+
+content.addEventListener('change', async event => {
+  try {
+    const el=event.target.closest('[data-release-channel-select]');
+    if(!el)return;
+    await api('/api/releases/device-channel',{method:'POST',body:{type:el.dataset.type,id:el.dataset.id,channel:el.value}});
+    toast(`${el.dataset.type} ${el.dataset.id} → ${el.value}`);
+    await renderReleases();
+  } catch(error) { toast(error.message,true); }
 });
 
 restoreSession();

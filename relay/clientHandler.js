@@ -87,9 +87,19 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
             SendLine(connection.socket, 'ERROR|SERVER_OFFLINE'); return;
         }
     } else {
+        const enrollment = require('../services/deviceEnrollment').Request('CLIENT', deviceKey, { ip: SafeIP(connection.socket), appVersion, protocolVersion });
+        if (!enrollment.allowed) {
+            SaveDatabase();
+            const requestId = enrollment.record && enrollment.record.requestId ? enrollment.record.requestId : '';
+            SendLine(connection.socket, enrollment.rejected ? 'ERROR|ENROLLMENT_REJECTED' : `ERROR|ENROLLMENT_PENDING|${requestId}`);
+            LogEvent(enrollment.rejected ? 'CLIENT_ENROLLMENT_REJECTED' : 'CLIENT_ENROLLMENT_PENDING', `${deviceKey} ${requestId}`);
+            return;
+        }
         const server = FindAvailableServer();
         if (!server) { SendLine(connection.socket, 'ERROR|NO_SERVER'); return; }
         saved = CreateClientIdentity(deviceKey, server.serverId);
+        require('../services/deviceEnrollment').MarkBound('CLIENT', deviceKey, saved.id);
+        SaveDatabase();
     }
     AttachClient(connection, saved);
 }
@@ -169,13 +179,15 @@ function HandleClientLine(connection, line) {
     if (!line) return;
 
     if (connection.clientId) {
-        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('CLIENT', connection.clientId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('CLIENT', connection.clientId); require('../services/deviceAuth').SendEnrollmentSecret('CLIENT', connection.clientId, false); return; }
+        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('CLIENT', connection.clientId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('CLIENT', connection.clientId); require('../services/releaseManager').NotifyDevice('CLIENT', connection.clientId); require('../services/deviceAuth').SendEnrollmentSecret('CLIENT', connection.clientId, false); return; }
         if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('CLIENT', connection.clientId, line.split('|').slice(1)); return; }
         if (line.startsWith('PROTOCOL_PROFILE|')) { const p=line.split('|'); require('../services/protocolReadiness').RecordProfile('CLIENT', connection.clientId, p[1], p[2], p.slice(3).join('|')); return; }
         if (line === 'DEVICE_SECRET_ACK' || line.startsWith('DEVICE_SECRET_ACK|')) { require('../services/deviceAuth').HandleSecretAck('CLIENT', connection.clientId); return; }
         if (line.startsWith('DEVICE_AUTH|')) { const p=line.split('|'); require('../services/deviceAuth').HandleAuth('CLIENT', connection.clientId, p[1], p[2]); return; }
         if (line.startsWith('COMMAND_ACK|')) { require('../services/deviceControl').RecordCommandAck('CLIENT', connection.clientId, line.split('|')); return; }
         if (line.startsWith('DIAGNOSTICS|')) { require('../services/deviceControl').RecordDiagnostics('CLIENT', connection.clientId, line.split('|').slice(2).join('|')); return; }
+        if (line.startsWith('UPDATE_ACK|')) { require('../services/releaseManager').RecordUpdateAck('CLIENT', connection.clientId, line.split('|')); return; }
+        if (line.startsWith('DEVICE_SECRET_ROTATE_ACK|')) { const r=require('../services/deviceSecretRotation').HandleAck('CLIENT',connection.clientId,line.split('|')); if(!r.ok) SendLine(connection.socket,`DEVICE_SECRET_ROTATE_ERROR|${line.split('|')[1]||''}|${r.reason}`); return; }
         if (line.startsWith('CONFIG_ACK|')) {  connection.configAck = line; return; }
         if (line.startsWith('UI_STATE|')) { const p=line.split('|'); require('../services/deviceControl').RecordUiState(connection.clientId,p[1],p.slice(2).join('|')); return; }
     }

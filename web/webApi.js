@@ -40,6 +40,11 @@ const deviceAuth = require('../services/deviceAuth');
 const { LicenseQr } = require('../services/qrCode');
 const loadSimulator = require('../services/loadSimulator');
 const storageMigration = require('../services/storageMigration');
+const releaseManager = require('../services/releaseManager');
+const configHistory = require('../services/configHistory');
+const deviceEnrollment = require('../services/deviceEnrollment');
+const secretRotation = require('../services/deviceSecretRotation');
+const securityDashboard = require('../services/securityDashboard');
 
 const {
     BACKUP_DIR, DATA_DIR, CURRENT_PROTOCOL_VERSION,
@@ -819,26 +824,92 @@ async function HandleApiRequest(req, res, session) {
     }
 
 
-    if (method === 'GET' && pathname === '/api/control/devices') {
+    
+    if (method === 'GET' && pathname === '/api/releases') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, releases: releaseManager.ReleaseOverview() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/releases/device-channel') {
+        if (!RequireAdmin(res, session)) return;
+        const type=releaseManager.NormalizeType(body.type), id=NormalizeID(body.id), channel=releaseManager.NormalizeChannel(body.channel);
+        if(!type||!id||!channel){ApiError(res,400,'INVALID_RELEASE_ASSIGNMENT');return;}
+        const exists=type==='SERVER'?ServerExists(id):ClientExists(id); if(!exists){ApiError(res,404,`${type}_NOT_FOUND`);return;}
+        releaseManager.SetChannel(type,id,channel); SaveDatabase();
+        const push=releaseManager.NotifyDevice(type,id);
+        LogEvent('RELEASE_CHANNEL', `${type} ${id} -> ${channel}`);
+        Json(res,200,{ok:true,type,id,channel,push}); return;
+    }
+
+    if (method === 'POST' && pathname === '/api/releases/rollout') {
+        if (!RequireAdmin(res, session)) return;
+        const type=releaseManager.NormalizeType(body.type), channel=releaseManager.NormalizeChannel(body.channel);
+        const percent=Number(body.rolloutPercent);
+        if(!type||!channel||!Number.isFinite(percent)||percent<0||percent>100){ApiError(res,400,'INVALID_ROLLOUT');return;}
+        const release=releaseManager.SetRollout(type,channel,percent); if(!release){ApiError(res,404,'RELEASE_NOT_FOUND');return;}
+        SaveDatabase(); const pushes=releaseManager.NotifyAll();
+        LogEvent('RELEASE_ROLLOUT', `${type}/${channel} -> ${release.rolloutPercent}%`);
+        Json(res,200,{ok:true,release,pushes}); return;
+    }
+
+    if (method === 'POST' && pathname === '/api/releases/enabled') {
+        if (!RequireAdmin(res, session)) return;
+        const type=releaseManager.NormalizeType(body.type), channel=releaseManager.NormalizeChannel(body.channel);
+        const release=releaseManager.SetReleaseEnabled(type,channel,body.enabled); if(!release){ApiError(res,404,'RELEASE_NOT_FOUND');return;}
+        SaveDatabase(); if(release.enabled)releaseManager.NotifyAll();
+        LogEvent('RELEASE_ENABLED', `${type}/${channel} -> ${release.enabled}`);
+        Json(res,200,{ok:true,release}); return;
+    }
+
+    if (method === 'POST' && pathname === '/api/releases/push') {
+        if (!RequireAdmin(res, session)) return;
+        const type=releaseManager.NormalizeType(body.type), id=NormalizeID(body.id);
+        if(type&&id){Json(res,200,{ok:true,result:releaseManager.NotifyDevice(type,id)});return;}
+        Json(res,200,{ok:true,results:releaseManager.NotifyAll()}); return;
+    }
+
+    if (method === 'GET' && pathname === '/api/control/config-history') {
+        if (!RequireAdmin(res, session)) return;
+        const baseline=configHistory.EnsureBaseline(); SaveDatabase();
+        Json(res,200,{ok:true,current:state.desiredRuntimeConfig,history:configHistory.List(Number(url.searchParams.get('limit')||100)),baselineId:baseline.id}); return;
+    }
+    if (method === 'POST' && pathname === '/api/control/config-history/rollback') {
+        if (!RequireAdmin(res, session)) return;
+        const r=configHistory.Rollback(body.id,session.role); if(!r.ok){ApiError(res,404,r.reason);return;}
+        SaveDatabase(); for(const d of deviceControl.DeviceOverview())if(d.online)deviceControl.PushDesiredConfig(d.type,d.id);
+        LogEvent('CONFIG_ROLLBACK',`source=${r.source.id} revision=${r.currentRevision}`); Json(res,200,r); return;
+    }
+    if (method === 'GET' && pathname === '/api/enrollment') { if(!RequireAdmin(res,session))return;Json(res,200,{ok:true,enrollment:deviceEnrollment.Overview()});return; }
+    if (method === 'POST' && pathname === '/api/enrollment/policy') { if(!RequireAdmin(res,session))return;const policy=deviceEnrollment.SetEnabled(body.enabled);SaveDatabase();LogEvent('ENROLLMENT_POLICY',`enabled=${policy.enabled}`);Json(res,200,{ok:true,policy});return; }
+    if (method === 'POST' && pathname === '/api/enrollment/decision') { if(!RequireAdmin(res,session))return;const r=deviceEnrollment.Decide(body.requestId,body.status,session.role);if(!r.ok){ApiError(res,404,r.reason);return;}SaveDatabase();LogEvent('ENROLLMENT_DECISION',`${r.record.type} ${r.record.deviceKey} ${r.record.status}`);Json(res,200,r);return; }
+    if (method === 'POST' && pathname === '/api/enrollment/reset') { if(!RequireAdmin(res,session))return;const ok=deviceEnrollment.Reset(body.requestId);if(!ok){ApiError(res,404,'ENROLLMENT_NOT_FOUND');return;}SaveDatabase();Json(res,200,{ok:true});return; }
+
+if (method === 'GET' && pathname === '/api/control/devices') {
         if (!RequireOperation(res, session, 'VIEW')) return;
         Json(res, 200, { ok: true, devices: deviceControl.DeviceOverview(), config: state.desiredRuntimeConfig }); return;
     }
     if (method === 'POST' && pathname === '/api/control/config') {
         if (!RequireAdmin(res, session)) return;
-        const cfg=deviceControl.UpdateDesiredConfig(body); SaveDatabase();
+        configHistory.EnsureBaseline();
+        const cfg=deviceControl.UpdateDesiredConfig(body);
+        const history=configHistory.Record('RUNTIME_CONFIG',session.role,`revision=${cfg.revision}`);
+        SaveDatabase();
         for(const d of deviceControl.DeviceOverview()) if(d.online) deviceControl.PushDesiredConfig(d.type,d.id);
-        Json(res,200,{ok:true,config:cfg}); return;
+        Json(res,200,{ok:true,config:cfg,history}); return;
     }
     let m=pathname.match(/^\/api\/control\/(server|client)\/([0-9A-Fa-f]{16})\/command$/);
     if(method==='POST'&&m){ if(!RequireAdmin(res,session))return; const r=deviceControl.SendCommand(m[1],m[2],body.command,body.arg||''); if(!r.ok){ApiError(res,409,r.reason);return;} Json(res,200,r);return; }
     if (method === 'GET' && pathname === '/api/control/features') { if(!RequireOperation(res,session,'VIEW'))return; Json(res,200,{ok:true,defaults:featureFlags.DEFAULTS,global:featureFlags.GlobalFlags(),serverOverrides:Object.fromEntries(state.serverFeatureOverrides),clientOverrides:Object.fromEntries(state.clientFeatureOverrides)});return; }
-    if (method === 'POST' && pathname === '/api/control/features/global') { if(!RequireAdmin(res,session))return; const flags=featureFlags.SetGlobalFlags(body.flags||{}); SaveDatabase(); for(const d of deviceControl.DeviceOverview())if(d.online)deviceControl.PushDesiredConfig(d.type,d.id);Json(res,200,{ok:true,flags});return; }
-    if (method === 'POST' && pathname === '/api/control/features/device') { if(!RequireAdmin(res,session))return; const type=String(body.type||'').toUpperCase(),id=NormalizeID(body.id); if(!['SERVER','CLIENT'].includes(type)||!id){ApiError(res,400,'INVALID_DEVICE');return;} const overrides=featureFlags.SetDeviceOverrides(type,id,body.flags||{});SaveDatabase();deviceControl.PushDesiredConfig(type,id);Json(res,200,{ok:true,overrides,effective:featureFlags.EffectiveFlags(type,id)});return; }
+    if (method === 'POST' && pathname === '/api/control/features/global') { if(!RequireAdmin(res,session))return; configHistory.EnsureBaseline(); const flags=featureFlags.SetGlobalFlags(body.flags||{}); state.desiredRuntimeConfig.revision=Math.max(1,Number(state.desiredRuntimeConfig.revision||0)+1); const history=configHistory.Record('FEATURE_FLAGS_GLOBAL',session.role,`revision=${state.desiredRuntimeConfig.revision}`); SaveDatabase(); for(const d of deviceControl.DeviceOverview())if(d.online)deviceControl.PushDesiredConfig(d.type,d.id);Json(res,200,{ok:true,flags,history});return; }
+    if (method === 'POST' && pathname === '/api/control/features/device') { if(!RequireAdmin(res,session))return; const type=String(body.type||'').toUpperCase(),id=NormalizeID(body.id); if(!['SERVER','CLIENT'].includes(type)||!id){ApiError(res,400,'INVALID_DEVICE');return;} configHistory.EnsureBaseline(); const overrides=featureFlags.SetDeviceOverrides(type,id,body.flags||{}); state.desiredRuntimeConfig.revision=Math.max(1,Number(state.desiredRuntimeConfig.revision||0)+1); const history=configHistory.Record('FEATURE_FLAGS_DEVICE',session.role,`${type}:${id} revision=${state.desiredRuntimeConfig.revision}`);SaveDatabase();deviceControl.PushDesiredConfig(type,id);Json(res,200,{ok:true,overrides,effective:featureFlags.EffectiveFlags(type,id),history});return; }
     if (method === 'GET' && pathname === '/api/control/protocol-readiness') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,readiness:protocolReadiness.Overview()});return; }
     if (method === 'GET' && pathname === '/api/control/security') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,devices:deviceAuth.Overview()});return; }
     if (method === 'GET' && pathname === '/api/control/sequences') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,devices:require('../services/eventSequence').Overview()});return; }
     if (method === 'POST' && pathname === '/api/control/security/challenge') { if(!RequireAdmin(res,session))return;const r=deviceAuth.IssueChallenge(body.type,body.id);if(!r.ok){ApiError(res,409,r.reason);return;}Json(res,200,r);return; }
     if (method === 'POST' && pathname === '/api/control/security/reset') { if(!RequireAdmin(res,session))return;const r=deviceAuth.Reset(body.type,body.id);if(!r.ok){ApiError(res,409,r.reason);return;}Json(res,200,r);return; }
+    if (method === 'GET' && pathname === '/api/control/security/rotations') { if(!RequireOperation(res,session,'VIEW'))return;Json(res,200,{ok:true,rotations:secretRotation.Overview()});return; }
+    if (method === 'POST' && pathname === '/api/control/security/rotate') { if(!RequireAdmin(res,session))return;const r=secretRotation.Start(body.type,body.id);if(!r.ok){ApiError(res,409,r.reason);return;}SaveDatabase();LogEvent('DEVICE_SECRET_ROTATION_START',`${String(body.type||'').toUpperCase()} ${NormalizeID(body.id)} ${r.rotation.rotationId}`);Json(res,200,r);return; }
     m=pathname.match(/^\/api\/licenses\/([^/]+)\/qr$/);
     if(method==='GET'&&m){if(!RequireOperation(res,session,'VIEW'))return;const key=NormalizeLicenseKey(DecodePart(m[1]));if(!state.licenses.has(key)){ApiError(res,404,'LICENSE_NOT_FOUND');return;}try{const qr=await LicenseQr(key);Json(res,200,{ok:true,...qr});}catch(e){ApiError(res,500,'QR_FAILED',e.message);}return;}
 
@@ -873,6 +944,12 @@ async function HandleApiRequest(req, res, session) {
         if (!result.ok) { ApiError(res, 409, result.reason); return; }
         LogEvent('SQLITE_MIGRATION_EXPORT', `${result.directory} ${result.checksum}`);
         Json(res, 201, result);
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/security/dashboard') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, security: securityDashboard.Build() });
         return;
     }
 

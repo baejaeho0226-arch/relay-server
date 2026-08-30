@@ -26,6 +26,7 @@ function SendEnrollmentSecret(type,id,force=false){
 
     secret=NewSecret();
     state.deviceSecrets.set(key,secret);
+    state.deviceSecretMeta.set(key,{createdAt:Now(),rotatedAt:0,rotationCount:0});
     require('../storage/database').SaveDatabase();
     c.deviceAuthVerified=false;
     SendLine(c.socket,`DEVICE_SECRET|${secret}`);
@@ -65,6 +66,7 @@ function HandleAuth(type,id,challengeId,hex){
     const c=Online(type,id),ch=state.deviceAuthChallenges.get(String(challengeId||''));
     if(!c||!ch||ch.type!==type||ch.id!==id||ch.expiresAt<Now()){
         if(c){c.deviceAuthVerified=false;SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|INVALID_CHALLENGE`);}
+        try{require('../storage/audit').LogEvent('DEVICE_AUTH_INVALID_CHALLENGE',`${type} ${id} ${challengeId}`);}catch(_){}
         return false;
     }
     const secret=state.deviceSecrets.get(K(type,id));
@@ -74,6 +76,7 @@ function HandleAuth(type,id,challengeId,hex){
         const a=Buffer.from(want,'hex'),b=Buffer.from(String(hex||''),'hex');
         ok=a.length===b.length&&a.length>0&&crypto.timingSafeEqual(a,b);
     }catch(_){}
+    if(!ok){ try{ ok=require('./deviceSecretRotation').VerifyAlternateAuth(type,id,ch,hex); }catch(_){} }
     state.deviceAuthChallenges.delete(challengeId);
     if(ok){
         c.deviceAuthVerified=true;
@@ -83,6 +86,8 @@ function HandleAuth(type,id,challengeId,hex){
     }
     c.deviceAuthVerified=false;
     Status(type,id,'FAILED',{failedAt:Now()});
+    try{require('../storage/audit').LogEvent('DEVICE_AUTH_FAILED',`${type} ${id} INVALID_HMAC`);}catch(_){}
+    try{require('./notificationCenter').AddNotification({severity:'CRITICAL',type:'DEVICE_AUTH_FAILED',title:'Device HMAC authentication failed',message:`${type} ${id} rejected invalid HMAC`,entityType:type,entityId:id,dedupeKey:`DEVICE_AUTH_FAILED|${type}|${id}`});}catch(_){}
     SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|INVALID_HMAC`);
     return false;
 }
@@ -106,7 +111,7 @@ function Reset(type,id){
     const key=K(type,id),c=Online(type,id);
     if(!c)return {ok:false,reason:'OFFLINE'};
     if(!Capabilities(type,id).includes('DEVICE_HMAC'))return {ok:false,reason:'CAPABILITY_MISSING'};
-    state.deviceSecrets.delete(key);state.deviceAuthStatus.delete(key);
+    state.deviceSecrets.delete(key);state.deviceSecretMeta.delete(key);state.deviceAuthStatus.delete(key);
     c.deviceAuthVerified=false;
     require('../storage/database').SaveDatabase();
     return SendEnrollmentSecret(type,id,true);
