@@ -1,7 +1,7 @@
 PURE TCP RELAY // WEB ADMIN FINAL TEST RECORD
-Web Admin Version: 2.7.0
+Web Admin Version: 2.8.0
 Protocol Version: 2
-Client/Server App Version: 2.0.0
+Client/Server App Version: 2.1.0
 
 ROADMAP 11-14 CURRENT RESULT
 - Module check: 59 JavaScript files PASS

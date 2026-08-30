@@ -1,6 +1,6 @@
 # Relay New Series 20 - Final
 
-Web Admin version: 2.7.0
+Web Admin version: 2.8.0
 Relay protocol remains: 2
 WinSockServer target: Windows 64-bit
 ApkWinSock target: Android 64-bit / ARM64

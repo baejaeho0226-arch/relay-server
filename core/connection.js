@@ -19,6 +19,7 @@ function SendLine(...args) { return require('./utils').SendLine(...args); }
 
 function CreateConnection(socket) {
     runtimeStats.totalConnections++;
+    try { require('../services/dailyHealth').Record('connections'); } catch (_) {}
     const connection={
         socket,type:null,registered:false,connected:false,identityKey:'',serverId:'',clientId:'',
         protocolVersion:0,appVersion:'',licenseAuthorized:false,licenseKey:'',licenseExpiresAt:0,lastExpiryWarningDay:null,

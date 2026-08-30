@@ -132,6 +132,7 @@ button {
 }
 button:hover { transform: translateY(-1px); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 18px rgba(50,255,139,.08); }
 button:disabled { opacity: .38; cursor: default; transform: none; box-shadow: none; }
+.stat-value.compact { font-size: clamp(1.25rem, 2.6vw, 2rem); overflow-wrap: anywhere; }
 .primary { background: rgba(50,255,139,.12); color: var(--accent); border-color: rgba(50,255,139,.55); }
 .primary:hover { background: rgba(50,255,139,.18); }
 .danger { background: rgba(255,77,109,.09); color: #ff7790; border-color: rgba(255,77,109,.38); }

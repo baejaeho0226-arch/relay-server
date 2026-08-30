@@ -113,6 +113,7 @@ setInterval(() => {
     CheckDrainReadiness();
     EvaluateEmergencyFailover();
     ProcessOfflineQueue();
+    require('./services/dailyHealth').EnsureCurrent();
 }, 1000);
 
 setInterval(() => {

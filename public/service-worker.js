@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'relay-admin-shell-v2.7.0';
+const CACHE = 'relay-admin-shell-v2.8.0';
 const SHELL = [
   '/index.html',
   '/admin.css',
@@ -35,4 +35,33 @@ self.addEventListener('fetch', event => {
       return response;
     }).catch(() => caches.match(request).then(hit => hit || caches.match('/index.html')))
   );
+});
+
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (_) { data = { body: event.data ? event.data.text() : '' }; }
+  const severity = String(data.severity || 'INFO').toUpperCase();
+  event.waitUntil(self.registration.showNotification(data.title || 'Relay Operations', {
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: `${data.type || 'SYSTEM'}:${data.entityId || ''}`,
+    renotify: severity === 'CRITICAL',
+    requireInteraction: severity === 'CRITICAL',
+    data: { url: data.url || '/', type: data.type || 'SYSTEM', entityId: data.entityId || '' }
+  }));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = event.notification.data && event.notification.data.url || '/';
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windows => {
+    for (const client of windows) {
+      if ('focus' in client) {
+        if ('navigate' in client) client.navigate(target);
+        return client.focus();
+      }
+    }
+    return clients.openWindow ? clients.openWindow(target) : undefined;
+  }));
 });

@@ -1,19 +1,21 @@
 {
   "name": "pure-tcp-relay",
-  "version": "5.1.0",
-  "description": "Pure TCP Relay vNext with persistent identities, primary/backup binding, offline queue, replay and DLQ",
+  "version": "5.2.0",
+  "description": "Pure TCP Relay vNext with processor policy, processor statistics, PWA push and daily health reports",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "check": "node scripts/check-modules.js",
     "test:roadmap14": "node scripts/test-roadmap11-14.js",
+    "test:roadmap18": "node scripts/test-roadmap15-18.js",
     "loadtest": "node tools/load-simulator.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "web-push": "^3.6.7"
   },
   "optionalDependencies": {
     "geoip-lite": "^1.4.10"

@@ -59,6 +59,8 @@ const titles = {
   failover: ['Emergency Failover', '기존 Primary 바인딩을 보존한 채 opt-in Client만 장애 시 임시 Server로 재배치합니다.'],
   recovery: ['Request Recovery', 'Offline Queue, Request Replay, Dead Letter Queue를 관리합니다.'],
   notifications: ['Notifications', '중요 운영 경고와 시스템 이벤트를 확인합니다.'],
+  processors: ['Number Processing', '숫자 허용 범위·차단값 정책과 Processor 처리 통계를 관리합니다.'],
+  reports: ['Push / Daily Report', 'PWA Push 구독과 날짜별 Relay Health 리포트를 관리합니다.'],
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
   licenses: ['Licenses', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
@@ -78,6 +80,9 @@ const titles = {
   system: ['System', '서비스, 유지보수 및 최소 버전 정책을 관리합니다.'],
   danger: ['Danger Zone', '복구 영향이 큰 작업만 별도로 실행합니다.']
 };
+
+const requestedStartupView = new URLSearchParams(location.search).get('view');
+if (requestedStartupView && Object.prototype.hasOwnProperty.call(titles, requestedStartupView)) currentView = requestedStartupView;
 
 function esc(value) {
   return String(value ?? '')
@@ -165,6 +170,7 @@ function showApp() {
   app.classList.remove('hidden');
   roleLabel.textContent = session.role.toUpperCase();
   document.querySelectorAll('[data-admin-only]').forEach(el => el.classList.toggle('hidden', session.role !== 'admin'));
+  switchView(currentView);
   startEvents();
   updateNotificationBadge();
   renderCurrent();
@@ -205,7 +211,7 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    if (['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
+    if (['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
     updateNotificationBadge();
   });
   eventSource.addEventListener('session', () => showLogin());
@@ -276,6 +282,8 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'failover') await renderFailover();
     else if (currentView === 'recovery') await renderRecovery();
     else if (currentView === 'notifications') await renderNotifications();
+    else if (currentView === 'processors') await renderProcessors();
+    else if (currentView === 'reports') await renderReports();
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
     else if (currentView === 'licenses') await renderLicenses();
@@ -572,6 +580,54 @@ async function renderNotifications(silent = false) {
   content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">UNREAD</div><div class="stat-value">${summary.unread}</div><div class="stat-sub">Total ${summary.total}</div></div><div class="card"><div class="stat-label">CRITICAL</div><div class="stat-value">${summary.critical}</div><div class="stat-sub">Immediate attention</div></div><div class="card"><div class="stat-label">WARNING</div><div class="stat-value">${summary.warning}</div><div class="stat-sub">Operational warnings</div></div></div>
   <div class="toolbar"><button id="notification-read-all-btn">모두 읽음</button>${roleIsAdmin() ? '<button id="notification-clear-btn" class="danger">전체 지우기</button>' : ''}<span class="small-note">ACK timeout / Server offline / Flapping / License expiry / DB recovery</span></div>
   <div class="notification-list">${notifications.map(n => `<div class="notification-item ${n.read ? 'read' : 'unread'} ${esc(n.severity.toLowerCase())}"><div class="notification-icon">${n.severity === 'CRITICAL' ? '!' : n.severity === 'WARNING' ? '▲' : '•'}</div><div class="notification-main"><div class="notification-title">${badge(n.severity)} <strong>${esc(n.title)}</strong> ${n.count > 1 ? `<span class="nav-count">×${n.count}</span>` : ''}</div><div class="notification-message">${esc(n.message)}</div><div class="small-note">${esc(n.type)} // ${esc(fmtTime(n.updatedAt || n.createdAt))}${n.entityId ? ` // ${esc(n.entityId)}` : ''}</div></div>${!n.read ? `<button data-notification-read="${esc(n.id)}">읽음</button>` : ''}</div>`).join('') || '<div class="empty">알림 없음</div>'}</div>`;
+}
+
+async function renderProcessors() {
+  const { processors } = await api('/api/processors');
+  const p = processors.policy;
+  const controls = roleIsAdmin() ? `<div class="actions"><button id="processor-save-btn" class="primary">정책 저장 / 배포</button><button id="processor-push-btn">ONLINE 서버 재전송</button><button id="processor-reset-stats-btn" class="danger">통계 초기화</button></div>` : '';
+  content.innerHTML = `<div class="cards">
+    <div class="card"><div class="stat-label">POLICY REVISION</div><div class="stat-value">${p.revision}</div><div class="stat-sub">${p.enabled ? 'ENABLED' : 'BYPASS'}</div></div>
+    <div class="card"><div class="stat-label">PROCESSOR</div><div class="stat-value compact">${esc(p.processor)}</div><div class="stat-sub">Server-side execution</div></div>
+    <div class="card"><div class="stat-label">BLOCKED VALUES</div><div class="stat-value">${p.blockedValues.length}</div><div class="stat-sub">Int64 exact-match rules</div></div>
+  </div>
+  <div class="section-card"><div class="section-head"><h3>Number Policy</h3>${controls}</div><div class="section-body"><div class="grid-2">
+    <label>Policy Mode<select id="processor-enabled" ${roleIsAdmin()?'':'disabled'}><option value="1" ${p.enabled?'selected':''}>ENABLED</option><option value="0" ${!p.enabled?'selected':''}>BYPASS</option></select></label>
+    <label>Processor<select id="processor-name" ${roleIsAdmin()?'':'disabled'}><option value="DEFAULT">DEFAULT</option></select></label>
+    <label>Minimum (empty = none)<input id="processor-min" class="code" value="${esc(p.minValue)}" placeholder="-9223372036854775808" ${roleIsAdmin()?'':'disabled'}></label>
+    <label>Maximum (empty = none)<input id="processor-max" class="code" value="${esc(p.maxValue)}" placeholder="9223372036854775807" ${roleIsAdmin()?'':'disabled'}></label>
+  </div><label>Blocked values (comma / whitespace, max 100)<textarea id="processor-blocked" class="code" ${roleIsAdmin()?'':'disabled'}>${esc(p.blockedValues.join(', '))}</textarea></label><p class="small-note">Int64 값은 JavaScript Number로 변환하지 않고 문자열 그대로 검증·저장되어 정밀도를 유지합니다.</p></div></div>
+  <div class="section-card"><div class="section-head"><h3>Processor Statistics</h3><span class="small-note">ACK PROCESS_RESULT</span></div><div class="table-wrap"><table><thead><tr><th>Processor</th><th>Requests</th><th>Success</th><th>Error</th><th>Success Rate</th><th>Average</th><th>Maximum</th><th>Last Error</th><th>Last ACK</th></tr></thead><tbody>${processors.stats.map(x=>`<tr><td class="code">${esc(x.processor)}</td><td>${x.requests}</td><td>${x.success}</td><td>${x.error}</td><td>${x.successRate}%</td><td>${x.avgMs} ms</td><td>${x.maxMs} ms</td><td class="code">${esc(x.lastError||'-')}</td><td>${esc(fmtTime(x.lastAt))}</td></tr>`).join('')||'<tr><td colspan="9" class="empty">통계 없음</td></tr>'}</tbody></table></div></div>
+  <div class="section-card"><div class="section-head"><h3>Server Policy Sync</h3></div><div class="table-wrap"><table><thead><tr><th>Server</th><th>Online</th><th>Sent</th><th>ACK Revision</th><th>ACK Status</th><th>Detail</th></tr></thead><tbody>${processors.servers.map(x=>`<tr><td class="code">${esc(x.serverId)}</td><td>${badge(x.online?'ONLINE':'OFFLINE')}</td><td>${esc(fmtTime(x.sentAt))}</td><td>${x.ack?x.ack.revision:'-'}</td><td>${x.ack?badge(x.ack.status):badge('NONE')}</td><td class="code">${esc(x.ack&&x.ack.detail||'-')}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Server 없음</td></tr>'}</tbody></table></div></div>`;
+}
+
+async function currentPushSubscription() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return null;
+  const registration = await navigator.serviceWorker.ready;
+  return registration.pushManager.getSubscription();
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = '='.repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(x => x.charCodeAt(0)));
+}
+
+async function renderReports() {
+  const [{ push }, { daily }] = await Promise.all([api('/api/push/status'), api('/api/reports/daily?limit=120')]);
+  let ownSubscription = null;
+  try { ownSubscription = await currentPushSubscription(); } catch (_) {}
+  const c = daily.current;
+  content.innerHTML = `<div class="cards">
+    <div class="card"><div class="stat-label">PUSH SERVICE</div><div class="stat-value compact">${push.available?'READY':'OFF'}</div><div class="stat-sub">${push.available?`${push.subscriptions} subscription(s)`:esc(push.reason)}</div></div>
+    <div class="card"><div class="stat-label">THIS BROWSER</div><div class="stat-value compact">${ownSubscription?'ON':'OFF'}</div><div class="stat-sub">Permission: ${esc(('Notification' in window)?Notification.permission:'unsupported')}</div></div>
+    <div class="card"><div class="stat-label">REPORT DATE</div><div class="stat-value compact">${esc(c.date)}</div><div class="stat-sub">${esc(daily.timezone)}</div></div>
+    <div class="card"><div class="stat-label">ACK SUCCESS</div><div class="stat-value">${c.ack.successRate}%</div><div class="stat-sub">Timeout ${c.ack.timeout}</div></div>
+  </div>
+  <div class="section-card"><div class="section-head"><h3>PWA Push</h3>${roleIsAdmin()?`<div class="actions"><button id="push-enable-btn" class="primary" ${push.available&&!ownSubscription?'':'disabled'}>이 브라우저 구독</button><button id="push-disable-btn" ${ownSubscription?'':'disabled'}>구독 해제</button><button id="push-test-btn">TEST PUSH</button></div>`:''}</div><div class="section-body"><p class="muted">Admin이 구독한 브라우저에 WARNING / CRITICAL 운영 알림을 Web Admin이 닫힌 상태에서도 전달합니다. Daily Health 완료 알림도 하루 한 번 전송됩니다.</p>${push.available?'':`<div class="integrity-row">${badge('WARNING')}<span class="code">${esc(push.reason)}</span><span>Railway 환경변수 VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT를 설정하세요.</span></div>`}</div></div>
+  <div class="section-card"><div class="section-head"><h3>Today Health Preview</h3>${roleIsAdmin()?'<button id="report-generate-btn" class="primary">현재 리포트 저장</button>':''}</div><div class="section-body"><div class="kv"><div>Servers</div><div>${c.servers.online} / ${c.servers.total} (Peak ${c.servers.peak})</div><div>Clients</div><div>${c.clients.online} / ${c.clients.total} (Peak ${c.clients.peak})</div><div>Connections / SEND</div><div>${c.connections} / ${c.sends}</div><div>ACK OK / Error / Timeout</div><div>${c.ack.ok} / ${c.ack.error} / ${c.ack.timeout}</div><div>Flapping</div><div>${c.flapping}</div><div>Licenses ≤7d</div><div>${c.licensesExpiring7d}</div><div>Backup</div><div>${badge(c.backup.ok?'GOOD':'WARNING')} ${esc(fmtTime(c.backup.lastAt))}</div><div>Database</div><div>${badge(c.database.ok?'GOOD':'CRITICAL')} ${esc(fmtTime(c.database.lastSaveAt))}</div></div></div></div>
+  <div class="section-card"><div class="section-head"><h3>Daily History</h3><span class="small-note">RETENTION ${daily.reports.length} / 365</span></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Servers</th><th>Clients</th><th>Connections</th><th>SEND</th><th>ACK Success</th><th>Error</th><th>Timeout</th><th>Flapping</th><th>Licenses ≤7d</th><th>Backup</th><th>DB</th><th>Generated</th></tr></thead><tbody>${daily.reports.map(r=>`<tr><td class="code">${esc(r.date)}</td><td>${r.servers.online}/${r.servers.total}</td><td>${r.clients.online}/${r.clients.total}</td><td>${r.connections}</td><td>${r.sends}</td><td>${r.ack.successRate}%</td><td>${r.ack.error}</td><td>${r.ack.timeout}</td><td>${r.flapping}</td><td>${r.licensesExpiring7d}</td><td>${badge(r.backup.ok?'GOOD':'WARNING')}</td><td>${badge(r.database.ok?'GOOD':'CRITICAL')}</td><td>${esc(fmtTime(r.generatedAt))}</td></tr>`).join('')||'<tr><td colspan="13" class="empty">저장된 Daily Report 없음</td></tr>'}</tbody></table></div></div>`;
 }
 
 async function renderServers() {
@@ -913,6 +969,52 @@ content.addEventListener('click', async event => {
   try {
     const openViewBtn = event.target.closest('[data-open-view]');
     if (openViewBtn) { switchView(openViewBtn.dataset.openView); await renderCurrent(); return; }
+    if (event.target.id === 'processor-save-btn') {
+      const result = await api('/api/processors/policy', { method: 'POST', body: {
+        enabled: document.getElementById('processor-enabled').value === '1',
+        processor: document.getElementById('processor-name').value,
+        minValue: document.getElementById('processor-min').value.trim(),
+        maxValue: document.getElementById('processor-max').value.trim(),
+        blockedValues: document.getElementById('processor-blocked').value
+      }});
+      toast(`Processor Policy revision ${result.policy.revision} 배포`); await renderProcessors(); return;
+    }
+    if (event.target.id === 'processor-push-btn') {
+      const result = await api('/api/processors/push', { method: 'POST', body: {} });
+      toast(`${result.pushes.filter(x=>x.ok).length}개 ONLINE Server에 재전송`); await renderProcessors(); return;
+    }
+    if (event.target.id === 'processor-reset-stats-btn') {
+      const v = await openModal({ title: 'Processor Statistics Reset', message: '누적 Processor 통계를 0으로 초기화합니다. Daily Report 이력은 유지됩니다.', danger: true, confirmLabel: 'RESET' });
+      if (!v) return;
+      await api('/api/processors/stats/reset', { method: 'POST', body: {} }); toast('Processor 통계 초기화 완료'); await renderProcessors(); return;
+    }
+    if (event.target.id === 'push-enable-btn') {
+      if (!('Notification' in window)) throw new Error('PUSH_NOT_SUPPORTED');
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('NOTIFICATION_PERMISSION_DENIED');
+      const { push } = await api('/api/push/status');
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(push.publicKey) });
+      await api('/api/push/subscribe', { method: 'POST', body: { subscription } });
+      toast('이 브라우저 Push 구독 완료'); await renderReports(); return;
+    }
+    if (event.target.id === 'push-disable-btn') {
+      const subscription = await currentPushSubscription();
+      if (subscription) {
+        await api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: subscription.endpoint } });
+        await subscription.unsubscribe();
+      }
+      toast('이 브라우저 Push 구독 해제'); await renderReports(); return;
+    }
+    if (event.target.id === 'push-test-btn') {
+      const result = await api('/api/push/test', { method: 'POST', body: {} });
+      toast(`Test Push: ${result.sent} sent / ${result.failed} failed`); return;
+    }
+    if (event.target.id === 'report-generate-btn') {
+      const result = await api('/api/reports/daily/generate', { method: 'POST', body: {} });
+      toast(`${result.report.date} Daily Health 저장`); await renderReports(); return;
+    }
     if (event.target.id === 'terminal-help-btn') { await executeTerminalCommand('help'); await renderTerminal(); return; }
     if (event.target.id === 'terminal-clear-btn') { terminalLines = []; await renderTerminal(); return; }
     if (event.target.id === 'danger-service-stop') {

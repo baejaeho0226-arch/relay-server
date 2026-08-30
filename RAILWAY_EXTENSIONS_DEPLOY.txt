@@ -1,4 +1,4 @@
-PURE TCP RELAY / WEB ADMIN v2.3.1 - Railway Extension Ready
+PURE TCP RELAY / WEB ADMIN v2.8.0 - Railway Extension Ready
 
 1. Replace the Railway GitHub repository contents with this folder contents.
 2. Keep the repository root as:
@@ -15,7 +15,7 @@ PURE TCP RELAY / WEB ADMIN v2.3.1 - Railway Extension Ready
 6. Redeploy after upload.
 
 Expected startup log:
-Web Admin: v2.3.1
+Web Admin: v2.8.0
 Device Extensions: ENABLED (CAPABILITIES / DEVICE_INFO / HMAC / CONFIG / SEQUENCE)
 
 Expected WinSockServer after redeploy:
@@ -30,6 +30,16 @@ DEVICE_AUTH
 COMMAND_ACK
 DIAGNOSTICS
 CONFIG_ACK
+PROCESSOR_CONFIG_ACK (server)
 UI_STATE (client)
 
-Protocol remains 2 and app version remains 2.0.0 for Delphi clients.
+Optional PWA Push variables:
+VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+VAPID_SUBJECT
+
+Optional Daily Health variables:
+DAILY_REPORT_TIMEZONE=Asia/Seoul
+DAILY_REPORT_RETENTION_DAYS=365
+
+Protocol remains 2. Delphi app version is 2.1.0.

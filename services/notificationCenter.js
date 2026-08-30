@@ -50,6 +50,7 @@ function AddNotification(options = {}) {
     state.notifications.push(item);
     while (state.notifications.length > MAX_NOTIFICATIONS) state.notifications.shift();
     try { require('../web/webEvents').BroadcastNotification(item); } catch (_) {}
+    try { require('./pushManager').DispatchNotification(item); } catch (_) {}
     return item;
 }
 

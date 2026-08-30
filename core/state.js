@@ -80,6 +80,19 @@ module.exports = {
     clientOfflineQueueEnabled: new Set(),
     offlineQueue: new Map(),
     deadLetters: new Map(),
+    numberProcessingPolicy: {
+        revision: 1,
+        enabled: true,
+        processor: 'DEFAULT',
+        minValue: '',
+        maxValue: '',
+        blockedValues: [],
+        updatedAt: 0
+    },
+    processorStats: new Map(),
+    pushSubscriptions: new Map(),
+    dailyHealthReports: new Map(),
+    dailyHealthAccumulator: null,
     pendingDeviceCommands: new Map(),
     licenseRevision: 0,
 

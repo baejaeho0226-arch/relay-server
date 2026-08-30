@@ -157,6 +157,7 @@ function HandleClientSend(connection, line) {
         saved.lastSeenAt = Now();
         saved.lastIP = active.license.lastIP;
         saved.sendCount = Number(saved.sendCount || 0) + 1;
+        require('../services/dailyHealth').Record('sends');
         SaveDatabase();
     };
     let unavailableReason = '';

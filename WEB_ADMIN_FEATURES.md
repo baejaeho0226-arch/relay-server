@@ -1,4 +1,4 @@
-# Web Admin Feature Matrix // v2.7.0
+# Web Admin Feature Matrix // v2.8.0
 
 01. Live Event Console
 02. Request Trace
@@ -25,4 +25,4 @@
 23. Request Replay (ERROR/TIMEOUT only, always generates a new Request ID)
 24. Dead Letter Queue (ACK timeout / server offline / process error, retry or discard with audit history)
 
-Legacy TCP Admin remains disabled by default. Relay protocol stays at Protocol 2 / App 2.0.0. Android adds optional QUEUED/DEQUEUED handling without changing the CONNECT/SEND/ACK handshake.
+Legacy TCP Admin remains disabled by default. Relay protocol stays at Protocol 2 / App 2.1.0. Android adds optional QUEUED/DEQUEUED handling without changing the CONNECT/SEND/ACK handshake.

@@ -94,7 +94,7 @@ function HandleServerLine(connection, line) {
     if (!line) return;
 
     if (connection.serverId) {
-        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('SERVER', connection.serverId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('SERVER', connection.serverId); require('../services/releaseManager').NotifyDevice('SERVER', connection.serverId); require('../services/deviceAuth').SendEnrollmentSecret('SERVER', connection.serverId, false); return; }
+        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('SERVER', connection.serverId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('SERVER', connection.serverId); if(dc.Capabilities('SERVER',connection.serverId).includes('PROCESSOR_POLICY'))require('../services/processorCenter').PushToServer(connection.serverId); require('../services/releaseManager').NotifyDevice('SERVER', connection.serverId); require('../services/deviceAuth').SendEnrollmentSecret('SERVER', connection.serverId, false); return; }
         if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('SERVER', connection.serverId, line.split('|').slice(1)); return; }
         if (line.startsWith('PROTOCOL_PROFILE|')) { const p=line.split('|'); require('../services/protocolReadiness').RecordProfile('SERVER', connection.serverId, p[1], p[2], p.slice(3).join('|')); return; }
         if (line === 'DEVICE_SECRET_ACK' || line.startsWith('DEVICE_SECRET_ACK|')) { require('../services/deviceAuth').HandleSecretAck('SERVER', connection.serverId); return; }
@@ -104,6 +104,7 @@ function HandleServerLine(connection, line) {
         if (line.startsWith('UPDATE_ACK|')) { require('../services/releaseManager').RecordUpdateAck('SERVER', connection.serverId, line.split('|')); return; }
         if (line.startsWith('DEVICE_SECRET_ROTATE_ACK|')) { const r=require('../services/deviceSecretRotation').HandleAck('SERVER',connection.serverId,line.split('|')); if(!r.ok) SendLine(connection.socket,`DEVICE_SECRET_ROTATE_ERROR|${line.split('|')[1]||''}|${r.reason}`); return; }
         if (line.startsWith('CONFIG_ACK|')) {  connection.configAck = line; return; }
+        if (line.startsWith('PROCESSOR_CONFIG_ACK|')) { require('../services/processorCenter').HandleAck(connection.serverId, line.split('|')); return; }
     }
 
     if (line === 'REGISTER' || line.startsWith('REGISTER|')) {

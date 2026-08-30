@@ -63,6 +63,8 @@ function HandleServerAck(connection, line) {
         const detail = parts.length >= 7 ? SafeField(parts.slice(6).join(' ')) : '';
         const trace=CompleteTrace(clientId, requestId, 'OK', '', Now());
         if(trace){trace.processingMs=processingMs;trace.processor=processor;trace.resultDetail=detail;}
+        require('../services/processorCenter').Record(processor || 'DEFAULT', 'OK', processingMs);
+        require('../services/dailyHealth').Record('ackOk');
         if (client && pending.notifyClient !== false) SendLine(client.socket, processingMs||processor||detail ? `ACK|OK|${requestId}|${processingMs}|${processor}|${detail}` : `ACK|OK|${requestId}`);
         SendLine(connection.socket, `ACK_RESULT|OK|${requestId}`);
         LogEvent('ACK_OK', `${requestId} / ${clientId}`);
@@ -75,6 +77,8 @@ function HandleServerAck(connection, line) {
         const detail = parts.length >= 8 ? SafeField(parts.slice(7).join(' ')) : '';
         const trace=CompleteTrace(clientId, requestId, 'ERROR', reason, Now());
         if(trace){trace.processingMs=processingMs;trace.processor=processor;trace.resultDetail=detail;}
+        require('../services/processorCenter').Record(processor || 'DEFAULT', 'ERROR', processingMs, reason);
+        require('../services/dailyHealth').Record('ackError');
         require('../services/requestRecovery').AddDeadLetter(pending, reason, { detail });
         if (client && pending.notifyClient !== false) SendLine(client.socket, processingMs||processor||detail ? `ACK|ERROR|${requestId}|${reason}|${processingMs}|${processor}|${detail}` : `ACK|ERROR|${requestId}|${reason}`);
         SendLine(connection.socket, `ACK_RESULT|ERROR|${requestId}`);
@@ -97,7 +101,7 @@ function ProcessPendingRequests() {
     const now=Now();
     for(const [key,p] of Array.from(pendingRequests.entries())) {
         if(now-p.createdAt>=ACK_TIMEOUT_MS){
-            pendingRequests.delete(key);runtimeStats.ackTimeout++;RecordAck(p.serverId,p.clientId,'TIMEOUT');CompleteTrace(p.clientId,p.requestId,'TIMEOUT','ACK_TIMEOUT',now);require('../services/requestRecovery').AddDeadLetter(p,'ACK_TIMEOUT');const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|TIMEOUT|${p.requestId}`);LogEvent('ACK_TIMEOUT',`${p.requestId} / ${p.clientId}`);continue;
+            pendingRequests.delete(key);runtimeStats.ackTimeout++;RecordAck(p.serverId,p.clientId,'TIMEOUT');require('../services/dailyHealth').Record('ackTimeout');CompleteTrace(p.clientId,p.requestId,'TIMEOUT','ACK_TIMEOUT',now);require('../services/requestRecovery').AddDeadLetter(p,'ACK_TIMEOUT');const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|TIMEOUT|${p.requestId}`);LogEvent('ACK_TIMEOUT',`${p.requestId} / ${p.clientId}`);continue;
         }
         if(now-p.lastSendAt>=ACK_RETRY_MS&&p.retries<ACK_MAX_RETRIES){
             const s=GetOnlineServer(p.serverId);if(!s)continue;
@@ -111,7 +115,7 @@ function FailPendingRequestsForServer(serverId, reason) {
         if(p.serverId!==serverId)continue;pendingRequests.delete(key);
         const queued=require('../services/requestRecovery').RequeuePending(p,reason);
         if(queued.ok){LogEvent('ACK_REQUEUED',`${p.requestId} / ${p.clientId} / ${reason}`);continue;}
-        CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());require('../services/requestRecovery').AddDeadLetter(p,reason,{detail:queued.reason});const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');LogEvent('ACK_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);
+        CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());require('../services/requestRecovery').AddDeadLetter(p,reason,{detail:queued.reason});const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');require('../services/dailyHealth').Record('ackError');LogEvent('ACK_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);
     }
 }
 
