@@ -10,7 +10,9 @@ const { HOST, PORT, HEALTH_PORT, DATA_DIR, DB_FILE, DB_BAK_FILE, BACKUP_DIR, AUD
 const { servers, clients, serverIdentities, clientIdentities, licenses, disabledServers, drainingServers, disabledClients, kickedServers, kickedClients, requestHistory, pendingRequests, rateLimits, events, confirmTokens, ipHistory, runtimeStats } = state;
 
 function GetKickUntil(...args) { return require('../identity/identityManager').GetKickUntil(...args); }
+function GetOnlineClient(...args) { return require('../identity/identityManager').GetOnlineClient(...args); }
 function GetOnlineServer(...args) { return require('../identity/identityManager').GetOnlineServer(...args); }
+function GetServerClientCount(...args) { return require('../identity/identityManager').GetServerClientCount(...args); }
 function GetUsableLicenseForConnection(...args) { return require('../license/licenseManager').GetUsableLicenseForConnection(...args); }
 function HandlePong(...args) { return require('./heartbeat').HandlePong(...args); }
 function HandleServerAck(...args) { return require('./ackManager').HandleServerAck(...args); }
@@ -24,6 +26,29 @@ function SaveDatabase(...args) { return require('../storage/database').SaveDatab
 function SendLine(...args) { return require('../core/utils').SendLine(...args); }
 function TrackIP(...args) { return require('../identity/identityManager').TrackIP(...args); }
 function ValidateProtocolAndVersion(...args) { return require('../services/versionPolicy').ValidateProtocolAndVersion(...args); }
+
+function BindUnassignedClients(serverId) {
+    if (!serverId || disabledServers.has(serverId) || drainingServers.has(serverId)) return 0;
+    if (GetKickUntil(kickedServers, serverId) > Now()) return 0;
+
+    let assignedCount = GetServerClientCount(serverId);
+    let changed = 0;
+    for (const [deviceKey, saved] of clientIdentities) {
+        if (!saved || saved.serverId || assignedCount >= MAX_CLIENTS_PER_SERVER) continue;
+        saved.serverId = serverId;
+        assignedCount++;
+        changed++;
+
+        const live = GetOnlineClient(saved.id);
+        if (live) {
+            live.serverId = serverId;
+            SendLine(live.socket, `SERVER_ASSIGNED|${serverId}`);
+        }
+        LogEvent('CLIENT_FIRST_BIND', `${saved.id} -> ${serverId} (${deviceKey})`);
+    }
+    if (changed) SaveDatabase();
+    return changed;
+}
 
 function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     deviceKey = String(deviceKey || '').trim();
@@ -73,6 +98,8 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
 
     SendLine(connection.socket, `REGISTERED|${serverId}|${protocolVersion}|${appVersion}`);
     LogEvent('SERVER_ONLINE', `${serverId} v${appVersion}`);
+
+    BindUnassignedClients(serverId);
 
     for (const client of clients.values()) {
         if (client.serverId !== serverId) continue;
@@ -129,6 +156,7 @@ function HandleServerLine(connection, line) {
 }
 
 module.exports = {
+    BindUnassignedClients,
     RegisterServer,
     HandleServerLine
 };

@@ -11,7 +11,7 @@ const { servers, clients, serverIdentities, clientIdentities, licenses, disabled
 
 function AuthorizeClient(...args) { return require('../license/licenseManager').AuthorizeClient(...args); }
 function CreateClientIdentity(...args) { return require('../identity/identityManager').CreateClientIdentity(...args); }
-function FindAvailableServer(...args) { return require('../identity/identityManager').FindAvailableServer(...args); }
+function FindAssignableServerId(...args) { return require('../identity/identityManager').FindAssignableServerId(...args); }
 function GetKickUntil(...args) { return require('../identity/identityManager').GetKickUntil(...args); }
 function GetOnlineClient(...args) { return require('../identity/identityManager').GetOnlineClient(...args); }
 function GetOnlineServer(...args) { return require('../identity/identityManager').GetOnlineServer(...args); }
@@ -82,10 +82,8 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
         if (disabledClients.has(saved.id)) { SendLine(connection.socket, 'ERROR|CLIENT_DISABLED'); return; }
         const kickedUntil = GetKickUntil(kickedClients, saved.id);
         if (kickedUntil > Now()) { SendLine(connection.socket, `ERROR|CLIENT_KICKED|${kickedUntil}`); return; }
-        if (disabledServers.has(saved.serverId)) { SendLine(connection.socket, 'ERROR|SERVER_DISABLED'); return; }
-        if (GetKickUntil(kickedServers, saved.serverId) > Now() || !GetOnlineServer(saved.serverId)) {
-            SendLine(connection.socket, 'ERROR|SERVER_OFFLINE'); return;
-        }
+        if (saved.serverId && disabledServers.has(saved.serverId)) { SendLine(connection.socket, 'ERROR|SERVER_DISABLED'); return; }
+        if (saved.serverId && GetKickUntil(kickedServers, saved.serverId) > Now()) { SendLine(connection.socket, 'ERROR|SERVER_OFFLINE'); return; }
     } else {
         const enrollment = require('../services/deviceEnrollment').Request('CLIENT', deviceKey, { ip: SafeIP(connection.socket), appVersion, protocolVersion });
         if (!enrollment.allowed) {
@@ -95,9 +93,10 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
             LogEvent(enrollment.rejected ? 'CLIENT_ENROLLMENT_REJECTED' : 'CLIENT_ENROLLMENT_PENDING', `${deviceKey} ${requestId}`);
             return;
         }
-        const server = FindAvailableServer();
-        if (!server) { SendLine(connection.socket, 'ERROR|NO_SERVER'); return; }
-        saved = CreateClientIdentity(deviceKey, server.serverId);
+        // QR enrollment belongs to Relay, not to a live WinSockServer session.
+        // Prefer a usable persisted binding, but allow a first device to remain
+        // unassigned until the first WinSockServer registers.
+        saved = CreateClientIdentity(deviceKey, FindAssignableServerId());
         require('../services/deviceEnrollment').MarkBound('CLIENT', deviceKey, saved.id);
         SaveDatabase();
     }

@@ -139,8 +139,9 @@ function ImportDatabaseObject(data) {
             if (!value || typeof value !== 'object') continue;
             const key = String(deviceKey || '').trim();
             const id = NormalizeID(value.id || value.clientId);
-            const serverId = NormalizeID(value.serverId);
-            if (!key || !id || !serverId || used.has(id)) continue;
+            const rawServerId = String(value.serverId || '').trim();
+            const serverId = rawServerId ? NormalizeID(rawServerId) : '';
+            if (!key || !id || (rawServerId && !serverId) || used.has(id)) continue;
             newClients.set(key, {
                 id,
                 serverId,

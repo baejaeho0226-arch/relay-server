@@ -1,6 +1,6 @@
 'use strict';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SQLITE_SCHEMA = `PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS servers (
 CREATE TABLE IF NOT EXISTS clients (
   device_key TEXT PRIMARY KEY,
   client_id TEXT NOT NULL UNIQUE,
-  server_id TEXT NOT NULL,
+  server_id TEXT,
   created_at INTEGER NOT NULL,
   last_seen_at INTEGER NOT NULL DEFAULT 0,
   last_auth_at INTEGER NOT NULL DEFAULT 0,

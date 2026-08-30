@@ -9,6 +9,44 @@ const { SCHEMA_VERSION, SQLITE_SCHEMA } = require('./sqliteSchema');
 
 let database = null;
 
+function EnsureNullableClientServerId(db) {
+    const columns = db.prepare('PRAGMA table_info(clients)').all();
+    const serverId = columns.find(column => column.name === 'server_id');
+    if (!serverId || Number(serverId.notnull) === 0) return;
+
+    db.exec('PRAGMA foreign_keys = OFF;');
+    try {
+        db.exec(`BEGIN IMMEDIATE;
+ALTER TABLE clients RENAME TO clients_schema_v3;
+CREATE TABLE clients (
+  device_key TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL UNIQUE,
+  server_id TEXT,
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL DEFAULT 0,
+  last_auth_at INTEGER NOT NULL DEFAULT 0,
+  last_ip TEXT NOT NULL DEFAULT '',
+  auth_count INTEGER NOT NULL DEFAULT 0,
+  send_count INTEGER NOT NULL DEFAULT 0,
+  reconnect_count INTEGER NOT NULL DEFAULT 0,
+  alias TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  disabled INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY(server_id) REFERENCES servers(server_id)
+);
+INSERT INTO clients(device_key,client_id,server_id,created_at,last_seen_at,last_auth_at,last_ip,auth_count,send_count,reconnect_count,alias,note,disabled)
+SELECT device_key,client_id,NULLIF(server_id,''),created_at,last_seen_at,last_auth_at,last_ip,auth_count,send_count,reconnect_count,alias,note,disabled FROM clients_schema_v3;
+DROP TABLE clients_schema_v3;
+CREATE INDEX IF NOT EXISTS idx_clients_server_id ON clients(server_id);
+COMMIT;`);
+    } catch (error) {
+        try { db.exec('ROLLBACK'); } catch (_) {}
+        throw error;
+    } finally {
+        db.exec('PRAGMA foreign_keys = ON;');
+    }
+}
+
 function Checksum(text) {
     return crypto.createHash('sha256').update(text).digest('hex');
 }
@@ -19,6 +57,7 @@ function Open() {
     database = new DatabaseSync(config.SQLITE_FILE);
     database.exec('PRAGMA busy_timeout = 5000; PRAGMA synchronous = FULL;');
     database.exec(SQLITE_SCHEMA);
+    EnsureNullableClientServerId(database);
     database.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('schema_version', String(SCHEMA_VERSION));
     database.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('provider', 'sqlite');
     return database;
@@ -32,7 +71,7 @@ function InsertNormalized(db, snapshot) {
     }
     const clientInsert = db.prepare('INSERT INTO clients(device_key,client_id,server_id,created_at,last_seen_at,last_auth_at,last_ip,auth_count,send_count,reconnect_count,alias,note,disabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
     for (const [deviceKey, value] of Object.entries(snapshot.clients || {})) {
-        clientInsert.run(deviceKey, value.id || value.clientId, value.serverId, Number(value.createdAt) || 0, Number(value.lastSeenAt) || 0, Number(value.lastAuthAt) || 0, String(value.lastIP || ''), Number(value.authCount) || 0, Number(value.sendCount) || 0, Number(value.reconnectCount) || 0, (snapshot.clientAliases || {})[value.id || value.clientId] || '', (snapshot.clientNotes || {})[value.id || value.clientId] || '', (snapshot.disabledClients || []).includes(value.id || value.clientId) ? 1 : 0);
+        clientInsert.run(deviceKey, value.id || value.clientId, value.serverId || null, Number(value.createdAt) || 0, Number(value.lastSeenAt) || 0, Number(value.lastAuthAt) || 0, String(value.lastIP || ''), Number(value.authCount) || 0, Number(value.sendCount) || 0, Number(value.reconnectCount) || 0, (snapshot.clientAliases || {})[value.id || value.clientId] || '', (snapshot.clientNotes || {})[value.id || value.clientId] || '', (snapshot.disabledClients || []).includes(value.id || value.clientId) ? 1 : 0);
     }
     const licenseInsert = db.prepare('INSERT INTO licenses(license_key,created_at,expires_at,bound_client,bound_at,last_auth_at,last_seen_at,last_ip,auth_count,send_count,suspended,memo,tags_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
     for (const [key, value] of Object.entries(snapshot.licenses || {})) {

@@ -30,7 +30,7 @@ try {
     }
     const insClient = db.prepare('INSERT INTO clients(device_key,client_id,server_id,created_at,last_seen_at,last_auth_at,last_ip,auth_count,send_count,reconnect_count,alias,note,disabled) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
     for (const [deviceKey, c] of Object.entries(data.clients || {})) {
-        insClient.run(deviceKey, c.id, c.serverId, Number(c.createdAt)||0, Number(c.lastSeenAt)||0, Number(c.lastAuthAt)||0, c.lastIP||'', Number(c.authCount)||0, Number(c.sendCount)||0, Number(c.reconnectCount)||0, data.clientAliases?.[c.id] || '', data.clientNotes?.[c.id] || '', (data.disabledClients || []).includes(c.id) ? 1 : 0);
+        insClient.run(deviceKey, c.id, c.serverId || null, Number(c.createdAt)||0, Number(c.lastSeenAt)||0, Number(c.lastAuthAt)||0, c.lastIP||'', Number(c.authCount)||0, Number(c.sendCount)||0, Number(c.reconnectCount)||0, data.clientAliases?.[c.id] || '', data.clientNotes?.[c.id] || '', (data.disabledClients || []).includes(c.id) ? 1 : 0);
     }
     const insLicense = db.prepare('INSERT INTO licenses(license_key,created_at,expires_at,bound_client,bound_at,last_auth_at,last_seen_at,last_ip,auth_count,send_count,suspended,memo,tags_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
     for (const [key, l] of Object.entries(data.licenses || {})) {

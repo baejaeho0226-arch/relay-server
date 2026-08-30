@@ -118,6 +118,23 @@ function FindAvailableServer() {
     return list[0] || null;
 }
 
+function FindAssignableServerId() {
+    const online = FindAvailableServer();
+    if (online) return online.serverId;
+
+    const candidates = [];
+    for (const serverId of new Set(serverIdentities.values())) {
+        if (!serverId) continue;
+        if (disabledServers.has(serverId) || drainingServers.has(serverId)) continue;
+        if (GetKickUntil(kickedServers, serverId) > Now()) continue;
+        const count = GetServerClientCount(serverId);
+        if (count >= MAX_CLIENTS_PER_SERVER) continue;
+        candidates.push({ serverId, count });
+    }
+    candidates.sort((a, b) => a.count - b.count || a.serverId.localeCompare(b.serverId));
+    return candidates.length ? candidates[0].serverId : '';
+}
+
 function CreateClientIdentity(deviceKey, serverId) {
     const old = clientIdentities.get(deviceKey);
     if (old) return old;
@@ -176,6 +193,7 @@ module.exports = {
     TrackIP,
     GetServerClientCount,
     FindAvailableServer,
+    FindAssignableServerId,
     CreateClientIdentity,
     ClientMove
 };
