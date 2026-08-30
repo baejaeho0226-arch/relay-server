@@ -51,6 +51,18 @@ let terminalHistory = [];
 let terminalHistoryIndex = -1;
 let deferredInstallPrompt = null;
 let qrScanResult = null;
+let qrSelectedFile = null;
+let qrSelectedPreviewUrl = '';
+
+function setQrSelectedFile(file) {
+  if (qrSelectedPreviewUrl) URL.revokeObjectURL(qrSelectedPreviewUrl);
+  qrSelectedFile = file || null;
+  qrSelectedPreviewUrl = qrSelectedFile ? URL.createObjectURL(qrSelectedFile) : '';
+}
+
+function clearQrSelectedFile() {
+  setQrSelectedFile(null);
+}
 
 const titles = {
   dashboard: ['Dashboard', 'Relay 전체 상태와 최근 이벤트를 확인합니다.'],
@@ -163,6 +175,8 @@ async function api(url, options = {}) {
 
 function showLogin() {
   session = null;
+  qrScanResult = null;
+  clearQrSelectedFile();
   if (eventSource) { eventSource.close(); eventSource = null; }
   app.classList.add('hidden');
   loginScreen.classList.remove('hidden');
@@ -217,7 +231,9 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    if (['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'].includes(currentView)) renderCurrent(true);
+    const liveViews = ['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
+    const qrEditInProgress = currentView === 'qrauth' && (qrSelectedFile || qrScanResult);
+    if (liveViews.includes(currentView) && !qrEditInProgress) renderCurrent(true);
     updateNotificationBadge();
     updateQrAuthBadge();
   });
@@ -726,6 +742,10 @@ async function renderQrAuth() {
   const { requests, summary } = await api('/api/qr-auth');
   if (qrScanResult) qrScanResult.defaultDays = summary.defaultDays;
   const scanned = qrScanResult && qrScanResult.request ? qrScanResult.request : null;
+  const selectedFileName = qrSelectedFile ? `${qrSelectedFile.name} · ${fmtBytes(qrSelectedFile.size)}` : 'APK 화면을 촬영하거나 전달받은 사진을 올리세요.';
+  const selectedPreview = qrSelectedPreviewUrl
+    ? `<img id="qr-auth-preview" src="${esc(qrSelectedPreviewUrl)}" alt="선택한 QR 사진 미리보기">`
+    : '<img id="qr-auth-preview" class="hidden" alt="선택한 QR 사진 미리보기">';
   const secretWarning = summary.durableSigningSecret ? '' : '<div class="warning-box">QR_APPROVAL_SECRET가 설정되지 않아 현재 프로세스의 임시 서명키를 사용 중입니다. 운영·HA 배포 전에 모든 Relay에 같은 전용 비밀값을 설정하세요.</div>';
   const scannedCard = scanned ? `<div class="qr-approval-card">
     <div class="qr-approval-icon">✓</div>
@@ -742,7 +762,7 @@ async function renderQrAuth() {
   <div class="qr-auth-layout">
     <div class="section-card qr-scan-panel"><div class="section-head"><h3>QR 사진 스캔</h3><span class="small-note">PNG / JPEG · 최대 ${fmtBytes(summary.maxImageBytes)} · 서버 내부 해독</span></div><div class="section-body">
       <input id="qr-auth-file" class="visually-hidden" type="file" accept="image/png,image/jpeg" capture="environment">
-      <label for="qr-auth-file" class="qr-drop-zone"><div class="qr-drop-icon">▦</div><strong>QR 사진 선택</strong><span id="qr-auth-file-name">APK 화면을 촬영하거나 전달받은 사진을 올리세요.</span><img id="qr-auth-preview" class="hidden" alt="선택한 QR 사진 미리보기"></label>
+      <label for="qr-auth-file" class="qr-drop-zone"><div class="qr-drop-icon">▦</div><strong>${qrSelectedFile ? '선택한 사진 변경' : 'QR 사진 선택'}</strong><span id="qr-auth-file-name">${esc(selectedFileName)}</span>${selectedPreview}</label>
       <button id="qr-auth-scan-btn" class="primary qr-scan-button" data-max-bytes="${summary.maxImageBytes}">서버에서 QR 검증</button>
       <div class="qr-security-strip"><span>ONE-TIME</span><span>${Math.round(summary.ttlMs / 60000)} MIN</span><span>HMAC SIGNED</span><span>DEVICE BOUND</span></div>
     </div></div>
@@ -751,16 +771,12 @@ async function renderQrAuth() {
   <div class="section-card"><div class="section-head"><h3>QR 인증 요청 이력</h3><span class="small-note">승인·거절·만료 감사 추적</span></div><div class="table-wrap"><table><thead><tr><th>Status</th><th>Request</th><th>Client</th><th>Issued</th><th>Expires</th><th>Operator</th><th>Reason</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="empty">QR 인증 요청 없음</td></tr>'}</tbody></table></div></div>`;
 
   const fileInput = document.getElementById('qr-auth-file');
-  if (fileInput) fileInput.onchange = () => {
+  if (fileInput) fileInput.onchange = async () => {
     const file = fileInput.files && fileInput.files[0];
-    const name = document.getElementById('qr-auth-file-name');
-    const preview = document.getElementById('qr-auth-preview');
     if (!file) return;
-    if (name) name.textContent = `${file.name} · ${fmtBytes(file.size)}`;
-    if (preview) {
-      preview.src = URL.createObjectURL(file);
-      preview.classList.remove('hidden');
-    }
+    qrScanResult = null;
+    setQrSelectedFile(file);
+    await renderQrAuth();
   };
 }
 
@@ -1064,8 +1080,7 @@ content.addEventListener('click', async event => {
     const openViewBtn = event.target.closest('[data-open-view]');
     if (openViewBtn) { switchView(openViewBtn.dataset.openView); await renderCurrent(); return; }
     if (event.target.id === 'qr-auth-scan-btn') {
-      const input = document.getElementById('qr-auth-file');
-      const file = input && input.files && input.files[0];
+      const file = qrSelectedFile;
       if (!file) throw new Error('QR 사진을 먼저 선택하세요.');
       if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('PNG 또는 JPEG 사진만 사용할 수 있습니다.');
       const scanButton = event.target;
@@ -1107,6 +1122,7 @@ content.addEventListener('click', async event => {
         tags: String(values.tags || '').split(',').map(x => x.trim()).filter(Boolean)
       }});
       qrScanResult = null;
+      clearQrSelectedFile();
       toast(result.delivered ? '승인 완료 · APK 즉시 인증됨' : '승인 완료 · APK 재접속 시 자동 인증');
       await updateQrAuthBadge();
       await renderQrAuth();
@@ -1114,6 +1130,7 @@ content.addEventListener('click', async event => {
     }
     if (event.target.id === 'qr-auth-clear-btn') {
       qrScanResult = null;
+      clearQrSelectedFile();
       await renderQrAuth();
       return;
     }
@@ -1122,7 +1139,10 @@ content.addEventListener('click', async event => {
       const values = await openModal({ title: 'QR 인증 거절', message: `${qrReject.dataset.qrReject}\n해당 QR은 즉시 재사용할 수 없게 됩니다.`, fields: [{ name: 'reason', label: '거절 사유', value: 'ADMIN_REJECTED' }], danger: true, confirmLabel: '거절' });
       if (!values) return;
       await api('/api/qr-auth/reject', { method: 'POST', body: { requestId: qrReject.dataset.qrReject, reason: values.reason } });
-      if (qrScanResult && qrScanResult.request.requestId === qrReject.dataset.qrReject) qrScanResult = null;
+      if (qrScanResult && qrScanResult.request.requestId === qrReject.dataset.qrReject) {
+        qrScanResult = null;
+        clearQrSelectedFile();
+      }
       toast('QR 인증 요청 거절 완료');
       await updateQrAuthBadge();
       await renderQrAuth();

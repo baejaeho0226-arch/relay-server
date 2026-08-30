@@ -83,10 +83,15 @@ async function run() {
     const deepLink = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkDeepLink.pas'), 'utf8');
     const serverProtocol = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'RelayProtocol.pas'), 'utf8');
     const admin = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
+    const adminCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.css'), 'utf8');
     const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
     const webApi = fs.readFileSync(path.join(__dirname, '..', 'web', 'webApi.js'), 'utf8');
 
     assert.ok(apk.includes('FQrImage: TImage'));
+    assert.ok(apk.includes('FQrPanel: TLayout'));
+    assert.ok(apk.includes('FQrTimeLabel: TLabel'));
+    assert.ok(apk.includes('procedure TForm1.ResizeQrLayout'));
+    assert.ok(apk.includes("Format('QR 남은 시간"));
     assert.ok(apk.includes("BuildSendLine(RequestID, FState.ClientID, '1')"));
     assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
     assert.ok(!apk.includes('FLicenseEdit'));
@@ -95,6 +100,10 @@ async function run() {
     assert.ok(protocol.includes('QR_DEVICE_APPROVAL'));
     assert.ok(serverProtocol.includes('AuthSource'));
     assert.ok(admin.includes('async function renderQrAuth()'));
+    assert.ok(admin.includes('let qrSelectedFile = null'));
+    assert.ok(admin.includes('const file = qrSelectedFile'));
+    assert.ok(admin.includes('qrEditInProgress'));
+    assert.ok(adminCss.includes('#nav {') && adminCss.includes('overflow-y: scroll'));
     assert.ok(index.includes('data-view="qrauth"'));
     assert.ok(index.includes('class="nav-group"'));
     assert.ok(webApi.includes("pathname === '/api/qr-auth/scan'"));
@@ -106,6 +115,9 @@ async function run() {
     console.log('- Replay and signature tamper rejection: PASS');
     console.log('- Oversized image dimension rejection: PASS');
     console.log('- APK QR-only UI and fixed numeric injection: PASS');
+    console.log('- APK responsive QR frame and expiry countdown: PASS');
+    console.log('- Web selected-photo persistence across live refresh: PASS');
+    console.log('- Sidebar grouped navigation scrolling: PASS');
     console.log('- WinSockServer QR authorization source: PASS');
     console.log('- Grouped Web Admin navigation: PASS');
 }
