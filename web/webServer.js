@@ -136,6 +136,10 @@ async function RequestHandler(req, res) {
     const pathname = url.pathname;
     const method = String(req.method || 'GET').toUpperCase();
 
+    if (pathname.startsWith('/internal/ha/')) {
+        if (await require('../services/haCoordinator').HandleInternal(req, res, pathname)) return;
+    }
+
     if ((pathname === '/health' || pathname === '/healthz') && method === 'GET') {
         const body = HealthSnapshot();
         Json(res, body.ok ? 200 : 503, body);
@@ -192,6 +196,7 @@ async function RequestHandler(req, res) {
         if (pathname === '/api/releases/upload' && method === 'POST') {
             if (!ValidateCsrf(req, session)) { ApiError(res, 403, 'CSRF_FAILED'); return; }
             if (session.role !== 'admin') { ApiError(res, 403, 'FORBIDDEN'); return; }
+            if (!require('../services/haCoordinator').CanAcceptTraffic()) { ApiError(res, 409, 'RELAY_STANDBY_READ_ONLY'); return; }
             const meta = {
                 type: url.searchParams.get('type'), channel: url.searchParams.get('channel'), version: url.searchParams.get('version'),
                 fileName: url.searchParams.get('fileName'), mandatory: url.searchParams.get('mandatory') === '1',

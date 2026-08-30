@@ -76,7 +76,8 @@ const titles = {
   backups: ['Backups', 'Relay 데이터베이스 백업과 복원을 관리합니다.'],
   health: ['System Health', 'Node / DB / Backup / Audit / Relay 상태를 진단합니다.'],
   loadlab: ['Load Simulator', '별도 프로세스에서 Relay 연결/프로토콜 부하 테스트 명령을 생성합니다.'],
-  storage: ['Storage Migration', 'JSON 안정판을 유지한 채 SQLite 전환 준비 상태와 Migration Bundle을 관리합니다.'],
+  ha: ['Relay HA', 'Relay A/B Active/Standby, 상태 복제 및 승격 상태를 확인합니다.'],
+  storage: ['SQLite Storage', '실제 SQLite 기본 저장소, JSON 자동 이관 및 복구 미러 상태를 확인합니다.'],
   system: ['System', '서비스, 유지보수 및 최소 버전 정책을 관리합니다.'],
   danger: ['Danger Zone', '복구 영향이 큰 작업만 별도로 실행합니다.']
 };
@@ -119,8 +120,8 @@ function fmtBytes(value) {
 function badge(value) {
   const text = String(value || 'UNKNOWN').toUpperCase();
   let cls = text.toLowerCase();
-  if (['GOOD', 'ONLINE', 'BOUND', 'AVAILABLE'].includes(text)) cls = 'good';
-  else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED', 'FLAPPING', 'WARNING'].includes(text)) cls = 'warn';
+  if (['GOOD', 'ONLINE', 'BOUND', 'AVAILABLE', 'ACTIVE'].includes(text)) cls = 'good';
+  else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED', 'FLAPPING', 'WARNING', 'STANDBY', 'CANDIDATE'].includes(text)) cls = 'warn';
   else if (['OFFLINE', 'DISABLED', 'EXPIRED', 'SUSPENDED', 'CRITICAL'].includes(text)) cls = 'bad';
   else if (text === 'NONE') cls = 'none';
   return `<span class="badge ${esc(cls)}">${esc(text)}</span>`;
@@ -298,6 +299,7 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'sessions') await renderSessions();
     else if (currentView === 'backups') await renderBackups();
     else if (currentView === 'health') await renderSystemHealth();
+    else if (currentView === 'ha') await renderHA();
     else if (currentView === 'loadlab') await renderLoadSimulator();
     else if (currentView === 'storage') await renderStorageMigration();
     else if (currentView === 'system') await renderSystem();
@@ -350,6 +352,7 @@ async function renderDashboard() {
       <div class="card"><div class="stat-label">UPTIME</div><div class="stat-value">${esc(fmtDuration(d.uptimeMs))}</div><div class="stat-sub">Connections ${d.totalConnections}</div></div>
       <div class="card"><div class="stat-label">VERSION</div><div class="stat-value">P${d.versions.protocol}</div><div class="stat-sub">Server ${esc(d.versions.server)} · Client ${esc(d.versions.client)}</div></div>
       <div class="card"><div class="stat-label">RECOVERY</div><div class="stat-value">${d.recovery.queued} / ${d.recovery.deadLetters}</div><div class="stat-sub">Queue / Active DLQ · Replay ${d.recovery.replayed}</div></div>
+      <div class="card"><div class="stat-label">RELAY HA</div><div class="stat-value">${esc(d.ha.role)}</div><div class="stat-sub">${esc(d.ha.instanceId)} · ${d.ha.acceptsTraffic ? 'TRAFFIC ON' : 'READ ONLY'}</div></div>
     </div>
     ${renderStatsPanel(stats)}
     <div class="section-card"><div class="section-head"><h3>Server Distribution</h3><button data-open-view="distribution">OPEN DISTRIBUTION</button></div><div class="section-body"><p class="muted">Server별 Live/Binding Client 부하와 Graceful Drain 진행률을 확인합니다.</p></div></div>
@@ -720,7 +723,7 @@ async function renderReleases() {
       <div class="form-grid release-upload-grid">
         <label>Target<select id="release-type"><option>SERVER</option><option>CLIENT</option></select></label>
         <label>Channel<select id="release-channel"><option>STABLE</option><option>BETA</option><option>TEST</option></select></label>
-        <label>Version<input id="release-version" value="2.1.0" placeholder="2.1.0"></label>
+        <label>Version<input id="release-version" value="2.2.0" placeholder="2.2.0"></label>
         <label>Canary %<input id="release-rollout" type="number" min="0" max="100" value="100"></label>
         <label>Mandatory<select id="release-mandatory"><option value="0">NO</option><option value="1">YES</option></select></label>
         <label>Artifact<input id="release-file" type="file" accept=".zip,.exe,.apk"></label>
@@ -913,11 +916,19 @@ async function renderLoadSimulator() {
 async function renderStorageMigration() {
   if (!roleIsAdmin()) throw new Error('FORBIDDEN');
   const { migration: m } = await api('/api/storage/migration/status');
-  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">ACTIVE STORAGE</div><div class="stat-value">${esc(m.activeProvider)}</div><div class="stat-sub">현재 안정판 유지</div></div><div class="card"><div class="stat-label">TARGET</div><div class="stat-value">${esc(m.targetProvider)}</div><div class="stat-sub">Schema v${m.schemaVersion}</div></div><div class="card"><div class="stat-label">READINESS</div><div class="stat-value">${m.ready ? 'READY' : 'BLOCKED'}</div><div class="stat-sub">자동 Cutover 없음</div></div><div class="card"><div class="stat-label">LICENSE REV</div><div class="stat-value">${m.licenseRevision}</div><div class="stat-sub">Migration snapshot 기준</div></div></div>
-    <div class="section-card"><div class="section-head"><h3>SQLite Migration Preparation</h3>${badge(m.ready ? 'GOOD' : 'WARNING')}</div><div class="section-body"><div class="kv"><div>Strategy</div><div class="code">${esc(m.strategy)}</div><div>Servers</div><div>${m.counts.servers}</div><div>Clients</div><div>${m.counts.clients}</div><div>Licenses</div><div>${m.counts.licenses}</div><div>Device Secrets</div><div>${m.counts.deviceSecrets}</div><div>Data Dir</div><div class="code">${esc(m.dataDir)}</div></div>
-    <p class="muted">현재 Relay는 계속 JSON을 사용합니다. Export는 <span class="code">schema.sql + data.json + SHA256.txt</span>만 생성하며 DB를 전환하지 않습니다.</p>
+  const s = m.sqlite || {};
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">ACTIVE STORAGE</div><div class="stat-value">${esc(m.activeProvider)}</div><div class="stat-sub">${m.switched ? 'AUTHORITATIVE' : 'COMPATIBILITY'}</div></div><div class="card"><div class="stat-label">SCHEMA</div><div class="stat-value">v${m.schemaVersion}</div><div class="stat-sub">Revision ${s.revision || 0}</div></div><div class="card"><div class="stat-label">INTEGRITY</div><div class="stat-value">${s.ok && m.ready ? 'GOOD' : 'CHECK'}</div><div class="stat-sub">${esc(s.file || '-')} · ${fmtBytes(s.size || 0)}</div></div><div class="card"><div class="stat-label">LICENSE REV</div><div class="stat-value">${m.licenseRevision}</div><div class="stat-sub">SQLite snapshot 기준</div></div></div>
+    <div class="section-card"><div class="section-head"><h3>SQLite Primary Storage</h3>${badge(s.ok && m.ready ? 'GOOD' : 'WARNING')}</div><div class="section-body"><div class="kv"><div>Strategy</div><div class="code">${esc(m.strategy)}</div><div>Snapshot saved</div><div>${esc(fmtTime(s.savedAt))}</div><div>Source instance</div><div class="code">${esc(s.sourceInstance || '-')}</div><div>Servers</div><div>${m.counts.servers}</div><div>Clients</div><div>${m.counts.clients}</div><div>Licenses</div><div>${m.counts.licenses}</div><div>Device Secrets</div><div>${m.counts.deviceSecrets}</div><div>Data Dir</div><div class="code">${esc(m.dataDir)}</div></div>
+    <p class="muted">SQLite가 실제 기본 저장소입니다. 기존 JSON은 최초 실행 시 자동 이관되며 이후에는 장애 복구용 미러로만 유지됩니다.</p>
     ${m.blockers?.length ? `<div class="warning-box">BLOCKERS: ${esc(m.blockers.join(', '))}</div>` : ''}
     <div class="actions"><button id="storage-schema-btn">VIEW SCHEMA</button><button id="storage-export-btn" class="primary" ${m.ready ? '' : 'disabled'}>CREATE MIGRATION BUNDLE</button></div><div id="storage-export-result" class="small-note"></div></div></div>`;
+}
+
+async function renderHA() {
+  const { ha } = await api('/api/ha/status');
+  const peer = ha.peer || {};
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">LOCAL ROLE</div><div class="stat-value">${esc(ha.role)}</div><div class="stat-sub">${esc(ha.instanceId)} · priority ${ha.priority}</div></div><div class="card"><div class="stat-label">TRAFFIC</div><div class="stat-value">${ha.acceptsTraffic ? 'ACTIVE' : 'BLOCKED'}</div><div class="stat-sub">Standby rejects TCP writes</div></div><div class="card"><div class="stat-label">PEER</div><div class="stat-value">${esc(peer.role || (ha.peerUrlConfigured ? 'WAITING' : 'NONE'))}</div><div class="stat-sub">${esc(peer.instanceId || '-')} · priority ${peer.priority || '-'}</div></div><div class="card"><div class="stat-label">REPLICATION</div><div class="stat-value">R${ha.lastReplicationRevision || 0}</div><div class="stat-sub">${esc(fmtTime(ha.lastReplicationAt))}</div></div></div>
+    <div class="section-card"><div class="section-head"><h3>Active / Standby Coordinator</h3>${badge(ha.role)}</div><div class="section-body"><div class="kv"><div>Enabled / Configured</div><div>${badge(ha.enabled ? 'ONLINE' : 'DISABLED')} ${badge(ha.configured ? 'GOOD' : 'WARNING')}</div><div>Decision</div><div class="code">${esc(ha.reason)}</div><div>Last peer seen</div><div>${esc(fmtTime(ha.lastPeerSeenAt))}</div><div>Failover timeout</div><div>${ha.failoverTimeoutMs} ms</div><div>Last replication error</div><div class="code">${esc(ha.lastReplicationError || '-')}</div></div><div class="warning-box">두 Relay는 같은 <span class="code">HA_SHARED_SECRET</span>을 사용하고 서로의 Web Admin URL을 <span class="code">HA_PEER_URL</span>로 지정해야 합니다. 높은 priority가 Active이며 동률이면 instance ID가 작은 노드가 Active입니다.</div></div></div>`;
 }
 
 async function renderSystem() {
@@ -1049,7 +1060,7 @@ content.addEventListener('click', async event => {
     }
     if (event.target.id === 'load-copy-btn') { const t=document.getElementById('load-command-output')?.textContent||''; if(navigator.clipboard) await navigator.clipboard.writeText(t); toast('Command copied'); return; }
     if (event.target.id === 'storage-schema-btn') { const r=await api('/api/storage/migration/schema'); await openModal({title:`SQLite Schema v${r.schema.version}`,html:`<pre class="code-block schema-preview">${esc(r.schema.sql)}</pre>`,confirmLabel:'닫기'}); return; }
-    if (event.target.id === 'storage-export-btn') { const v=await openModal({title:'Create SQLite Migration Bundle',message:'현재 JSON DB는 그대로 유지하고 Migration용 schema/data/checksum 파일만 생성합니다.',confirmLabel:'EXPORT'}); if(!v)return; const r=await api('/api/storage/migration/export',{method:'POST',body:{}}); const out=document.getElementById('storage-export-result'); if(out)out.textContent=`${r.directory} // SHA256 ${r.checksum}`; toast('Migration Bundle 생성 완료'); return; }
+    if (event.target.id === 'storage-export-btn') { const v=await openModal({title:'Export SQLite Snapshot Bundle',message:'현재 SQLite 스냅샷을 schema/data/checksum 형식의 이식 가능한 번들로 내보냅니다.',confirmLabel:'EXPORT'}); if(!v)return; const r=await api('/api/storage/migration/export',{method:'POST',body:{}}); const out=document.getElementById('storage-export-result'); if(out)out.textContent=`${r.directory} // SHA256 ${r.checksum}`; toast('SQLite Snapshot Bundle 생성 완료'); return; }
 
     if (event.target.id === 'release-upload-btn') { await uploadRelease(); return; }
     const releaseRollout=event.target.closest('[data-release-rollout]');

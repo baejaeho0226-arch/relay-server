@@ -1,9 +1,9 @@
 'use strict';
 
-// Storage facade introduced before the JSON -> SQLite switch.
-// Existing runtime remains JSON-backed until an explicit future cutover.
+// Runtime storage facade. SQLite is authoritative by default; JSON remains an
+// explicit compatibility option and a recovery mirror.
 
-function ProviderName() { return 'json'; }
+function ProviderName() { return require('../config/config').STORAGE_ENGINE; }
 function ReadSnapshot() { return require('./database').BuildDatabaseObject(); }
 function Save() { return require('./database').SaveDatabase(); }
 function Load() { return require('./database').LoadDatabase(); }

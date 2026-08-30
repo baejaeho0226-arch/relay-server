@@ -18,6 +18,12 @@ function SafeIP(...args) { return require('./utils').SafeIP(...args); }
 function SendLine(...args) { return require('./utils').SendLine(...args); }
 
 function CreateConnection(socket) {
+    const ha = require('../services/haCoordinator');
+    if (!ha.CanAcceptTraffic()) {
+        SendLine(socket, `ERROR|RELAY_STANDBY|${config.HA_INSTANCE_ID}`);
+        socket.destroy();
+        return;
+    }
     runtimeStats.totalConnections++;
     try { require('../services/dailyHealth').Record('connections'); } catch (_) {}
     const connection={

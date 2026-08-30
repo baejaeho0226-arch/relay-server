@@ -19,7 +19,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 118,
+        version: 119,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -68,19 +68,43 @@ function BuildDatabaseObject() {
     };
 }
 
-function SaveDatabase() {
+function SaveJsonRecoveryMirror(snapshot) {
     const tmp = DB_FILE + '.tmp';
+    const text = JSON.stringify(snapshot, null, 2);
+    if (fs.existsSync(DB_FILE)) {
+        try { fs.copyFileSync(DB_FILE, DB_BAK_FILE); } catch (_) {}
+    }
+    fs.writeFileSync(tmp, text, 'utf8');
+    fs.renameSync(tmp, DB_FILE);
+}
+
+function SaveDatabase(options = {}) {
+    const tmp = DB_FILE + '.tmp';
+    if (config.HA_ENABLED && !options.replicated) {
+        try { if (require('../services/haCoordinator').Status().role === 'STANDBY') return true; } catch (_) {}
+    }
     try {
-        const text = JSON.stringify(BuildDatabaseObject(), null, 2);
-        if (fs.existsSync(DB_FILE)) {
-            try { fs.copyFileSync(DB_FILE, DB_BAK_FILE); } catch (_) {}
+        const snapshot = BuildDatabaseObject();
+        let result = null;
+        if (config.STORAGE_ENGINE === 'sqlite') {
+            result = require('./sqliteDatabase').SaveSnapshot(snapshot, {
+                revision: Number(options.revision) || 0,
+                sourceInstance: options.sourceInstance || config.HA_INSTANCE_ID
+            });
+            try { SaveJsonRecoveryMirror(snapshot); } catch (mirrorError) {
+                console.error('DATABASE RECOVERY MIRROR ERROR:', mirrorError.message);
+            }
+        } else {
+            SaveJsonRecoveryMirror(snapshot);
+            result = { revision: 0, savedAt: Date.now(), size: Buffer.byteLength(JSON.stringify(snapshot)) };
         }
-        fs.writeFileSync(tmp, text, 'utf8');
-        fs.renameSync(tmp, DB_FILE);
         state.runtimeStats.lastDatabaseSaveAt = Date.now();
         state.runtimeStats.lastDatabaseSaveOk = true;
-        try { state.runtimeStats.lastDatabaseSize = fs.statSync(DB_FILE).size; } catch (_) {}
+        try { state.runtimeStats.lastDatabaseSize = fs.statSync(config.STORAGE_ENGINE === 'sqlite' ? config.SQLITE_FILE : DB_FILE).size; } catch (_) {}
         try { require('./licenseSnapshot').SaveLicenseSnapshot(); } catch (_) {}
+        if (!options.replicated) {
+            try { require('../services/haCoordinator').OnLocalSnapshot(snapshot, result); } catch (_) {}
+        }
         return true;
     } catch (error) {
         state.runtimeStats.lastDatabaseSaveAt = Date.now();
@@ -308,12 +332,26 @@ function TryLoadJson(file) {
 
 function LoadDatabase() {
     EnsureDirs();
+    if (config.STORAGE_ENGINE === 'sqlite') {
+        try {
+            const stored = require('./sqliteDatabase').LoadSnapshot();
+            if (stored && ImportDatabaseObject(stored.data)) {
+                state.runtimeStats.lastDatabaseSaveAt = stored.savedAt;
+                state.runtimeStats.lastDatabaseSaveOk = true;
+                try { state.runtimeStats.lastDatabaseSize = fs.statSync(config.SQLITE_FILE).size; } catch (_) {}
+                return;
+            }
+        } catch (error) {
+            console.error('SQLITE LOAD ERROR:', error.message);
+            LogEvent('SQLITE_LOAD_ERROR', error.message);
+        }
+    }
     const candidates = [DB_FILE, DB_BAK_FILE, LatestBackupFile()].filter(Boolean);
     for (const file of candidates) {
         if (!fs.existsSync(file)) continue;
         const data = TryLoadJson(file);
         if (data && ImportDatabaseObject(data)) {
-            if (file !== DB_FILE) LogEvent('DATABASE_AUTO_RECOVER', path.basename(file));
+            LogEvent(config.STORAGE_ENGINE === 'sqlite' ? 'DATABASE_SQLITE_CUTOVER' : (file !== DB_FILE ? 'DATABASE_AUTO_RECOVER' : 'DATABASE_LOAD'), path.basename(file));
             try { if (require('./licenseSnapshot').RecoverIfNewer()) LogEvent('LICENSE_SNAPSHOT_RECOVER', `revision=${state.licenseRevision}`); } catch (_) {}
             SaveDatabase();
             return;

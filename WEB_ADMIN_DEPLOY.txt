@@ -16,6 +16,7 @@ WEB_ADMIN_PORT=8080
 권장 Railway Variables
 ----------------------
 DATA_DIR=/data              (Railway Volume 사용 시)
+STORAGE_ENGINE=sqlite       (기본값 / Node.js 22.13 이상)
 OPERATOR_SECRET=...         (operator 계정이 필요할 때만)
 VIEWER_SECRET=...           (viewer 계정이 필요할 때만)
 VAPID_PUBLIC_KEY=...        (PWA Push 사용 시)
@@ -23,6 +24,16 @@ VAPID_PRIVATE_KEY=...       (PWA Push 사용 시)
 VAPID_SUBJECT=mailto:...    (PWA Push 발신 주체)
 DAILY_REPORT_TIMEZONE=Asia/Seoul
 DAILY_REPORT_RETENTION_DAYS=365
+
+Relay A/B HA 선택 변수
+----------------------
+HA_ENABLED=1
+HA_INSTANCE_ID=relay-a
+HA_PRIORITY=200
+HA_PEER_URL=https://relay-b-admin.example.com
+HA_SHARED_SECRET=양쪽에 동일한 32자 이상 랜덤 값
+HA_POLL_MS=2000
+HA_FAILOVER_TIMEOUT_MS=10000
 
 Legacy TCP Admin
 ----------------
@@ -107,13 +118,16 @@ Request Recovery
 npm run check
 npm run test:roadmap14
 npm run test:roadmap18
+npm run test:roadmap23
 
 실행
 ----
 npm start
 
-FINAL 2.8.0 NOTE
-- Web Admin includes the original features 01-20 and Operations Roadmap 11-18.
+FINAL 3.0.0 NOTE
+- Web Admin includes the original features and Operations Roadmap 11-23.
+- SQLite is authoritative; JSON is an automatic import/recovery mirror.
+- Relay HA is disabled unless HA_ENABLED=1 and all peer variables are valid.
 - Danger Zone is admin-only.
 - Quick Command Terminal is allowlist-only and never runs OS shell commands.
 - Existing Relay TCP protocol remains unchanged.

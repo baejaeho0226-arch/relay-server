@@ -26,9 +26,9 @@ function Status() {
     const integrity = CheckCurrentDatabase();
     const snapshot = BuildDatabaseObject();
     return {
-        activeProvider: 'JSON',
+        activeProvider: config.STORAGE_ENGINE === 'sqlite' ? 'SQLite' : 'JSON',
         targetProvider: 'SQLite',
-        switched: false,
+        switched: config.STORAGE_ENGINE === 'sqlite',
         schemaVersion: SCHEMA_VERSION,
         ready: Boolean(integrity && integrity.ok && (!integrity.errors || integrity.errors.length === 0)),
         blockers: (integrity.errors || []).map(x => x.code || String(x)),
@@ -36,8 +36,9 @@ function Status() {
         counts: Counts(snapshot),
         licenseRevision: Number(state.licenseRevision) || 0,
         dataDir: config.DATA_DIR,
-        strategy: 'EXPORT_VALIDATE_IMPORT_CUTOVER',
-        note: 'Runtime stays JSON-backed. No automatic SQLite cutover is performed.'
+        strategy: 'SQLITE_PRIMARY_JSON_AUTO_IMPORT_RECOVERY_MIRROR',
+        sqlite: config.STORAGE_ENGINE === 'sqlite' ? require('../storage/sqliteDatabase').Status() : null,
+        note: config.STORAGE_ENGINE === 'sqlite' ? 'SQLite is authoritative. JSON is maintained only as a recovery mirror.' : 'JSON compatibility mode is enabled by STORAGE_ENGINE=json.'
     };
 }
 
@@ -48,7 +49,7 @@ function CanonicalBundle() {
         bundleVersion: 1,
         schemaVersion: SCHEMA_VERSION,
         createdAt: Date.now(),
-        sourceProvider: 'JSON',
+        sourceProvider: config.STORAGE_ENGINE === 'sqlite' ? 'SQLite' : 'JSON',
         targetProvider: 'SQLite',
         counts: Counts(snapshot),
         data: snapshot
@@ -71,7 +72,7 @@ function ExportBundle() {
     fs.writeFileSync(path.join(dir, 'README.txt'), [
         'Relay SQLite Migration Preparation Bundle',
         '',
-        'This bundle does NOT change the active Relay database.',
+        'This bundle is a portable snapshot of the active Relay database.',
         'SECURITY: data.json contains license data and Device HMAC secrets. Protect it like the production database.',
         '1. Verify SHA256.txt against data.json.',
         '2. Create a new SQLite DB using schema.sql.',

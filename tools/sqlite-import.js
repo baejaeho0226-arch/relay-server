@@ -1,22 +1,16 @@
 'use strict';
 
-// Offline migration helper. It is intentionally NOT used by the production Relay.
-// Install better-sqlite3 only in a migration/staging workspace before running this tool.
+// Offline migration helper using the same Node built-in SQLite engine as Relay.
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { DatabaseSync } = require('node:sqlite');
 
 const bundlePath = process.argv[2];
-const outputPath = process.argv[3] || 'relay.sqlite';
+const outputPath = process.argv[3] || 'relay.db';
 if (!bundlePath) {
-    console.error('Usage: node tools/sqlite-import.js <data.json> [relay.sqlite]');
-    process.exit(2);
-}
-
-let Database;
-try { Database = require('better-sqlite3'); }
-catch (_) {
-    console.error('better-sqlite3 is not installed. Install it only in a migration/staging workspace.');
+    console.error('Usage: node tools/sqlite-import.js <data.json> [relay.db]');
     process.exit(2);
 }
 
@@ -25,10 +19,11 @@ if (!bundle || bundle.format !== 'relay-sqlite-migration-bundle' || !bundle.data
 const schemaPath = path.join(path.dirname(bundlePath), 'schema.sql');
 const schema = fs.readFileSync(schemaPath, 'utf8');
 const data = bundle.data;
-const db = new Database(outputPath);
+const db = new DatabaseSync(outputPath);
 
 db.exec(schema);
-const tx = db.transaction(() => {
+db.exec('BEGIN IMMEDIATE');
+try {
     const insServer = db.prepare('INSERT INTO servers(device_key,server_id,alias,note,disabled,draining,drain_meta_json) VALUES(?,?,?,?,?,?,?)');
     for (const [deviceKey, serverId] of Object.entries(data.servers || {})) {
         insServer.run(deviceKey, serverId, data.serverAliases?.[serverId] || '', data.serverNotes?.[serverId] || '', (data.disabledServers || []).includes(serverId) ? 1 : 0, (data.drainingServers || []).includes(serverId) ? 1 : 0, JSON.stringify(data.serverDrainMeta?.[serverId] || {}));
@@ -55,7 +50,13 @@ const tx = db.transaction(() => {
     insMeta.run('desired_runtime_config', JSON.stringify(data.desiredRuntimeConfig || {}));
     insMeta.run('service_enabled', data.serviceEnabled ? '1' : '0');
     insMeta.run('maintenance_mode', data.maintenanceMode ? '1' : '0');
-});
-tx();
+    const snapshotJson = JSON.stringify(data);
+    const checksum = crypto.createHash('sha256').update(snapshotJson).digest('hex');
+    db.prepare('INSERT OR REPLACE INTO state_snapshot(id,snapshot_revision,saved_at,source_instance,checksum_sha256,snapshot_json) VALUES(1,?,?,?,?,?)').run(1, Date.now(), 'offline-import', checksum, snapshotJson);
+    db.exec('COMMIT');
+} catch (error) {
+    try { db.exec('ROLLBACK'); } catch (_) {}
+    throw error;
+}
 console.log(JSON.stringify({ ok: true, output: outputPath, counts: bundle.counts, schemaVersion: bundle.schemaVersion }, null, 2));
 db.close();

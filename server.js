@@ -56,6 +56,7 @@ const { servers, clients } = state;
 EnsureDirs();
 LoadRecentAudit();
 LoadDatabase();
+require('./services/haCoordinator').Start();
 ScanLicenseExpiryAlerts();
 
 const relayServer = net.createServer(CreateConnection);
@@ -77,6 +78,8 @@ relayServer.listen(PORT, HOST, () => {
     console.log('Service:', state.serviceEnabled ? 'ONLINE' : 'OFFLINE', 'Maintenance:', state.maintenanceMode ? 'ON' : 'OFF');
     console.log('Web Admin:', `v${WEB_ADMIN_VERSION}`, 'Port:', WEB_ADMIN_PORT);
     console.log('Legacy TCP Admin:', ENABLE_LEGACY_TCP_ADMIN ? 'ENABLED' : 'DISABLED');
+    console.log('Storage:', config.STORAGE_ENGINE.toUpperCase(), config.STORAGE_ENGINE === 'sqlite' ? config.SQLITE_FILE : config.DB_FILE);
+    console.log('HA:', require('./services/haCoordinator').Status().role, config.HA_INSTANCE_ID);
     console.log('Device Extensions:', 'ENABLED (CAPABILITIES / DEVICE_INFO / HMAC / CONFIG / SEQUENCE)');
     console.log('================================');
 });

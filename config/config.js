@@ -8,7 +8,7 @@ const HEALTH_PORT = Number(process.env.HEALTH_PORT || 0);
 const WEB_ADMIN_PORT = Number(process.env.WEB_ADMIN_PORT || 8080);
 const WEB_ADMIN_SESSION_MS = Number(process.env.WEB_ADMIN_SESSION_MS || 30 * 60 * 1000);
 const ENABLE_LEGACY_TCP_ADMIN = String(process.env.ENABLE_LEGACY_TCP_ADMIN || '') === '1';
-const WEB_ADMIN_VERSION = '2.8.0';
+const WEB_ADMIN_VERSION = '3.0.0';
 const UPDATE_BASE_URL = String(process.env.UPDATE_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')).replace(/\/+$/, '');
 
 const DATA_DIR = process.env.DATA_DIR
@@ -16,6 +16,8 @@ const DATA_DIR = process.env.DATA_DIR
     : path.resolve(__dirname, '..');
 const DB_FILE = path.join(DATA_DIR, 'relay-identities.json');
 const DB_BAK_FILE = path.join(DATA_DIR, 'relay-identities.bak.json');
+const SQLITE_FILE = path.join(DATA_DIR, 'relay.db');
+const STORAGE_ENGINE = String(process.env.STORAGE_ENGINE || 'sqlite').toLowerCase() === 'json' ? 'json' : 'sqlite';
 const LICENSE_SNAPSHOT_FILE = path.join(DATA_DIR, 'relay-licenses.json');
 const LICENSE_SNAPSHOT_BAK_FILE = path.join(DATA_DIR, 'relay-licenses.bak.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
@@ -68,6 +70,14 @@ const VAPID_PUBLIC_KEY = String(process.env.VAPID_PUBLIC_KEY || '');
 const VAPID_PRIVATE_KEY = String(process.env.VAPID_PRIVATE_KEY || '');
 const VAPID_SUBJECT = String(process.env.VAPID_SUBJECT || 'mailto:relay-admin@example.invalid');
 
+const HA_ENABLED = String(process.env.HA_ENABLED || '') === '1';
+const HA_INSTANCE_ID = String(process.env.HA_INSTANCE_ID || process.env.RAILWAY_REPLICA_ID || 'relay-a').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 64) || 'relay-a';
+const HA_PRIORITY = Math.max(1, Math.min(1000, Number(process.env.HA_PRIORITY || 100)));
+const HA_PEER_URL = String(process.env.HA_PEER_URL || '').replace(/\/+$/, '');
+const HA_SHARED_SECRET = String(process.env.HA_SHARED_SECRET || '');
+const HA_POLL_MS = Math.max(500, Number(process.env.HA_POLL_MS || 2000));
+const HA_FAILOVER_TIMEOUT_MS = Math.max(3000, Number(process.env.HA_FAILOVER_TIMEOUT_MS || 10000));
+
 const DANGEROUS_PREFIXES = [
     'SERVICE_STOP',
     'BACKUP_RESTORE|',
@@ -79,7 +89,7 @@ const DANGEROUS_PREFIXES = [
 
 module.exports = {
     HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT, WEB_ADMIN_SESSION_MS, ENABLE_LEGACY_TCP_ADMIN, WEB_ADMIN_VERSION, UPDATE_BASE_URL,
-    DATA_DIR, DB_FILE, DB_BAK_FILE, LICENSE_SNAPSHOT_FILE, LICENSE_SNAPSHOT_BAK_FILE, BACKUP_DIR, AUDIT_DIR,
+    DATA_DIR, DB_FILE, DB_BAK_FILE, SQLITE_FILE, STORAGE_ENGINE, LICENSE_SNAPSHOT_FILE, LICENSE_SNAPSHOT_BAK_FILE, BACKUP_DIR, AUDIT_DIR,
     CURRENT_PROTOCOL_VERSION,
     DEFAULT_MIN_PROTOCOL_VERSION, DEFAULT_MIN_SERVER_VERSION, DEFAULT_MIN_CLIENT_VERSION,
     ADMIN_CREDENTIALS, ADMIN_AUTH_WINDOW_SECONDS, ADMIN_SESSION_TIMEOUT_MS, CONFIRM_TOKEN_TTL_MS,
@@ -92,5 +102,6 @@ module.exports = {
     AUTO_BACKUP_INTERVAL_MS, MAX_BACKUPS,
     DAILY_REPORT_TIMEZONE, DAILY_REPORT_RETENTION_DAYS,
     VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
+    HA_ENABLED, HA_INSTANCE_ID, HA_PRIORITY, HA_PEER_URL, HA_SHARED_SECRET, HA_POLL_MS, HA_FAILOVER_TIMEOUT_MS,
     DANGEROUS_PREFIXES
 };

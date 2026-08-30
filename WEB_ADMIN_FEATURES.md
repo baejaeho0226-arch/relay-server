@@ -1,4 +1,4 @@
-# Web Admin Feature Matrix // v2.8.0
+# Web Admin Feature Matrix // v3.0.0
 
 01. Live Event Console
 02. Request Trace
@@ -24,5 +24,10 @@
 22. Offline Queue (global OFF by default, per-client opt-in, FIFO, TTL and attempt limits)
 23. Request Replay (ERROR/TIMEOUT only, always generates a new Request ID)
 24. Dead Letter Queue (ACK timeout / server offline / process error, retry or discard with audit history)
+25. SQLite authoritative storage with automatic JSON import and recovery mirror
+26. Relay A/B Active/Standby status, HMAC replication, promotion and revision-safe failback
+27. Source-built ApkWinSock dark/green operator UI
+28. Clean license authorization card
+29. Fixed-value 1/2 checkbox transmission UI
 
-Legacy TCP Admin remains disabled by default. Relay protocol stays at Protocol 2 / App 2.1.0. Android adds optional QUEUED/DEQUEUED handling without changing the CONNECT/SEND/ACK handshake.
+Legacy TCP Admin remains disabled by default. Relay protocol stays at Protocol 2 / App 2.2.0. Android adds optional QUEUED/DEQUEUED and Relay endpoint failover without changing the CONNECT/SEND/ACK handshake.

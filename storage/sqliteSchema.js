@@ -1,6 +1,6 @@
 'use strict';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SQLITE_SCHEMA = `PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
@@ -8,6 +8,15 @@ PRAGMA journal_mode = WAL;
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS state_snapshot (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  snapshot_revision INTEGER NOT NULL,
+  saved_at INTEGER NOT NULL,
+  source_instance TEXT NOT NULL DEFAULT '',
+  checksum_sha256 TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS servers (

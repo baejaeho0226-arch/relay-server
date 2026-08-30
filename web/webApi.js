@@ -191,6 +191,7 @@ function BuildDashboard() {
         notices: state.runtimeStats.notices,
         licenseExpiry: GetExpirySummary(),
         notifications: NotificationSummary(),
+        ha: require('../services/haCoordinator').Status(),
         recentEvents: state.events.slice(-30).reverse()
     };
 }
@@ -397,6 +398,17 @@ async function HandleApiRequest(req, res, session) {
     if (!['GET', 'HEAD'].includes(method)) {
         try { body = await ReadJsonBody(req); }
         catch (error) { ApiError(res, error.message === 'BODY_TOO_LARGE' ? 413 : 400, error.message); return; }
+    }
+
+    if (!['GET', 'HEAD'].includes(method) && pathname !== '/api/logout' && !require('../services/haCoordinator').CanAcceptTraffic()) {
+        ApiError(res, 409, 'RELAY_STANDBY_READ_ONLY');
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/ha/status') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, ha: require('../services/haCoordinator').Status() });
+        return;
     }
 
     if (method === 'GET' && pathname === '/api/dashboard') {

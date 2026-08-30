@@ -1,4 +1,4 @@
-PURE TCP RELAY / WEB ADMIN v2.8.0 - Railway Extension Ready
+PURE TCP RELAY / WEB ADMIN v3.0.0 - SQLite + HA Ready
 
 1. Replace the Railway GitHub repository contents with this folder contents.
 2. Keep the repository root as:
@@ -12,10 +12,12 @@ PURE TCP RELAY / WEB ADMIN v2.8.0 - Railway Extension Ready
 3. Railway Variables must include ADMIN_SECRET.
 4. Existing TCP proxy target remains the current Relay PORT.
 5. Web Admin domain target remains WEB_ADMIN_PORT (default 8080).
-6. Redeploy after upload.
+6. Railway runtime must use Node.js 22.13 or newer.
+7. Redeploy after upload. Existing JSON data is imported into relay.db.
 
 Expected startup log:
-Web Admin: v2.8.0
+Web Admin: v3.0.0
+Storage: SQLITE
 Device Extensions: ENABLED (CAPABILITIES / DEVICE_INFO / HMAC / CONFIG / SEQUENCE)
 
 Expected WinSockServer after redeploy:
@@ -42,4 +44,13 @@ Optional Daily Health variables:
 DAILY_REPORT_TIMEZONE=Asia/Seoul
 DAILY_REPORT_RETENTION_DAYS=365
 
-Protocol remains 2. Delphi app version is 2.1.0.
+Optional Relay A/B variables (configure reciprocal values on both services):
+HA_ENABLED=1
+HA_INSTANCE_ID=relay-a
+HA_PRIORITY=200
+HA_PEER_URL=https://relay-b-admin.example.com
+HA_SHARED_SECRET=<same random 32+ character secret>
+HA_POLL_MS=2000
+HA_FAILOVER_TIMEOUT_MS=10000
+
+Protocol remains 2. Delphi app version is 2.2.0.

@@ -64,7 +64,9 @@ function AuditSnapshot() {
 
 function BuildSystemHealth() {
     const memory = process.memoryUsage();
-    const db = FileStat(config.DB_FILE);
+    const activeDbFile = config.STORAGE_ENGINE === 'sqlite' ? config.SQLITE_FILE : config.DB_FILE;
+    const db = FileStat(activeDbFile);
+    const sqlite = config.STORAGE_ENGINE === 'sqlite' ? require('../storage/sqliteDatabase').Status() : null;
     const backup = BackupSnapshot();
     const audit = AuditSnapshot();
     let sessions = { total: 0, roles: { admin: 0, operator: 0, viewer: 0 } };
@@ -89,14 +91,16 @@ function BuildSystemHealth() {
             load15m: Number((os.loadavg()[2] || 0).toFixed(2))
         },
         database: {
-            file: path.basename(config.DB_FILE),
+            provider: config.STORAGE_ENGINE === 'sqlite' ? 'SQLite' : 'JSON',
+            file: path.basename(activeDbFile),
             exists: db.exists,
             size: db.size,
             mtimeMs: db.mtimeMs,
             dataDirWritable: DirWritable(config.DATA_DIR),
             lastSaveAt: state.runtimeStats.lastDatabaseSaveAt || db.mtimeMs || 0,
             lastSaveOk: state.runtimeStats.lastDatabaseSaveOk !== false,
-            runtimeSize: state.runtimeStats.lastDatabaseSize || db.size
+            runtimeSize: state.runtimeStats.lastDatabaseSize || db.size,
+            sqlite
         },
         backup,
         audit,
