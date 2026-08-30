@@ -29,6 +29,11 @@ function BuildDatabaseObject() {
         disabledServers: Array.from(disabledServers),
         drainingServers: Array.from(drainingServers),
         disabledClients: Array.from(disabledClients),
+        serverAliases: Object.fromEntries(state.serverAliases),
+        clientAliases: Object.fromEntries(state.clientAliases),
+        serverNotes: Object.fromEntries(state.serverNotes),
+        clientNotes: Object.fromEntries(state.clientNotes),
+        serverDrainMeta: Object.fromEntries(state.serverDrainMeta),
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
         licenses: Object.fromEntries(licenses)
@@ -44,8 +49,13 @@ function SaveDatabase() {
         }
         fs.writeFileSync(tmp, text, 'utf8');
         fs.renameSync(tmp, DB_FILE);
+        state.runtimeStats.lastDatabaseSaveAt = Date.now();
+        state.runtimeStats.lastDatabaseSaveOk = true;
+        try { state.runtimeStats.lastDatabaseSize = fs.statSync(DB_FILE).size; } catch (_) {}
         return true;
     } catch (error) {
+        state.runtimeStats.lastDatabaseSaveAt = Date.now();
+        state.runtimeStats.lastDatabaseSaveOk = false;
         console.error('DATABASE SAVE ERROR:', error.message);
         try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch (_) {}
         return false;
@@ -109,7 +119,8 @@ function ImportDatabaseObject(data) {
                 authCount: Number(value.authCount) || 0,
                 sendCount: Number(value.sendCount) || 0,
                 suspended: Boolean(value.suspended),
-                memo: SafeField(value.memo || '')
+                memo: SafeField(value.memo || ''),
+                tags: require('../license/licenseManager').NormalizeTags(value.tags || [])
             });
         }
     }
@@ -120,6 +131,11 @@ function ImportDatabaseObject(data) {
     disabledServers.clear();
     drainingServers.clear();
     disabledClients.clear();
+    state.serverAliases.clear();
+    state.clientAliases.clear();
+    state.serverNotes.clear();
+    state.clientNotes.clear();
+    state.serverDrainMeta.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -133,6 +149,49 @@ function ImportDatabaseObject(data) {
     }
     for (const id of Array.isArray(data.disabledClients) ? data.disabledClients : []) {
         const n = NormalizeID(id); if (n) disabledClients.add(n);
+    }
+
+    if (data.serverAliases && typeof data.serverAliases === 'object') {
+        for (const [rawId, rawAlias] of Object.entries(data.serverAliases)) {
+            const id = NormalizeID(rawId);
+            const alias = SafeField(rawAlias || '').slice(0, 64);
+            if (id && alias && Array.from(serverIdentities.values()).includes(id)) state.serverAliases.set(id, alias);
+        }
+    }
+    if (data.clientAliases && typeof data.clientAliases === 'object') {
+        for (const [rawId, rawAlias] of Object.entries(data.clientAliases)) {
+            const id = NormalizeID(rawId);
+            const alias = SafeField(rawAlias || '').slice(0, 64);
+            if (id && alias && Array.from(clientIdentities.values()).some(x => x.id === id)) state.clientAliases.set(id, alias);
+        }
+    }
+
+
+    if (data.serverNotes && typeof data.serverNotes === 'object') {
+        for (const [rawId, rawNote] of Object.entries(data.serverNotes)) {
+            const id = NormalizeID(rawId);
+            const note = String(rawNote || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 500);
+            if (id && note && Array.from(serverIdentities.values()).includes(id)) state.serverNotes.set(id, note);
+        }
+    }
+    if (data.clientNotes && typeof data.clientNotes === 'object') {
+        for (const [rawId, rawNote] of Object.entries(data.clientNotes)) {
+            const id = NormalizeID(rawId);
+            const note = String(rawNote || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 500);
+            if (id && note && Array.from(clientIdentities.values()).some(x => x.id === id)) state.clientNotes.set(id, note);
+        }
+    }
+
+    if (data.serverDrainMeta && typeof data.serverDrainMeta === 'object') {
+        for (const [rawId, rawMeta] of Object.entries(data.serverDrainMeta)) {
+            const id = NormalizeID(rawId);
+            if (!id || !drainingServers.has(id) || !Array.from(serverIdentities.values()).includes(id) || !rawMeta || typeof rawMeta !== 'object') continue;
+            state.serverDrainMeta.set(id, {
+                startedAt: Math.max(0, Number(rawMeta.startedAt) || 0),
+                initialClients: Math.max(0, Number(rawMeta.initialClients) || 0),
+                readyNotified: Boolean(rawMeta.readyNotified)
+            });
+        }
     }
 
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;

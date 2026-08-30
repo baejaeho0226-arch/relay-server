@@ -35,6 +35,20 @@ function EnsureTimer() {
     timer.unref();
 }
 
+function BroadcastEvent(data) {
+    for (const item of Array.from(streams)) {
+        if (!item.session || item.session.expiresAt <= Now()) continue;
+        if (!WriteEvent(item.res, 'relay-event', data)) streams.delete(item);
+    }
+}
+
+function BroadcastNotification(data) {
+    for (const item of Array.from(streams)) {
+        if (!item.session || item.session.expiresAt <= Now()) continue;
+        if (!WriteEvent(item.res, 'notification', data)) streams.delete(item);
+    }
+}
+
 function OpenEventStream(req, res, session) {
     res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
@@ -53,5 +67,7 @@ function OpenEventStream(req, res, session) {
 }
 
 module.exports = {
-    OpenEventStream
+    OpenEventStream,
+    BroadcastEvent,
+    BroadcastNotification
 };

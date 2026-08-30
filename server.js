@@ -37,6 +37,9 @@ const { SendPing } = require('./relay/heartbeat');
 const { HealthSnapshot } = require('./services/dashboard');
 const { GetOnlineServer, GetOnlineClient } = require('./identity/identityManager');
 const { StartWebAdmin } = require('./web/webServer');
+const { CleanupReconnectHistory } = require('./services/reconnectMonitor');
+const { ScanLicenseExpiryAlerts } = require('./services/licenseMonitor');
+const { CheckDrainReadiness } = require('./services/drainMonitor');
 
 const {
     HOST, PORT, HEALTH_PORT, WEB_ADMIN_PORT, WEB_ADMIN_VERSION, ENABLE_LEGACY_TCP_ADMIN,
@@ -51,6 +54,7 @@ const { servers, clients } = state;
 EnsureDirs();
 LoadRecentAudit();
 LoadDatabase();
+ScanLicenseExpiryAlerts();
 
 const relayServer = net.createServer(CreateConnection);
 
@@ -102,6 +106,8 @@ setInterval(() => {
     CleanupTransient();
     ProcessPendingRequests();
     ApplyMaintenanceSchedule();
+    CleanupReconnectHistory();
+    CheckDrainReadiness();
 }, 1000);
 
 setInterval(() => {
@@ -126,6 +132,7 @@ setInterval(() => {
 }, 10000);
 
 setInterval(() => SaveDatabase(), 30000);
+setInterval(() => ScanLicenseExpiryAlerts(), 60000);
 setInterval(() => CreateBackup('auto'), AUTO_BACKUP_INTERVAL_MS);
 
 process.on('SIGINT', Shutdown);

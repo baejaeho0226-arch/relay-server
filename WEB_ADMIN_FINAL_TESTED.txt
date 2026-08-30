@@ -1,0 +1,62 @@
+PURE TCP RELAY // WEB ADMIN FINAL TEST RECORD
+Web Admin Version: 1.7.0
+Protocol Version: 2
+Client/Server App Version: 2.0.0
+
+STATIC / MODULE
+- npm run check: MODULE CHECK OK (36 JavaScript files)
+- No runtime child_process / exec / spawn implementation in Web Admin terminal
+- Legacy TCP Admin disabled by default
+
+TCP REGRESSION
+- REGISTER -> REGISTERED: OK
+- CONNECT -> CONNECTED: OK
+- LICENSE_AUTH -> LICENSE_OK: OK
+- SEND -> NUMBER -> ACK: OK
+- Request Trace ACK OK: OK
+
+FEATURE REGRESSION 01-16
+- Live Event / Notification pipeline: OK
+- Request Trace: OK
+- Alias / Notes persistence: OK
+- Health / Flapping structures: OK
+- License Expiry / Tags: OK
+- Admin Activity / Sessions / System Health: OK
+- Integrity / Backup Verify: OK
+- Statistics / Global Search: OK
+
+BATCH 5 17-20
+17 Quick Command Terminal
+- Allowlist parser only; no OS shell/process execution
+- status/server/client/license/maintenance/backup/version/notice/open/search command routes implemented
+- API role/CSRF rules remain enforced
+
+18 Server Client Distribution
+- Live / persistent binding load display
+- Per-server capacity and state
+- 3-second SSE-driven refresh
+
+19 Graceful Drain UX
+- Drain ON with active client: OK
+- Existing authorized SEND/ACK during drain: OK
+- Client leaves -> progress 100%: OK
+- READY FOR MAINTENANCE: OK
+- SERVER_DRAIN_READY notification/audit: OK
+- Drain metadata persisted across Node restart: OK
+- Existing fixed client reconnects to draining server: OK
+- Reconnect causes drain progress to return from ready to active: OK
+- New clients continue to avoid draining servers through FindAvailableServer: OK
+
+20 Danger Zone
+- Service Stop wrong confirm -> blocked: OK
+- Service Stop STOP -> OK
+- Backup Restore + pre-verify -> OK
+- Backup Delete wrong confirm -> blocked: OK
+- Backup Delete DELETE -> OK
+- Version Apply VERSION -> OK
+- Bulk License Delete DELETE UI gate + API: OK
+- Database Reset intentionally NOT implemented
+
+FINAL INTEGRITY
+- Current DB integrity: HEALTHY
+- Runtime fatal/uncaught/module errors during final tests: none observed

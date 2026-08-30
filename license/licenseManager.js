@@ -23,6 +23,17 @@ function SafeIP(...args) { return require('../core/utils').SafeIP(...args); }
 function SaveDatabase(...args) { return require('../storage/database').SaveDatabase(...args); }
 function SendLine(...args) { return require('../core/utils').SendLine(...args); }
 
+function NormalizeTags(value) {
+    const items = Array.isArray(value) ? value : String(value || '').split(',');
+    const out = [];
+    for (const raw of items) {
+        const tag = SafeField(raw || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24);
+        if (tag && !out.includes(tag)) out.push(tag);
+        if (out.length >= 10) break;
+    }
+    return out;
+}
+
 function FindLicense(key) {
     return licenses.get(NormalizeLicenseKey(key)) || null;
 }
@@ -99,19 +110,30 @@ function AuthorizeClient(connection, licenseKey) {
     LogEvent('LICENSE_AUTH', `${licenseKey} -> ${connection.clientId}`);
 }
 
-function CreateLicense(days, memo) {
+function CreateLicense(days, memo, tags = []) {
     let key;
     do { key = RandomLicenseKey(); } while (licenses.has(key));
     const now = Now();
     const license = {
         createdAt: now, expiresAt: now + days * 86400000,
         boundClient: '', boundAt: 0, lastAuthAt: 0, lastSeenAt: 0, lastIP: '',
-        authCount: 0, sendCount: 0, suspended: false, memo: SafeField(memo)
+        authCount: 0, sendCount: 0, suspended: false, memo: SafeField(memo), tags: NormalizeTags(tags)
     };
     licenses.set(key, license);
     SaveDatabase();
     LogEvent('LICENSE_CREATE', key);
+    setImmediate(() => { try { require('../services/licenseMonitor').ScanLicenseExpiryAlerts(); } catch (_) {} });
     return { key, expiresAt: license.expiresAt };
+}
+
+
+function SetLicenseTags(key, tags) {
+    const license = FindLicense(key);
+    if (!license) return false;
+    license.tags = NormalizeTags(tags);
+    SaveDatabase();
+    LogEvent('LICENSE_TAGS', `${NormalizeLicenseKey(key)} -> ${license.tags.join(',') || '(cleared)'}`);
+    return license.tags;
 }
 
 function ExtendLicense(key, days) {
@@ -233,11 +255,15 @@ function SendLicenseItem(socket, key, license) {
 function SearchLicenses(query, status) {
     query = String(query || '').trim().toUpperCase();
     status = String(status || 'ALL').trim().toUpperCase();
+    const tagQuery = query.startsWith('TAG:') ? query.substring(4).trim() : '';
     const out = [];
     for (const [key, license] of licenses) {
         const st = GetLicenseStatus(license);
         if (status !== 'ALL' && st !== status) continue;
-        if (query && !`${key}|${license.boundClient}|${license.memo}`.toUpperCase().includes(query)) continue;
+        const tags = NormalizeTags(license.tags || []);
+        if (tagQuery) {
+            if (!tags.includes(tagQuery)) continue;
+        } else if (query && !`${key}|${license.boundClient}|${license.memo}|${tags.join(',')}`.toUpperCase().includes(query)) continue;
         out.push({ key, license });
         if (out.length >= MAX_SEARCH_RESULTS) break;
     }
@@ -268,12 +294,14 @@ function ValidateClientLicense(connection) {
 }
 
 module.exports = {
+    NormalizeTags,
     FindLicense,
     GetBoundLicenseEntry,
     GetLicenseStatus,
     GetUsableLicenseForConnection,
     AuthorizeClient,
     CreateLicense,
+    SetLicenseTags,
     ExtendLicense,
     RevokeLiveLicense,
     UnbindLicense,

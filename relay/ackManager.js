@@ -17,9 +17,25 @@ function NormalizeID(...args) { return require('../core/utils').NormalizeID(...a
 function Now(...args) { return require('../core/utils').Now(...args); }
 function SafeField(...args) { return require('../core/utils').SafeField(...args); }
 function SendLine(...args) { return require('../core/utils').SendLine(...args); }
+function CompleteTrace(...args) { return require('../services/requestTrace').CompleteTrace(...args); }
+function RetryTrace(...args) { return require('../services/requestTrace').RetryTrace(...args); }
+function TrimTraces(...args) { return require('../services/requestTrace').TrimTraces(...args); }
 
 function MakeRequestKey(clientId, requestId) {
     return `${NormalizeID(clientId)}|${String(requestId || '').trim()}`;
+}
+
+function RecordAck(serverId, clientId, result) {
+    function bump(map, id) {
+        if (!id) return;
+        const item = map.get(id) || { ok: 0, error: 0, timeout: 0 };
+        if (result === 'OK') item.ok++;
+        else if (result === 'TIMEOUT') item.timeout++;
+        else item.error++;
+        map.set(id, item);
+    }
+    bump(runtimeStats.serverAckStats, serverId);
+    bump(runtimeStats.clientAckStats, clientId);
 }
 
 function HandleServerAck(connection, line) {
@@ -40,12 +56,16 @@ function HandleServerAck(connection, line) {
     const client = GetOnlineClient(clientId);
     if (result === 'OK') {
         runtimeStats.ackOk++;
+        RecordAck(connection.serverId, clientId, 'OK');
+        CompleteTrace(clientId, requestId, 'OK', '', Now());
         if (client) SendLine(client.socket, `ACK|OK|${requestId}`);
         SendLine(connection.socket, `ACK_RESULT|OK|${requestId}`);
         LogEvent('ACK_OK', `${requestId} / ${clientId}`);
     } else {
         runtimeStats.ackError++;
+        RecordAck(connection.serverId, clientId, 'ERROR');
         const reason = parts.length >= 5 ? SafeField(parts.slice(4).join(' ')) : 'PROCESS_FAILED';
+        CompleteTrace(clientId, requestId, 'ERROR', reason, Now());
         if (client) SendLine(client.socket, `ACK|ERROR|${requestId}|${reason}`);
         SendLine(connection.socket, `ACK_RESULT|ERROR|${requestId}`);
         LogEvent('ACK_ERROR', `${requestId} / ${clientId} / ${reason}`);
@@ -55,24 +75,25 @@ function HandleServerAck(connection, line) {
 function CleanupRequestHistory() {
     const cutoff=Now()-REQUEST_HISTORY_TIMEOUT_MS;
     for(const [key,ts] of requestHistory) if(!Number.isFinite(ts)||ts<cutoff) requestHistory.delete(key);
+    TrimTraces();
 }
 
 function ProcessPendingRequests() {
     const now=Now();
     for(const [key,p] of Array.from(pendingRequests.entries())) {
         if(now-p.createdAt>=ACK_TIMEOUT_MS){
-            pendingRequests.delete(key);runtimeStats.ackTimeout++;const c=GetOnlineClient(p.clientId);if(c)SendLine(c.socket,`ACK|TIMEOUT|${p.requestId}`);LogEvent('ACK_TIMEOUT',`${p.requestId} / ${p.clientId}`);continue;
+            pendingRequests.delete(key);runtimeStats.ackTimeout++;RecordAck(p.serverId,p.clientId,'TIMEOUT');CompleteTrace(p.clientId,p.requestId,'TIMEOUT','ACK_TIMEOUT',now);const c=GetOnlineClient(p.clientId);if(c)SendLine(c.socket,`ACK|TIMEOUT|${p.requestId}`);LogEvent('ACK_TIMEOUT',`${p.requestId} / ${p.clientId}`);continue;
         }
         if(now-p.lastSendAt>=ACK_RETRY_MS&&p.retries<ACK_MAX_RETRIES){
             const s=GetOnlineServer(p.serverId);if(!s)continue;
-            if(SendLine(s.socket,p.payload)){p.retries++;p.lastSendAt=now;runtimeStats.ackRetries++;LogEvent('ACK_RETRY',`${p.requestId} / ${p.clientId} #${p.retries}`);}
+            if(SendLine(s.socket,p.payload)){p.retries++;p.lastSendAt=now;RetryTrace(p.clientId,p.requestId,p.retries,now);runtimeStats.ackRetries++;LogEvent('ACK_RETRY',`${p.requestId} / ${p.clientId} #${p.retries}`);}
         }
     }
 }
 
 function FailPendingRequestsForServer(serverId, reason) {
     for(const [key,p] of Array.from(pendingRequests.entries())){
-        if(p.serverId!==serverId)continue;pendingRequests.delete(key);const c=GetOnlineClient(p.clientId);if(c)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;LogEvent('ACK_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);
+        if(p.serverId!==serverId)continue;pendingRequests.delete(key);CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());const c=GetOnlineClient(p.clientId);if(c)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');LogEvent('ACK_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);
     }
 }
 

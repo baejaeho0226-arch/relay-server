@@ -298,14 +298,14 @@ function ExecuteAdminCommand(connection, line, confirmed = false) {
         if (connection.adminRole !== 'admin') { SendLine(connection.socket, 'ADMIN_ERROR|FORBIDDEN'); return; }
         const p = line.split('|'); const id = NormalizeID(p[1] || ''); if (!ServerExists(id)) { SendLine(connection.socket, 'ADMIN_ERROR|SERVER_NOT_FOUND'); return; }
         if (line.startsWith('SERVER_DISABLE|')) {
-            disabledServers.add(id); drainingServers.delete(id); kickedServers.delete(id); SaveDatabase(); const live=GetOnlineServer(id); if(live){SendLine(live.socket,'ERROR|SERVER_DISABLED');live.socket.destroy();}
+            disabledServers.add(id); drainingServers.delete(id); state.serverDrainMeta.delete(id); kickedServers.delete(id); SaveDatabase(); const live=GetOnlineServer(id); if(live){SendLine(live.socket,'ERROR|SERVER_DISABLED');live.socket.destroy();}
             SendLine(connection.socket, `SERVER_DISABLE_OK|${id}`); LogEvent('SERVER_DISABLE', id);
         } else if (line.startsWith('SERVER_ENABLE|')) {
             disabledServers.delete(id); kickedServers.delete(id); SaveDatabase(); SendLine(connection.socket, `SERVER_ENABLE_OK|${id}`); LogEvent('SERVER_ENABLE', id);
         } else if (line.startsWith('SERVER_DRAIN_ON|')) {
-            drainingServers.add(id); SaveDatabase(); SendLine(connection.socket, `SERVER_DRAIN_ON_OK|${id}`); LogEvent('SERVER_DRAIN_ON', id);
+            drainingServers.add(id); if(!state.serverDrainMeta.has(id)){const live=GetOnlineServer(id);state.serverDrainMeta.set(id,{startedAt:Now(),initialClients:live?live.clients.size:0,readyNotified:false});} SaveDatabase(); SendLine(connection.socket, `SERVER_DRAIN_ON_OK|${id}`); LogEvent('SERVER_DRAIN_ON', id);
         } else {
-            drainingServers.delete(id); SaveDatabase(); SendLine(connection.socket, `SERVER_DRAIN_OFF_OK|${id}`); LogEvent('SERVER_DRAIN_OFF', id);
+            drainingServers.delete(id); state.serverDrainMeta.delete(id); SaveDatabase(); SendLine(connection.socket, `SERVER_DRAIN_OFF_OK|${id}`); LogEvent('SERVER_DRAIN_OFF', id);
         }
         return;
     }

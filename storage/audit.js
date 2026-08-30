@@ -25,6 +25,8 @@ function LogEvent(type, detail) {
     events.push(event);
     while (events.length > MAX_EVENT_MEMORY) events.shift();
     console.log('[EVENT]', event.type, event.detail);
+    try { require('../web/webEvents').BroadcastEvent(event); } catch (_) {}
+    try { require('../services/notificationCenter').CaptureEvent(event); } catch (_) {}
     try {
         fs.appendFileSync(AuditFileForTime(event.time), JSON.stringify(event) + '\n', 'utf8');
     } catch (error) {

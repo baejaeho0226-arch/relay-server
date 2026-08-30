@@ -53,6 +53,7 @@ function AttachClient(connection, saved) {
     saved.lastIP = connection.lastIP;
     saved.reconnectCount = Number(saved.reconnectCount || 0) + 1;
     runtimeStats.clientReconnects.set(saved.id, saved.reconnectCount);
+    require('../services/reconnectMonitor').RecordReconnect('CLIENT', saved.id);
     TrackIP('CLIENT', saved.id, saved.lastIP);
 
     const server = GetOnlineServer(saved.serverId);
@@ -139,10 +140,12 @@ function HandleClientSend(connection, line) {
     const payload = `NUMBER|${requestId}|${clientId}|${number}`;
     if (!SendLine(server.socket, payload)) { SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED'); return; }
 
-    requestHistory.set(requestKey, Now());
+    const forwardedAt = Now();
+    requestHistory.set(requestKey, forwardedAt);
+    require('../services/requestTrace').StartTrace(clientId, requestId, saved.serverId, number, forwardedAt);
     pendingRequests.set(requestKey, {
         clientId, serverId: saved.serverId, requestId, payload,
-        createdAt: Now(), lastSendAt: Now(), retries: 0
+        createdAt: forwardedAt, lastSendAt: forwardedAt, retries: 0
     });
 
     active.license.lastSeenAt = Now();

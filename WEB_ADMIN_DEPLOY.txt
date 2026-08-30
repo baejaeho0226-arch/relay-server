@@ -93,3 +93,9 @@ npm run check
 실행
 ----
 npm start
+
+FINAL 1.7.0 NOTE
+- Web Admin now includes all planned features 01-20.
+- Danger Zone is admin-only.
+- Quick Command Terminal is allowlist-only and never runs OS shell commands.
+- Existing Relay TCP protocol remains unchanged.

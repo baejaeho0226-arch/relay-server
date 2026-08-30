@@ -37,6 +37,8 @@ function CreateBackup(reason) {
     try {
         fs.writeFileSync(path.join(BACKUP_DIR, file), JSON.stringify(BuildDatabaseObject(), null, 2), 'utf8');
         CleanupBackups();
+        state.runtimeStats.lastBackupAt = Date.now();
+        state.runtimeStats.lastBackupFile = file;
         LogEvent('BACKUP_CREATE', file);
         return file;
     } catch (error) {

@@ -23,12 +23,20 @@ module.exports = {
     kickedClients: new Map(),
 
     requestHistory: new Map(),
+    requestTraces: new Map(),
     pendingRequests: new Map(),
     rateLimits: new Map(),
     events: [],
+    notifications: [],
+    nextNotificationId: 1,
 
     confirmTokens: new Map(),
     ipHistory: new Map(),
+    serverAliases: new Map(),
+    clientAliases: new Map(),
+    serverNotes: new Map(),
+    clientNotes: new Map(),
+    serverDrainMeta: new Map(),
 
     runtimeStats: {
         startedAt: Date.now(),
@@ -39,6 +47,17 @@ module.exports = {
         ackError: 0,
         ackTimeout: 0,
         ackRetries: 0,
-        notices: 0
+        notices: 0,
+        serverAckStats: new Map(),
+        clientAckStats: new Map(),
+        serverReconnectHistory: new Map(),
+        clientReconnectHistory: new Map(),
+        serverFlappingAlerts: new Map(),
+        clientFlappingAlerts: new Map(),
+        lastDatabaseSaveAt: 0,
+        lastDatabaseSaveOk: true,
+        lastDatabaseSize: 0,
+        lastBackupAt: 0,
+        lastBackupFile: ''
     }
 };

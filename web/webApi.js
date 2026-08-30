@@ -16,7 +16,7 @@ const {
 const {
     FindLicense, GetBoundLicenseEntry, GetLicenseStatus,
     CreateLicense, ExtendLicense, UnbindLicense, SuspendLicense, ResumeLicense,
-    DeleteLicense, ReissueLicense, TransferLicense, SearchLicenses
+    DeleteLicense, ReissueLicense, TransferLicense, SearchLicenses, SetLicenseTags, NormalizeTags
 } = require('../license/licenseManager');
 const { NoticeAll, NoticeClient, NotifyServerUnauthorized } = require('../relay/notifications');
 const { SaveDatabase } = require('../storage/database');
@@ -24,7 +24,15 @@ const { CreateBackup, RestoreBackup } = require('../storage/backup');
 const { AuditSearch, LogEvent } = require('../storage/audit');
 const { EnforceVersionPolicy } = require('../services/versionPolicy');
 const { HealthSnapshot } = require('../services/dashboard');
-const { Can, IsAdmin, ClientIP } = require('./webAuth');
+const { BuildSystemHealth } = require('../services/systemHealth');
+const { CheckCurrentDatabase, VerifyBackup } = require('../services/integrityCheck');
+const { BuildStatistics } = require('../services/statistics');
+const { StartDrain, StopDrain, ClearDrainMeta, GetDrainStatus } = require('../services/drainMonitor');
+const { ListAdminActivity } = require('../services/adminActivity');
+const { GetReconnectStatus } = require('../services/reconnectMonitor');
+const { GetExpirySummary, MatchesExpiryFilter } = require('../services/licenseMonitor');
+const { ListNotifications, NotificationSummary, MarkRead, MarkAllRead, ClearNotifications } = require('../services/notificationCenter');
+const { Can, IsAdmin, ClientIP, ListSessions, RevokeSession, RevokeOtherSessions, RevokeAllSessions } = require('./webAuth');
 
 const {
     BACKUP_DIR, DATA_DIR, CURRENT_PROTOCOL_VERSION,
@@ -49,6 +57,14 @@ function ApiError(res, status, code, detail = '') {
 
 function DecodePart(value) {
     try { return decodeURIComponent(value); } catch (_) { return ''; }
+}
+
+function NormalizeAlias(value) {
+    return SafeField(value || '').trim().slice(0, 64);
+}
+
+function NormalizeNote(value) {
+    return String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 500);
 }
 
 function RequireAdmin(res, session) {
@@ -153,6 +169,8 @@ function BuildDashboard() {
         },
         totalConnections: state.runtimeStats.totalConnections,
         notices: state.runtimeStats.notices,
+        licenseExpiry: GetExpirySummary(),
+        notifications: NotificationSummary(),
         recentEvents: state.events.slice(-30).reverse()
     };
 }
@@ -171,12 +189,19 @@ function BuildServers() {
         const savedClients = GetServerClientCount(serverId);
         const canAcceptClients = !!live && !state.disabledServers.has(serverId) && !state.drainingServers.has(serverId) && kickedUntil <= Now() && liveClients < MAX_CLIENTS_PER_SERVER && savedClients < MAX_CLIENTS_PER_SERVER;
 
+        const ack = state.runtimeStats.serverAckStats.get(serverId) || { ok: 0, error: 0, timeout: 0 };
+        const ackTotal = ack.ok + ack.error + ack.timeout;
+        const reconnectWindow = GetReconnectStatus('SERVER', serverId);
         out.push({
             id: serverId,
+            alias: state.serverAliases.get(serverId) || '',
+            note: state.serverNotes.get(serverId) || '',
+            ack: { ...ack, successRate: ackTotal ? Number(((ack.ok / ackTotal) * 100).toFixed(2)) : 100 },
             deviceKey,
             status,
             online: !!live,
-            health: live ? ServerHealth(live) : 'OFFLINE',
+            health: reconnectWindow.flapping ? 'FLAPPING' : (live ? ServerHealth(live) : 'OFFLINE'),
+            reconnectWindow,
             clients: liveClients,
             savedClients,
             canAcceptClients,
@@ -186,7 +211,8 @@ function BuildServers() {
             protocolVersion: live ? live.protocolVersion : 0,
             appVersion: live ? live.appVersion : '',
             rttMs: live ? live.rttMs : -1,
-            reconnectCount: state.runtimeStats.serverReconnects.get(serverId) || 0
+            reconnectCount: state.runtimeStats.serverReconnects.get(serverId) || 0,
+            drain: GetDrainStatus(serverId)
         });
     }
     return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -210,13 +236,21 @@ function BuildClients() {
         if (state.disabledClients.has(saved.id)) status = 'DISABLED';
         else if (kickedUntil > Now()) status = 'KICKED';
 
+        const ack = state.runtimeStats.clientAckStats.get(saved.id) || { ok: 0, error: 0, timeout: 0 };
+        const ackTotal = ack.ok + ack.error + ack.timeout;
+        const reconnectWindow = GetReconnectStatus('CLIENT', saved.id);
         out.push({
             id: saved.id,
+            alias: state.clientAliases.get(saved.id) || '',
+            note: state.clientNotes.get(saved.id) || '',
+            ack: { ...ack, successRate: ackTotal ? Number(((ack.ok / ackTotal) * 100).toFixed(2)) : 100 },
             deviceKey,
             serverId: saved.serverId,
+            serverAlias: state.serverAliases.get(saved.serverId) || '',
             status,
             online: !!live,
-            health: live ? ClientHealth(live) : 'OFFLINE',
+            health: reconnectWindow.flapping ? 'FLAPPING' : (live ? ClientHealth(live) : 'OFFLINE'),
+            reconnectWindow,
             licenseStatus: bound ? GetLicenseStatus(bound.license) : 'NONE',
             licenseKey: bound ? bound.key : '',
             licenseExpiresAt: bound ? bound.license.expiresAt : 0,
@@ -256,12 +290,15 @@ function BuildLicenseItem(key, license) {
         lastIP: license.lastIP || '',
         authCount: license.authCount || 0,
         sendCount: license.sendCount || 0,
-        suspended: !!license.suspended
+        suspended: !!license.suspended,
+        tags: NormalizeTags(license.tags || [])
     };
 }
 
-function BuildLicenses(query, status) {
-    return SearchLicenses(query || '', status || 'ALL').map(item => BuildLicenseItem(item.key, item.license));
+function BuildLicenses(query, status, expiry) {
+    return SearchLicenses(query || '', status || 'ALL')
+        .filter(item => MatchesExpiryFilter(item.license, expiry || 'ALL'))
+        .map(item => BuildLicenseItem(item.key, item.license));
 }
 
 function BuildBackups() {
@@ -276,6 +313,34 @@ function BuildBackups() {
     } catch (_) {
         return [];
     }
+}
+
+
+function GlobalSearch(query) {
+    query = String(query || '').trim().toUpperCase();
+    if (!query) return [];
+    const out = [];
+    const add = (kind, id, label, detail, status = '') => {
+        if (out.length >= 60) return;
+        out.push({ kind, id, label, detail, status });
+    };
+
+    for (const server of BuildServers()) {
+        const text = `${server.id}|${server.alias}|${server.deviceKey}|${server.note}|${server.lastIP}`.toUpperCase();
+        if (text.includes(query)) add('SERVER', server.id, server.alias || server.id, `${server.id} // ${server.status} // ${server.health}`, server.status);
+    }
+    for (const client of BuildClients()) {
+        const text = `${client.id}|${client.alias}|${client.deviceKey}|${client.note}|${client.serverId}|${client.serverAlias}|${client.licenseKey}|${client.lastIP}`.toUpperCase();
+        if (text.includes(query)) add('CLIENT', client.id, client.alias || client.id, `${client.id} // ${client.status} // ${client.serverAlias || client.serverId}`, client.status);
+    }
+    for (const item of BuildLicenses('', 'ALL', 'ALL')) {
+        const text = `${item.key}|${item.boundClient}|${item.memo}|${(item.tags || []).join('|')}|${item.status}`.toUpperCase();
+        if (text.includes(query)) add('LICENSE', item.key, item.key, `${item.status} // ${(item.tags || []).join(', ') || 'NO TAG'} // ${item.boundClient || 'UNBOUND'}`, item.status);
+    }
+    for (const trace of require('../services/requestTrace').SearchTraces(query).slice(0, 20)) {
+        add('REQUEST', trace.key, trace.requestId, `${trace.status} // ${trace.clientId} → ${trace.serverId} // ${trace.durationMs || 0}ms`, trace.status);
+    }
+    return out.slice(0, 60);
 }
 
 function BuildSystem() {
@@ -328,6 +393,32 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
+    match = pathname.match(/^\/api\/servers\/([^/]+)\/alias$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const id = NormalizeID(DecodePart(match[1]));
+        if (!ServerExists(id)) { ApiError(res, 404, 'SERVER_NOT_FOUND'); return; }
+        const alias = NormalizeAlias(body.alias);
+        if (alias) state.serverAliases.set(id, alias); else state.serverAliases.delete(id);
+        SaveDatabase();
+        LogEvent('SERVER_ALIAS', `${id} -> ${alias || '(cleared)'}`);
+        Json(res, 200, { ok: true, id, alias });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/servers\/([^/]+)\/note$/);
+    if (method === 'POST' && match) {
+        if (!RequireOperation(res, session, 'NOTE')) return;
+        const id = NormalizeID(DecodePart(match[1]));
+        if (!ServerExists(id)) { ApiError(res, 404, 'SERVER_NOT_FOUND'); return; }
+        const note = NormalizeNote(body.note);
+        if (note) state.serverNotes.set(id, note); else state.serverNotes.delete(id);
+        SaveDatabase();
+        LogEvent('SERVER_NOTE', `${id} ${note ? 'updated' : 'cleared'}`);
+        Json(res, 200, { ok: true, id, note });
+        return;
+    }
+
     match = pathname.match(/^\/api\/servers\/([^/]+)\/(kick|disable|enable|drain-on|drain-off)$/);
     if (method === 'POST' && match) {
         if (!RequireAdmin(res, session)) return;
@@ -346,7 +437,7 @@ async function HandleApiRequest(req, res, session) {
         }
         if (action === 'disable') {
             state.disabledServers.add(id);
-            state.drainingServers.delete(id);
+            ClearDrainMeta(id);
             state.kickedServers.delete(id);
             SaveDatabase();
             const live = GetOnlineServer(id);
@@ -358,15 +449,14 @@ async function HandleApiRequest(req, res, session) {
             SaveDatabase();
             LogEvent('SERVER_ENABLE', id);
         } else if (action === 'drain-on') {
-            state.drainingServers.add(id);
-            SaveDatabase();
-            LogEvent('SERVER_DRAIN_ON', id);
+            const result = StartDrain(id);
+            if (!result.ok) { ApiError(res, 409, result.reason); return; }
+            LogEvent('SERVER_DRAIN_ON', `${id} initialClients=${result.status.initialClients}`);
         } else if (action === 'drain-off') {
-            state.drainingServers.delete(id);
-            SaveDatabase();
+            StopDrain(id);
             LogEvent('SERVER_DRAIN_OFF', id);
         }
-        Json(res, 200, { ok: true, id, action });
+        Json(res, 200, { ok: true, id, action, drain: GetDrainStatus(id) });
         return;
     }
 
@@ -382,6 +472,32 @@ async function HandleApiRequest(req, res, session) {
         const item = BuildClientDetail(DecodePart(match[1]));
         if (!item) { ApiError(res, 404, 'CLIENT_NOT_FOUND'); return; }
         Json(res, 200, { ok: true, client: item });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/clients\/([^/]+)\/alias$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const id = NormalizeID(DecodePart(match[1]));
+        if (!ClientExists(id)) { ApiError(res, 404, 'CLIENT_NOT_FOUND'); return; }
+        const alias = NormalizeAlias(body.alias);
+        if (alias) state.clientAliases.set(id, alias); else state.clientAliases.delete(id);
+        SaveDatabase();
+        LogEvent('CLIENT_ALIAS', `${id} -> ${alias || '(cleared)'}`);
+        Json(res, 200, { ok: true, id, alias });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/clients\/([^/]+)\/note$/);
+    if (method === 'POST' && match) {
+        if (!RequireOperation(res, session, 'NOTE')) return;
+        const id = NormalizeID(DecodePart(match[1]));
+        if (!ClientExists(id)) { ApiError(res, 404, 'CLIENT_NOT_FOUND'); return; }
+        const note = NormalizeNote(body.note);
+        if (note) state.clientNotes.set(id, note); else state.clientNotes.delete(id);
+        SaveDatabase();
+        LogEvent('CLIENT_NOTE', `${id} ${note ? 'updated' : 'cleared'}`);
+        Json(res, 200, { ok: true, id, note });
         return;
     }
 
@@ -446,7 +562,7 @@ async function HandleApiRequest(req, res, session) {
         if (!RequireOperation(res, session, 'LIST')) return;
         Json(res, 200, {
             ok: true,
-            licenses: BuildLicenses(url.searchParams.get('query') || '', url.searchParams.get('status') || 'ALL')
+            licenses: BuildLicenses(url.searchParams.get('query') || '', url.searchParams.get('status') || 'ALL', url.searchParams.get('expiry') || 'ALL')
         });
         return;
     }
@@ -455,8 +571,18 @@ async function HandleApiRequest(req, res, session) {
         if (!RequireAdmin(res, session)) return;
         const days = Number(body.days);
         if (!Number.isInteger(days) || days <= 0 || days > 36500) { ApiError(res, 400, 'INVALID_DAYS'); return; }
-        const created = CreateLicense(days, body.memo || '');
+        const created = CreateLicense(days, body.memo || '', body.tags || []);
         Json(res, 201, { ok: true, ...created });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/licenses\/([^/]+)\/tags$/);
+    if (method === 'POST' && match) {
+        if (!RequireOperation(res, session, 'EXTEND')) return;
+        const key = NormalizeLicenseKey(DecodePart(match[1]));
+        if (!FindLicense(key)) { ApiError(res, 404, 'LICENSE_NOT_FOUND'); return; }
+        const tags = SetLicenseTags(key, body.tags || []);
+        Json(res, 200, { ok: true, key, tags });
         return;
     }
 
@@ -535,6 +661,49 @@ async function HandleApiRequest(req, res, session) {
         }
     }
 
+    if (method === 'GET' && pathname === '/api/notifications') {
+        if (!RequireOperation(res, session, 'DASHBOARD')) return;
+        Json(res, 200, {
+            ok: true,
+            summary: NotificationSummary(),
+            notifications: ListNotifications({
+                unreadOnly: url.searchParams.get('unread') === '1',
+                severity: url.searchParams.get('severity') || 'ALL',
+                limit: Number(url.searchParams.get('limit') || 200)
+            })
+        });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
+    if (method === 'POST' && match) {
+        if (!RequireOperation(res, session, 'DASHBOARD')) return;
+        if (!MarkRead(DecodePart(match[1]), body.read !== false)) { ApiError(res, 404, 'NOTIFICATION_NOT_FOUND'); return; }
+        Json(res, 200, { ok: true, summary: NotificationSummary() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/notifications/read-all') {
+        if (!RequireOperation(res, session, 'DASHBOARD')) return;
+        MarkAllRead();
+        Json(res, 200, { ok: true, summary: NotificationSummary() });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/notifications/clear') {
+        if (!RequireAdmin(res, session)) return;
+        ClearNotifications();
+        Json(res, 200, { ok: true, summary: NotificationSummary() });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/request-traces') {
+        if (!RequireOperation(res, session, 'DASHBOARD')) return;
+        const traces = require('../services/requestTrace').SearchTraces(url.searchParams.get('query') || '');
+        Json(res, 200, { ok: true, traces });
+        return;
+    }
+
     if (method === 'GET' && pathname === '/api/audit') {
         if (!RequireOperation(res, session, 'AUDIT')) return;
         const query = url.searchParams.get('query') || '';
@@ -555,6 +724,14 @@ async function HandleApiRequest(req, res, session) {
         const file = CreateBackup('web_manual');
         if (!file) { ApiError(res, 500, 'BACKUP_FAILED'); return; }
         Json(res, 201, { ok: true, file });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/backups\/([^/]+)\/verify$/);
+    if (method === 'GET' && match) {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        const result = VerifyBackup(DecodePart(match[1]));
+        Json(res, result.errors && result.errors.some(x => x.code === 'NOT_FOUND') ? 404 : 200, { ok: true, verification: result });
         return;
     }
 
@@ -579,6 +756,70 @@ async function HandleApiRequest(req, res, session) {
         } catch (_) {
             ApiError(res, 500, 'DELETE_FAILED');
         }
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/admin-activity') {
+        if (!RequireAdmin(res, session)) return;
+        const query = url.searchParams.get('query') || '';
+        const limit = Number(url.searchParams.get('limit') || 300);
+        Json(res, 200, { ok: true, activities: ListAdminActivity(query, limit) });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/sessions') {
+        if (!RequireAdmin(res, session)) return;
+        Json(res, 200, { ok: true, sessions: ListSessions(session) });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/sessions\/([^/]+)\/revoke$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const sessionId = DecodePart(match[1]);
+        const target = ListSessions(session).find(x => x.id === sessionId);
+        if (!target) { ApiError(res, 404, 'SESSION_NOT_FOUND'); return; }
+        const current = target.current;
+        RevokeSession(sessionId);
+        Json(res, 200, { ok: true, id: sessionId, current });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/sessions/revoke-others') {
+        if (!RequireAdmin(res, session)) return;
+        const count = RevokeOtherSessions(session);
+        Json(res, 200, { ok: true, count });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/sessions/revoke-all') {
+        if (!RequireAdmin(res, session)) return;
+        const count = RevokeAllSessions();
+        Json(res, 200, { ok: true, count, currentRevoked: true });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/system/integrity') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, integrity: CheckCurrentDatabase() });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/statistics') {
+        if (!RequireOperation(res, session, 'DASHBOARD')) return;
+        Json(res, 200, { ok: true, statistics: BuildStatistics(url.searchParams.get('range') || '1H') });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/search') {
+        if (!RequireOperation(res, session, 'DASHBOARD')) return;
+        Json(res, 200, { ok: true, results: GlobalSearch(url.searchParams.get('q') || '') });
+        return;
+    }
+
+    if (method === 'GET' && pathname === '/api/system/health') {
+        if (!RequireOperation(res, session, 'VIEW')) return;
+        Json(res, 200, { ok: true, health: BuildSystemHealth() });
         return;
     }
 

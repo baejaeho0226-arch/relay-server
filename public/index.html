@@ -38,12 +38,22 @@
       </div>
       <nav id="nav">
         <button data-view="dashboard" class="active">Dashboard</button>
+        <button data-view="console">Live Console</button>
+        <button data-view="trace">Request Trace</button>
+        <button data-view="monitor">Health Monitor</button>
+        <button data-view="terminal">Command Terminal</button>
+        <button data-view="distribution">Distribution</button>
+        <button data-view="notifications">Notifications <span id="notification-badge" class="nav-count hidden">0</span></button>
         <button data-view="servers">Servers</button>
         <button data-view="clients">Clients</button>
         <button data-view="licenses">Licenses</button>
         <button data-view="audit">Audit Log</button>
+        <button data-view="activity" data-admin-only>Admin Activity</button>
+        <button data-view="sessions" data-admin-only>Sessions</button>
         <button data-view="backups">Backups</button>
+        <button data-view="health">System Health</button>
         <button data-view="system">System</button>
+        <button data-view="danger" data-admin-only class="danger-nav">Danger Zone</button>
       </nav>
       <div class="sidebar-footer">
         <div><span class="muted">Role</span><strong id="role-label">-</strong></div>

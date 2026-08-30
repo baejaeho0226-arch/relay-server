@@ -56,6 +56,7 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     connection.clients = new Set();
     connection.reconnectCount = (runtimeStats.serverReconnects.get(serverId) || 0) + 1;
     runtimeStats.serverReconnects.set(serverId, connection.reconnectCount);
+    require('../services/reconnectMonitor').RecordReconnect('SERVER', serverId);
     servers.set(serverId, connection);
     TrackIP('SERVER', serverId, connection.lastIP);
 

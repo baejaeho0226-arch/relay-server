@@ -65,6 +65,7 @@ function CreateSession(req, role) {
     const csrf = RandomToken(24);
     const now = Now();
     const session = {
+        id: RandomToken(8).toUpperCase(),
         token,
         csrf,
         role,
@@ -118,7 +119,66 @@ function Authenticate(req, refresh = true) {
 function Logout(req) {
     const cookies = ParseCookies(req);
     const token = cookies[COOKIE_NAME] || '';
+    const session = token ? sessions.get(token) : null;
+    if (session) session.expiresAt = 0;
     if (token) sessions.delete(token);
+}
+
+function ListSessions(currentSession) {
+    const now = Now();
+    const out = [];
+    for (const session of sessions.values()) {
+        if (!session || session.expiresAt <= now) continue;
+        out.push({
+            id: session.id,
+            role: session.role,
+            ip: session.ip,
+            createdAt: session.createdAt,
+            lastSeenAt: session.lastSeenAt,
+            expiresAt: session.expiresAt,
+            current: !!currentSession && session.id === currentSession.id
+        });
+    }
+    return out.sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+}
+
+function SessionSummary() {
+    const rows = ListSessions(null);
+    const roles = { admin: 0, operator: 0, viewer: 0 };
+    for (const item of rows) if (Object.prototype.hasOwnProperty.call(roles, item.role)) roles[item.role]++;
+    return { total: rows.length, roles };
+}
+
+function RevokeSession(sessionId) {
+    sessionId = String(sessionId || '').trim().toUpperCase();
+    for (const [token, session] of sessions) {
+        if (String(session.id || '').toUpperCase() !== sessionId) continue;
+        session.expiresAt = 0;
+        sessions.delete(token);
+        return true;
+    }
+    return false;
+}
+
+function RevokeOtherSessions(currentSession) {
+    let count = 0;
+    for (const [token, session] of Array.from(sessions)) {
+        if (currentSession && session.id === currentSession.id) continue;
+        session.expiresAt = 0;
+        sessions.delete(token);
+        count++;
+    }
+    return count;
+}
+
+function RevokeAllSessions() {
+    let count = 0;
+    for (const [token, session] of Array.from(sessions)) {
+        session.expiresAt = 0;
+        sessions.delete(token);
+        count++;
+    }
+    return count;
 }
 
 function ValidateCsrf(req, session) {
@@ -152,5 +212,10 @@ module.exports = {
     Logout,
     ValidateCsrf,
     Can,
-    IsAdmin
+    IsAdmin,
+    ListSessions,
+    SessionSummary,
+    RevokeSession,
+    RevokeOtherSessions,
+    RevokeAllSessions
 };

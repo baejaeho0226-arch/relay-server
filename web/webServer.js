@@ -12,6 +12,7 @@ const {
 } = require('./webAuth');
 const { Json, ApiError, ReadJsonBody, HandleApiRequest } = require('./webApi');
 const { OpenEventStream } = require('./webEvents');
+const { RecordAdminActivity } = require('../services/adminActivity');
 
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
 
@@ -74,9 +75,11 @@ async function RequestHandler(req, res) {
         catch (error) { ApiError(res, 400, error.message); return; }
         const result = Login(req, body.role, body.password);
         if (!result.ok) {
+            RecordAdminActivity(String(body.role || '').toLowerCase(), require('./webAuth').ClientIP(req), 'POST', '/api/login', result.status || 401, 'LOGIN_FAILED');
             ApiError(res, result.status || 401, result.code);
             return;
         }
+        RecordAdminActivity(result.session.role, result.session.ip, 'POST', '/api/login', 200, 'LOGIN');
         res.setHeader('Set-Cookie', SessionCookie(req, result.session.token, SESSION_MS / 1000));
         Json(res, 200, {
             ok: true,
@@ -110,8 +113,15 @@ async function RequestHandler(req, res) {
         }
 
         if (!['GET', 'HEAD'].includes(method) && !ValidateCsrf(req, session)) {
+            RecordAdminActivity(session.role, session.ip, method, pathname, 403, 'CSRF_FAILED');
             ApiError(res, 403, 'CSRF_FAILED');
             return;
+        }
+
+        if (!['GET', 'HEAD'].includes(method)) {
+            res.once('finish', () => {
+                RecordAdminActivity(session.role, session.ip, method, pathname, res.statusCode, pathname === '/api/logout' ? 'LOGOUT' : 'MUTATION');
+            });
         }
 
         if (pathname === '/api/logout' && method === 'POST') {

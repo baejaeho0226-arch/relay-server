@@ -20,6 +20,7 @@ const modalTitle = document.getElementById('modal-title');
 const modalBody = document.getElementById('modal-body');
 const modalCancel = document.getElementById('modal-cancel');
 const modalConfirm = document.getElementById('modal-confirm');
+const notificationBadge = document.getElementById('notification-badge');
 
 let session = null;
 let currentView = 'dashboard';
@@ -28,18 +29,39 @@ let rendering = false;
 let toastTimer = null;
 let licenseQuery = '';
 let licenseStatus = 'ALL';
+let licenseExpiry = 'ALL';
 let auditQuery = '';
 let auditType = 'ALL';
+let activityQuery = '';
 let selectedLicenses = new Set();
+let liveConsoleEvents = [];
+let consolePaused = false;
+let traceQuery = '';
+let traceRows = new Map();
+let statsRange = '1H';
+let paletteTimer = null;
+let terminalLines = [];
+let terminalHistory = [];
+let terminalHistoryIndex = -1;
 
 const titles = {
   dashboard: ['Dashboard', 'Relay 전체 상태와 최근 이벤트를 확인합니다.'],
+  console: ['Live Console', 'Relay 이벤트가 실시간으로 스트리밍됩니다.'],
+  trace: ['Request Trace', 'Request ID 기준으로 전달/Retry/ACK 처리 과정을 추적합니다.'],
+  monitor: ['Health Monitor', 'Server / Client RTT와 연결 상태를 3초 단위로 감시합니다.'],
+  terminal: ['Command Terminal', '허용된 Relay 관리 명령만 실행합니다. OS Shell은 연결되지 않습니다.'],
+  distribution: ['Distribution', 'Server별 Live / Binding Client 분포와 Drain 진행률을 확인합니다.'],
+  notifications: ['Notifications', '중요 운영 경고와 시스템 이벤트를 확인합니다.'],
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
   licenses: ['Licenses', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
   audit: ['Audit Log', '최근 서버 이벤트와 관리 작업 기록입니다.'],
+  activity: ['Admin Activity', 'Web Admin에서 수행된 관리 작업과 결과를 추적합니다.'],
+  sessions: ['Sessions', '현재 Web Admin 로그인 세션을 확인하고 종료합니다.'],
   backups: ['Backups', 'Relay 데이터베이스 백업과 복원을 관리합니다.'],
-  system: ['System', '서비스, 유지보수 및 최소 버전 정책을 관리합니다.']
+  health: ['System Health', 'Node / DB / Backup / Audit / Relay 상태를 진단합니다.'],
+  system: ['System', '서비스, 유지보수 및 최소 버전 정책을 관리합니다.'],
+  danger: ['Danger Zone', '복구 영향이 큰 작업만 별도로 실행합니다.']
 };
 
 function esc(value) {
@@ -78,8 +100,8 @@ function badge(value) {
   const text = String(value || 'UNKNOWN').toUpperCase();
   let cls = text.toLowerCase();
   if (['GOOD', 'ONLINE', 'BOUND', 'AVAILABLE'].includes(text)) cls = 'good';
-  else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED'].includes(text)) cls = 'warn';
-  else if (['OFFLINE', 'DISABLED', 'EXPIRED', 'SUSPENDED'].includes(text)) cls = 'bad';
+  else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED', 'FLAPPING', 'WARNING'].includes(text)) cls = 'warn';
+  else if (['OFFLINE', 'DISABLED', 'EXPIRED', 'SUSPENDED', 'CRITICAL'].includes(text)) cls = 'bad';
   else if (text === 'NONE') cls = 'none';
   return `<span class="badge ${esc(cls)}">${esc(text)}</span>`;
 }
@@ -127,8 +149,25 @@ function showApp() {
   loginScreen.classList.add('hidden');
   app.classList.remove('hidden');
   roleLabel.textContent = session.role.toUpperCase();
+  document.querySelectorAll('[data-admin-only]').forEach(el => el.classList.toggle('hidden', session.role !== 'admin'));
   startEvents();
+  updateNotificationBadge();
   renderCurrent();
+}
+
+function pushLiveEvent(event) {
+  if (!event || !event.type) return;
+  liveConsoleEvents.push(event);
+  if (liveConsoleEvents.length > 500) liveConsoleEvents.shift();
+  if (consolePaused || currentView !== 'console') return;
+  const list = document.getElementById('live-console-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'console-line';
+  row.innerHTML = `<span class="console-time">${esc(fmtTime(event.time))}</span><span class="console-type">${esc(event.type)}</span><span class="console-detail">${esc(event.detail)}</span>`;
+  list.appendChild(row);
+  while (list.children.length > 300) list.removeChild(list.firstChild);
+  list.scrollTop = list.scrollHeight;
 }
 
 function startEvents() {
@@ -138,8 +177,21 @@ function startEvents() {
     liveState.textContent = 'LIVE';
     liveState.classList.remove('off');
   });
+  eventSource.addEventListener('relay-event', event => {
+    try { pushLiveEvent(JSON.parse(event.data)); } catch (_) {}
+  });
+  eventSource.addEventListener('notification', event => {
+    try {
+      const item = JSON.parse(event.data);
+      updateNotificationBadge();
+      if (item.severity === 'CRITICAL') toast(`[${item.type}] ${item.title}`, true);
+      if (currentView === 'notifications' && !rendering) renderNotifications(true);
+    } catch (_) {}
+  });
   eventSource.addEventListener('tick', () => {
-    if (!document.hidden && !rendering) renderCurrent(true);
+    if (document.hidden || rendering) return;
+    if (['dashboard', 'monitor', 'distribution', 'servers', 'clients', 'notifications', 'sessions', 'health', 'system', 'danger'].includes(currentView)) renderCurrent(true);
+    updateNotificationBadge();
   });
   eventSource.addEventListener('session', () => showLogin());
   eventSource.onerror = () => {
@@ -201,12 +253,22 @@ async function renderCurrent(silent = false) {
   if (!silent) content.innerHTML = '<div class="empty">불러오는 중...</div>';
   try {
     if (currentView === 'dashboard') await renderDashboard();
+    else if (currentView === 'console') await renderConsole();
+    else if (currentView === 'trace') await renderTrace();
+    else if (currentView === 'monitor') await renderMonitor();
+    else if (currentView === 'terminal') await renderTerminal();
+    else if (currentView === 'distribution') await renderDistribution();
+    else if (currentView === 'notifications') await renderNotifications();
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
     else if (currentView === 'licenses') await renderLicenses();
     else if (currentView === 'audit') await renderAudit();
+    else if (currentView === 'activity') await renderActivity();
+    else if (currentView === 'sessions') await renderSessions();
     else if (currentView === 'backups') await renderBackups();
+    else if (currentView === 'health') await renderSystemHealth();
     else if (currentView === 'system') await renderSystem();
+    else if (currentView === 'danger') await renderDangerZone();
   } catch (error) {
     if (!silent) content.innerHTML = `<div class="empty">${esc(error.message)}</div>`;
     toast(error.message, true);
@@ -215,19 +277,55 @@ async function renderCurrent(silent = false) {
   }
 }
 
+
+function switchView(view) {
+  currentView = view;
+  nav.querySelectorAll('button[data-view]').forEach(x => x.classList.toggle('active', x.dataset.view === view));
+}
+
+function svgLineChart(rows, series) {
+  const width = 760, height = 190, padX = 34, padY = 20;
+  const all = [];
+  for (const row of rows) for (const item of series) all.push(Number(row[item.key] || 0));
+  const max = Math.max(1, ...all);
+  const innerW = width - padX * 2, innerH = height - padY * 2;
+  const points = (key) => rows.map((row, i) => {
+    const x = padX + (rows.length <= 1 ? 0 : i / (rows.length - 1) * innerW);
+    const y = padY + innerH - (Number(row[key] || 0) / max * innerH);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const grid = [0,.25,.5,.75,1].map(v => { const y=(padY+innerH-innerH*v).toFixed(1); return `<line x1="${padX}" y1="${y}" x2="${width-padX}" y2="${y}" class="chart-grid"/><text x="4" y="${Number(y)+3}" class="chart-axis">${Math.round(max*v)}</text>`; }).join('');
+  const lines = series.map((item, i) => `<polyline points="${points(item.key)}" class="chart-line chart-line-${i}"/>`).join('');
+  return `<svg class="ops-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${grid}${lines}</svg><div class="chart-legend">${series.map((x,i)=>`<span class="legend-${i}">${esc(x.label)}</span>`).join('')}</div>`;
+}
+
+function renderStatsPanel(stats) {
+  const rows = stats.buckets || [];
+  return `<div class="section-card stats-panel"><div class="section-head"><h3>Traffic Statistics</h3><div class="actions"><button data-stats-range="1H" class="${statsRange==='1H'?'primary':''}">1H</button><button data-stats-range="6H" class="${statsRange==='6H'?'primary':''}">6H</button><button data-stats-range="24H" class="${statsRange==='24H'?'primary':''}">24H</button><button data-stats-range="7D" class="${statsRange==='7D'?'primary':''}">7D</button></div></div><div class="stats-grid"><div class="chart-box"><div class="chart-title">CONNECTION / SEND</div>${svgLineChart(rows,[{key:'connections',label:'Connections'},{key:'sends',label:'SEND'}])}</div><div class="chart-box"><div class="chart-title">ACK RESULT</div>${svgLineChart(rows,[{key:'ackOk',label:'ACK OK'},{key:'ackError',label:'ACK ERROR'},{key:'ackTimeout',label:'TIMEOUT'}])}</div></div><div class="stats-summary"><span>Connections <strong>${stats.totals.connections}</strong></span><span>SEND <strong>${stats.totals.sends}</strong></span><span>ACK OK <strong>${stats.totals.ackOk}</strong></span><span>Error <strong>${stats.totals.ackError}</strong></span><span>Timeout <strong>${stats.totals.ackTimeout}</strong></span><span>Success <strong>${stats.totals.ackSuccessRate}%</strong></span></div></div>`;
+}
+
 async function renderDashboard() {
-  const { dashboard: d } = await api('/api/dashboard');
+  const [{ dashboard: d }, { statistics: stats }] = await Promise.all([api('/api/dashboard'), api(`/api/statistics?range=${encodeURIComponent(statsRange)}`)]);
   content.innerHTML = `
     <div class="cards">
       <div class="card"><div class="stat-label">SERVERS</div><div class="stat-value">${d.servers.online} / ${d.servers.total}</div><div class="stat-sub">Disabled ${d.servers.disabled} · Draining ${d.servers.draining}</div></div>
       <div class="card"><div class="stat-label">CLIENTS</div><div class="stat-value">${d.clients.online} / ${d.clients.total}</div><div class="stat-sub">Disabled ${d.clients.disabled}</div></div>
       <div class="card"><div class="stat-label">LICENSES</div><div class="stat-value">${d.licenses.bound}</div><div class="stat-sub">Available ${d.licenses.available} · Expired ${d.licenses.expired}</div></div>
       <div class="card"><div class="stat-label">ACK SUCCESS</div><div class="stat-value">${d.ack.successRate}%</div><div class="stat-sub">Pending ${d.ack.pending} · Timeout ${d.ack.timeout}</div></div>
+      <div class="card"><div class="stat-label">ALERTS</div><div class="stat-value">${d.notifications.unread}</div><div class="stat-sub">Critical ${d.notifications.critical} · Warning ${d.notifications.warning}</div></div>
       <div class="card"><div class="stat-label">SERVICE</div><div class="stat-value">${d.serviceEnabled ? 'ONLINE' : 'OFFLINE'}</div><div class="stat-sub">Maintenance ${d.maintenanceMode ? 'ON' : 'OFF'}</div></div>
       <div class="card"><div class="stat-label">UPTIME</div><div class="stat-value">${esc(fmtDuration(d.uptimeMs))}</div><div class="stat-sub">Connections ${d.totalConnections}</div></div>
-      <div class="card"><div class="stat-label">ACK</div><div class="stat-value">${d.ack.ok}</div><div class="stat-sub">Error ${d.ack.error} · Retry ${d.ack.retries}</div></div>
       <div class="card"><div class="stat-label">VERSION</div><div class="stat-value">P${d.versions.protocol}</div><div class="stat-sub">Server ${esc(d.versions.server)} · Client ${esc(d.versions.client)}</div></div>
     </div>
+    ${renderStatsPanel(stats)}
+    <div class="section-card"><div class="section-head"><h3>Server Distribution</h3><button data-open-view="distribution">OPEN DISTRIBUTION</button></div><div class="section-body"><p class="muted">Server별 Live/Binding Client 부하와 Graceful Drain 진행률을 확인합니다.</p></div></div>
+    <div class="section-card"><div class="section-head"><h3>License Expiry Radar</h3><span class="small-note">CLICK TO FILTER</span></div><div class="section-body"><div class="expiry-grid">
+      <button class="expiry-card critical" data-license-expiry="EXPIRED"><span>EXPIRED</span><strong>${d.licenseExpiry.expired}</strong></button>
+      <button class="expiry-card critical" data-license-expiry="1D"><span>≤ 24 HOURS</span><strong>${d.licenseExpiry.within1d}</strong></button>
+      <button class="expiry-card warning" data-license-expiry="3D"><span>≤ 3 DAYS</span><strong>${d.licenseExpiry.within3d}</strong></button>
+      <button class="expiry-card warning" data-license-expiry="7D"><span>≤ 7 DAYS</span><strong>${d.licenseExpiry.within7d}</strong></button>
+      <button class="expiry-card" data-license-expiry="30D"><span>≤ 30 DAYS</span><strong>${d.licenseExpiry.within30d}</strong></button>
+    </div></div></div>
     <div class="grid-2">
       <div class="section-card"><div class="section-head"><h3>최근 이벤트</h3><span class="small-note">최근 30건</span></div><div class="section-body"><div class="event-list">
         ${d.recentEvents.length ? d.recentEvents.map(e => `<div class="event"><span>${esc(fmtTime(e.time))}</span><span class="type">${esc(e.type)}</span><span>${esc(e.detail)}</span></div>`).join('') : '<div class="empty">이벤트 없음</div>'}
@@ -238,12 +336,171 @@ async function renderDashboard() {
     </div>`;
 }
 
+async function renderConsole() {
+  if (!liveConsoleEvents.length) {
+    const { events } = await api('/api/audit');
+    liveConsoleEvents = events.slice(-300);
+  }
+  content.innerHTML = `<div class="terminal-panel"><div class="terminal-head"><span>LIVE_EVENT_STREAM</span><div class="actions"><button id="console-pause-btn">${consolePaused ? 'Resume' : 'Pause'}</button><button id="console-clear-btn">Clear</button></div></div><div id="live-console-list" class="live-console">${liveConsoleEvents.slice(-300).map(e => `<div class="console-line"><span class="console-time">${esc(fmtTime(e.time))}</span><span class="console-type">${esc(e.type)}</span><span class="console-detail">${esc(e.detail)}</span></div>`).join('') || '<div class="empty">이벤트 없음</div>'}</div></div>`;
+  const list = document.getElementById('live-console-list');
+  if (list) list.scrollTop = list.scrollHeight;
+}
+
+async function renderTrace() {
+  const { traces } = await api(`/api/request-traces?query=${encodeURIComponent(traceQuery)}`);
+  traceRows = new Map(traces.map(t => [t.key, t]));
+  content.innerHTML = `<div class="toolbar"><input id="trace-search" placeholder="Request ID / Client / Server / Number" value="${esc(traceQuery)}"><button id="trace-search-btn">Trace</button><span class="small-note">최근 10분 / 최대 2000건 메모리 추적</span></div><div class="table-wrap"><table><thead><tr><th>Request ID</th><th>Client</th><th>Server</th><th>Number</th><th>Status</th><th>Retry</th><th>Duration</th><th>Forwarded</th><th>Action</th></tr></thead><tbody>${traces.map(t => `<tr><td class="code">${esc(t.requestId)}</td><td class="code">${esc(t.clientId)}</td><td class="code">${esc(t.serverId)}</td><td class="code">${esc(t.number)}</td><td>${badge(t.status)}</td><td>${t.retries}</td><td>${t.completedAt ? `${t.durationMs} ms` : '-'}</td><td>${esc(fmtTime(t.forwardedAt))}</td><td><button data-trace-detail="${esc(t.key)}">상세</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">Trace 없음</td></tr>'}</tbody></table></div>`;
+}
+
+async function renderMonitor() {
+  const [{ servers }, { clients }] = await Promise.all([api('/api/servers'), api('/api/clients')]);
+  const serverGood = servers.filter(x => x.health === 'GOOD').length;
+  const clientGood = clients.filter(x => x.health === 'GOOD').length;
+  const problemServers = servers.filter(x => !['GOOD', 'OFFLINE'].includes(x.health)).length;
+  const problemClients = clients.filter(x => !['GOOD', 'OFFLINE'].includes(x.health)).length;
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">SERVER GOOD</div><div class="stat-value">${serverGood}</div><div class="stat-sub">Problems ${problemServers}</div></div><div class="card"><div class="stat-label">CLIENT GOOD</div><div class="stat-value">${clientGood}</div><div class="stat-sub">Problems ${problemClients}</div></div><div class="card"><div class="stat-label">SERVER ONLINE</div><div class="stat-value">${servers.filter(x => x.online).length}</div><div class="stat-sub">Total ${servers.length}</div></div><div class="card"><div class="stat-label">CLIENT ONLINE</div><div class="stat-value">${clients.filter(x => x.online).length}</div><div class="stat-sub">Total ${clients.length}</div></div></div><div class="section-card monitor-section"><div class="section-head"><h3>Server Health</h3><span class="small-note">AUTO REFRESH // 3 SEC</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>SERVER-ID</th><th>Status</th><th>Health</th><th>RTT</th><th>ACK</th><th>Clients</th><th>Reconnect</th><th>Last Seen</th></tr></thead><tbody>${servers.map(x => `<tr><td>${esc(x.alias || '-')}</td><td class="code">${esc(x.id)}</td><td>${badge(x.status)}</td><td>${badge(x.health)}</td><td>${x.rttMs >= 0 ? `${x.rttMs} ms` : '-'}</td><td>${x.ack.successRate}% <span class="muted">(${x.ack.ok}/${x.ack.error}/${x.ack.timeout})</span></td><td>${x.clients} / ${x.savedClients}</td><td>${x.reconnectCount}</td><td>${esc(fmtTime(x.lastSeen))}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">Server 없음</td></tr>'}</tbody></table></div></div><div class="section-card monitor-section"><div class="section-head"><h3>Client Health</h3><span class="small-note">AUTO REFRESH // 3 SEC</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>RTT</th><th>ACK</th><th>Server</th><th>Send</th><th>Reconnect</th></tr></thead><tbody>${clients.map(x => `<tr><td>${esc(x.alias || '-')}</td><td class="code">${esc(x.id)}</td><td>${badge(x.status)}</td><td>${badge(x.health)}</td><td>${x.rttMs >= 0 ? `${x.rttMs} ms` : '-'}</td><td>${x.ack.successRate}% <span class="muted">(${x.ack.ok}/${x.ack.error}/${x.ack.timeout})</span></td><td class="code">${esc(x.serverAlias || x.serverId)}</td><td>${x.sendCount}</td><td>${x.reconnectCount}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">Client 없음</td></tr>'}</tbody></table></div></div>`;
+}
+
+
+function terminalWrite(kind, text) {
+  terminalLines.push({ time: Date.now(), kind: String(kind || 'out'), text: String(text || '') });
+  if (terminalLines.length > 500) terminalLines = terminalLines.slice(-500);
+}
+
+function terminalTokenize(line) {
+  const out = [];
+  String(line || '').replace(/"([^"]*)"|'([^']*)'|([^\s]+)/g, (_, a, b, c) => { out.push(a ?? b ?? c ?? ''); return ''; });
+  return out;
+}
+
+function terminalObjectLines(items, formatter, limit = 30) {
+  const rows = (items || []).slice(0, limit).map(formatter);
+  if ((items || []).length > limit) rows.push(`... ${(items || []).length - limit} more`);
+  return rows.join('\n') || '(empty)';
+}
+
+async function executeTerminalCommand(rawLine) {
+  const line = String(rawLine || '').trim();
+  if (!line) return;
+  terminalHistory.push(line);
+  if (terminalHistory.length > 100) terminalHistory.shift();
+  terminalHistoryIndex = terminalHistory.length;
+  terminalWrite('cmd', `relay-admin > ${line}`);
+  const a = terminalTokenize(line);
+  const cmd = String(a[0] || '').toLowerCase();
+  const sub = String(a[1] || '').toLowerCase();
+  try {
+    if (cmd === 'clear') { terminalLines = []; return; }
+    if (cmd === 'help' || cmd === '?') {
+      terminalWrite('ok', [
+        'SAFE COMMAND SET // no OS shell',
+        'status', 'server list', 'server show <id>', 'server kick|disable|enable <id>', 'server drain on|off <id>',
+        'client list', 'client show <id>', 'client kick|disable|enable <id>', 'client move <clientId> <serverId>',
+        'license find <query>', 'maintenance status|on|off', 'backup list|create', 'version status',
+        'notice all <message>', 'open <dashboard|servers|clients|licenses|backups|health|system|danger>', 'search <query>', 'clear'
+      ].join('\n'));
+      return;
+    }
+    if (cmd === 'status') {
+      const { dashboard: d } = await api('/api/dashboard');
+      terminalWrite('ok', `SERVICE=${d.serviceEnabled ? 'ONLINE' : 'OFFLINE'} MAINT=${d.maintenanceMode ? 'ON' : 'OFF'} SERVERS=${d.servers.online}/${d.servers.total} CLIENTS=${d.clients.online}/${d.clients.total} ACK=${d.ack.successRate}% PENDING=${d.ack.pending}`);
+      return;
+    }
+    if (cmd === 'server' && sub === 'list') {
+      const { servers } = await api('/api/servers');
+      terminalWrite('ok', terminalObjectLines(servers, s => `${s.alias || '-'} ${s.id} ${s.status}/${s.health} CLIENTS=${s.clients}/${s.savedClients}${s.drain && s.drain.active ? ` DRAIN=${s.drain.progress}%` : ''}`)); return;
+    }
+    if (cmd === 'server' && sub === 'show' && a[2]) {
+      const { server: s } = await api(`/api/servers/${encodeURIComponent(a[2])}`);
+      terminalWrite('ok', JSON.stringify({ id:s.id, alias:s.alias, status:s.status, health:s.health, clients:s.clients, savedClients:s.savedClients, rttMs:s.rttMs, drain:s.drain }, null, 2)); return;
+    }
+    if (cmd === 'server' && ['kick','disable','enable'].includes(sub) && a[2]) { await serverAction(sub, a[2]); terminalWrite('ok', `SERVER ${sub.toUpperCase()} OK ${a[2]}`); return; }
+    if (cmd === 'server' && sub === 'drain' && ['on','off'].includes(String(a[2]||'').toLowerCase()) && a[3]) { await serverAction(`drain-${String(a[2]).toLowerCase()}`, a[3]); terminalWrite('ok', `SERVER DRAIN ${String(a[2]).toUpperCase()} OK ${a[3]}`); return; }
+    if (cmd === 'client' && sub === 'list') {
+      const { clients } = await api('/api/clients');
+      terminalWrite('ok', terminalObjectLines(clients, c => `${c.alias || '-'} ${c.id} ${c.status}/${c.health} SERVER=${c.serverAlias || c.serverId} LICENSE=${c.licenseStatus}`)); return;
+    }
+    if (cmd === 'client' && sub === 'show' && a[2]) {
+      const { client: c } = await api(`/api/clients/${encodeURIComponent(a[2])}`);
+      terminalWrite('ok', JSON.stringify({ id:c.id, alias:c.alias, status:c.status, health:c.health, serverId:c.serverId, licenseStatus:c.licenseStatus, rttMs:c.rttMs }, null, 2)); return;
+    }
+    if (cmd === 'client' && ['kick','disable','enable'].includes(sub) && a[2]) { await clientAction(sub, a[2]); terminalWrite('ok', `CLIENT ${sub.toUpperCase()} OK ${a[2]}`); return; }
+    if (cmd === 'client' && sub === 'move' && a[2] && a[3]) { await api(`/api/clients/${encodeURIComponent(a[2])}/move`, { method:'POST', body:{ serverId:a[3] } }); terminalWrite('ok', `CLIENT MOVE OK ${a[2]} -> ${a[3]}`); return; }
+    if (cmd === 'license' && sub === 'find') {
+      const q = a.slice(2).join(' '); const { licenses } = await api(`/api/licenses?query=${encodeURIComponent(q)}&status=ALL&expiry=ALL`);
+      terminalWrite('ok', terminalObjectLines(licenses, x => `${x.key} ${x.status} CLIENT=${x.boundClient || '-'} TAGS=${(x.tags||[]).join(',') || '-'}`)); return;
+    }
+    if (cmd === 'maintenance' && sub === 'status') { const { system:s }=await api('/api/system'); terminalWrite('ok', `MAINTENANCE=${s.maintenanceMode?'ON':'OFF'} SERVICE=${s.serviceEnabled?'ONLINE':'OFFLINE'} SCHEDULE=${s.maintenanceSchedule?`${fmtTime(s.maintenanceSchedule.startAt)} -> ${fmtTime(s.maintenanceSchedule.endAt)}`:'NONE'}`); return; }
+    if (cmd === 'maintenance' && ['on','off'].includes(sub)) { await api(`/api/system/maintenance/${sub}`, {method:'POST',body:{}}); terminalWrite('ok', `MAINTENANCE ${sub.toUpperCase()} OK`); return; }
+    if (cmd === 'backup' && sub === 'list') { const {backups}=await api('/api/backups'); terminalWrite('ok', terminalObjectLines(backups, b=>`${b.file} ${fmtBytes(b.size)} ${fmtTime(b.mtimeMs)}`)); return; }
+    if (cmd === 'backup' && sub === 'create') { const r=await api('/api/backups/create',{method:'POST',body:{}}); terminalWrite('ok', `BACKUP CREATED ${r.file}`); return; }
+    if (cmd === 'version' && sub === 'status') { const {system:s}=await api('/api/system'); terminalWrite('ok', `PROTOCOL=${s.minProtocolVersion}/${s.currentProtocolVersion} SERVER>=${s.minServerVersion} CLIENT>=${s.minClientVersion} WEB=${s.webAdminVersion}`); return; }
+    if (cmd === 'notice' && sub === 'all' && a.length >= 3) { const message=a.slice(2).join(' '); const r=await api('/api/system/notice',{method:'POST',body:{message}}); terminalWrite('ok', `NOTICE SENT ${r.count}`); return; }
+    if (cmd === 'open' && a[1]) { const view=String(a[1]).toLowerCase(); if (!titles[view]) throw new Error('UNKNOWN_VIEW'); if (view==='danger'&&!roleIsAdmin()) throw new Error('FORBIDDEN'); switchView(view); await renderCurrent(); return; }
+    if (cmd === 'search' && a.length >= 2) { openPalette(); const q=a.slice(1).join(' '); const input=document.getElementById('palette-input'); if(input){input.value=q; await runPaletteSearch(q);} return; }
+    throw new Error('UNKNOWN_COMMAND // type help');
+  } catch (error) {
+    terminalWrite('error', error.message || String(error));
+  }
+}
+
+async function renderTerminal() {
+  if (!terminalLines.length) terminalWrite('ok', 'RELAY SAFE COMMAND TERMINAL // type help // OS SHELL DISABLED');
+  content.innerHTML = `<div class="terminal-panel command-terminal"><div class="terminal-head"><span>RELAY_COMMAND_CHANNEL // ALLOWLIST ONLY</span><div class="actions"><button id="terminal-help-btn">Help</button><button id="terminal-clear-btn">Clear</button></div></div><div id="command-terminal-output" class="command-terminal-output">${terminalLines.map(x=>`<div class="terminal-output-line ${esc(x.kind)}"><span>${esc(fmtTime(x.time))}</span><pre>${esc(x.text)}</pre></div>`).join('')}</div><form id="command-terminal-form" class="command-terminal-form"><span>relay-admin &gt;</span><input id="command-terminal-input" autocomplete="off" spellcheck="false" placeholder="help"><button class="primary" type="submit">EXEC</button></form><div class="terminal-safety">ALLOWLIST COMMANDS ONLY // NO PROCESS EXEC // NO SHELL // API PERMISSIONS STILL ENFORCED</div></div>`;
+  const output=document.getElementById('command-terminal-output'); if(output) output.scrollTop=output.scrollHeight;
+  const input=document.getElementById('command-terminal-input'); if(input) setTimeout(()=>input.focus(),10);
+}
+
+function distributionBar(value, max, cls='live') {
+  const pct = Math.max(0, Math.min(100, max > 0 ? (Number(value||0)/max)*100 : 0));
+  return `<div class="distribution-meter"><i class="${esc(cls)}" style="width:${pct.toFixed(1)}%"></i></div><span class="distribution-pct">${pct.toFixed(1)}%</span>`;
+}
+
+async function renderDistribution() {
+  const [{ servers }, { system }] = await Promise.all([api('/api/servers'), api('/api/system')]);
+  const max = Number(system.maxClientsPerServer || 1);
+  const sorted = [...servers].sort((a,b)=>b.savedClients-a.savedClients || b.clients-a.clients);
+  const totalLive=sorted.reduce((n,x)=>n+x.clients,0), totalSaved=sorted.reduce((n,x)=>n+x.savedClients,0);
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">TOTAL LIVE</div><div class="stat-value">${totalLive}</div><div class="stat-sub">Active Client sockets</div></div><div class="card"><div class="stat-label">TOTAL BINDINGS</div><div class="stat-value">${totalSaved}</div><div class="stat-sub">Persistent Client → Server</div></div><div class="card"><div class="stat-label">CAPACITY</div><div class="stat-value">${sorted.length*max}</div><div class="stat-sub">${max} / Server</div></div><div class="card"><div class="stat-label">DRAINING</div><div class="stat-value">${sorted.filter(x=>x.drain&&x.drain.active).length}</div><div class="stat-sub">Ready ${sorted.filter(x=>x.drain&&x.drain.ready).length}</div></div></div><div class="section-card"><div class="section-head"><h3>Server Client Distribution</h3><span class="small-note">AUTO REFRESH // 3 SEC</span></div><div class="distribution-list">${sorted.map(s=>`<div class="distribution-row"><div class="distribution-id"><strong>${esc(s.alias||s.id)}</strong><small>${esc(s.id)}</small>${badge(s.status)} ${badge(s.health)}</div><div class="distribution-load"><label>LIVE <b>${s.clients}/${max}</b></label>${distributionBar(s.clients,max,'live')}<label>BINDINGS <b>${s.savedClients}/${max}</b></label>${distributionBar(s.savedClients,max,'saved')}</div><div class="distribution-drain">${s.drain&&s.drain.active?`<div class="drain-label">DRAIN // ${s.drain.ready?'<strong>READY FOR MAINTENANCE</strong>':`${s.drain.currentClients} ACTIVE`}</div><div class="drain-progress"><i style="width:${s.drain.progress}%"></i></div><div class="small-note">${s.drain.progress}% // start ${esc(fmtTime(s.drain.startedAt))} // initial ${s.drain.initialClients}</div>`:`<span class="small-note">ACCEPT CLIENTS: ${s.canAcceptClients?'YES':'NO'}</span>`}</div>${roleIsAdmin()?`<div class="actions">${s.drain&&s.drain.active?`<button data-server-action="drain-off" data-id="${esc(s.id)}">Drain OFF</button>`:`<button data-server-action="drain-on" data-id="${esc(s.id)}">Drain ON</button>`}</div>`:''}</div>`).join('')||'<div class="empty">Server 없음</div>'}</div></div>`;
+}
+
+async function renderDangerZone() {
+  if (!roleIsAdmin()) { content.innerHTML='<div class="empty">FORBIDDEN</div>'; return; }
+  const [{ system:s }, { backups }, { licenses }] = await Promise.all([api('/api/system'), api('/api/backups'), api('/api/licenses?status=ALL&expiry=ALL')]);
+  content.innerHTML = `<div class="danger-banner"><strong>!! DANGER ZONE !!</strong><span>이 화면의 작업은 서비스/데이터/접속 상태에 직접 영향을 줍니다. 확인 문구가 정확히 일치해야 실행됩니다.</span></div><div class="danger-grid">
+    <div class="section-card danger-card"><div class="section-head"><h3>Service Stop</h3>${badge(s.serviceEnabled?'ONLINE':'OFFLINE')}</div><div class="section-body"><p class="muted">모든 Client 인증을 해제하고 Relay 서비스를 중지합니다.</p><label>확인 문구<input id="danger-stop-confirm" placeholder="STOP"></label><button id="danger-service-stop" class="danger">STOP SERVICE</button></div></div>
+    <div class="section-card danger-card"><div class="section-head"><h3>Backup Restore</h3><span class="small-note">${backups.length} FILES</span></div><div class="section-body"><label>Backup<select id="danger-backup-file">${backups.map(b=>`<option value="${esc(b.file)}">${esc(b.file)} // ${esc(fmtBytes(b.size))}</option>`).join('')}</select></label><label>Restore 확인 문구<input id="danger-restore-confirm" placeholder="RESTORE"></label><div class="actions"><button id="danger-backup-restore" class="danger" ${backups.length?'':'disabled'}>RESTORE BACKUP</button></div><label>Delete 확인 문구<input id="danger-backup-delete-confirm" placeholder="DELETE"></label><div class="actions"><button id="danger-backup-delete" class="danger" ${backups.length?'':'disabled'}>DELETE BACKUP</button></div></div></div>
+    <div class="section-card danger-card"><div class="section-head"><h3>Version Force Apply</h3><span class="small-note">CURRENT P${s.currentProtocolVersion}</span></div><div class="section-body"><div class="form-grid"><label>Protocol<input id="danger-version-protocol" type="number" min="1" max="${s.currentProtocolVersion}" value="${s.minProtocolVersion}"></label><label>Server<input id="danger-version-server" value="${esc(s.minServerVersion)}"></label><label>Client<input id="danger-version-client" value="${esc(s.minClientVersion)}"></label></div><label>확인 문구<input id="danger-version-confirm" placeholder="VERSION"></label><button id="danger-version-apply" class="danger">APPLY VERSION POLICY</button></div></div>
+    <div class="section-card danger-card"><div class="section-head"><h3>Bulk License Delete</h3><span class="small-note">${licenses.length} TOTAL</span></div><div class="section-body"><p class="muted">License Key를 줄바꿈/쉼표로 입력합니다. 최대 500개.</p><label>License Keys<textarea id="danger-license-keys" placeholder="KEY1\nKEY2"></textarea></label><label>확인 문구<input id="danger-license-confirm" placeholder="DELETE"></label><button id="danger-license-delete" class="danger">DELETE LICENSES</button></div></div>
+  </div><div class="section-card danger-card future-danger"><div class="section-head"><h3>Database Reset</h3>${badge('DISABLED')}</div><div class="section-body"><p class="muted">의도적으로 구현하지 않았습니다. DB 삭제/초기화는 Web Admin에서 제공하지 않습니다.</p></div></div>`;
+}
+
+async function updateNotificationBadge() {
+  if (!session || !notificationBadge) return;
+  try {
+    const { summary } = await api('/api/notifications?limit=1');
+    notificationBadge.textContent = summary.unread > 99 ? '99+' : String(summary.unread);
+    notificationBadge.classList.toggle('hidden', summary.unread <= 0);
+    notificationBadge.classList.toggle('critical', summary.critical > 0);
+  } catch (_) {}
+}
+
+async function renderNotifications(silent = false) {
+  const { summary, notifications } = await api('/api/notifications?limit=300');
+  if (!silent) updateNotificationBadge();
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">UNREAD</div><div class="stat-value">${summary.unread}</div><div class="stat-sub">Total ${summary.total}</div></div><div class="card"><div class="stat-label">CRITICAL</div><div class="stat-value">${summary.critical}</div><div class="stat-sub">Immediate attention</div></div><div class="card"><div class="stat-label">WARNING</div><div class="stat-value">${summary.warning}</div><div class="stat-sub">Operational warnings</div></div></div>
+  <div class="toolbar"><button id="notification-read-all-btn">모두 읽음</button>${roleIsAdmin() ? '<button id="notification-clear-btn" class="danger">전체 지우기</button>' : ''}<span class="small-note">ACK timeout / Server offline / Flapping / License expiry / DB recovery</span></div>
+  <div class="notification-list">${notifications.map(n => `<div class="notification-item ${n.read ? 'read' : 'unread'} ${esc(n.severity.toLowerCase())}"><div class="notification-icon">${n.severity === 'CRITICAL' ? '!' : n.severity === 'WARNING' ? '▲' : '•'}</div><div class="notification-main"><div class="notification-title">${badge(n.severity)} <strong>${esc(n.title)}</strong> ${n.count > 1 ? `<span class="nav-count">×${n.count}</span>` : ''}</div><div class="notification-message">${esc(n.message)}</div><div class="small-note">${esc(n.type)} // ${esc(fmtTime(n.updatedAt || n.createdAt))}${n.entityId ? ` // ${esc(n.entityId)}` : ''}</div></div>${!n.read ? `<button data-notification-read="${esc(n.id)}">읽음</button>` : ''}</div>`).join('') || '<div class="empty">알림 없음</div>'}</div>`;
+}
+
 async function renderServers() {
   const { servers } = await api('/api/servers');
   const actions = server => {
     const id = esc(server.id);
     const detail = `<button data-server-action="detail" data-id="${id}">상세</button>`;
-    if (!roleIsAdmin()) return `<div class="actions">${detail}</div>`;
+    const note = roleCanOperate() ? `<button data-server-action="note" data-id="${id}">Note</button>` : '';
+    if (!roleIsAdmin()) return `<div class="actions">${detail}${note}</div>`;
+    const alias = `<button data-server-action="alias" data-id="${id}">Alias</button>`;
 
     const kick = server.online && server.status !== 'DISABLED' ? `<button class="warning" data-server-action="kick" data-id="${id}">Kick 60s</button>` : '';
     const drain = server.status === 'DRAINING'
@@ -252,11 +509,11 @@ async function renderServers() {
     const enabled = server.status === 'DISABLED'
       ? `<button class="primary" data-server-action="enable" data-id="${id}">Enable</button>`
       : `<button class="danger" data-server-action="disable" data-id="${id}">Disable</button>`;
-    return `<div class="actions">${detail}${kick}${drain}${enabled}</div>`;
+    return `<div class="actions">${detail}${alias}${note}${kick}${drain}${enabled}</div>`;
   };
 
-  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Drain은 신규 Client 배정만 중지 · Disable은 Enable 전까지 차단</span></div><div class="table-wrap"><table><thead><tr><th>SERVER-ID</th><th>Status</th><th>Health</th><th>Accept</th><th>Clients</th><th>RTT</th><th>Version</th><th>IP</th><th>Last Seen</th><th>Reconnect</th><th>Action</th></tr></thead><tbody>
-    ${servers.map(s => `<tr><td class="code">${esc(s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.health)}</td><td>${s.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</td><td>${s.clients} / ${s.savedClients}</td><td>${s.rttMs >= 0 ? `${s.rttMs} ms` : '-'}</td><td>${esc(s.appVersion || '-')}</td><td>${esc(s.lastIP || '-')}</td><td>${esc(fmtTime(s.lastSeen))}</td><td>${s.reconnectCount}</td><td>${actions(s)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">Server 없음</td></tr>'}
+  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Drain은 신규 Client 배정만 중지 · Disable은 Enable 전까지 차단</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>SERVER-ID</th><th>Status</th><th>Health</th><th>Accept</th><th>Clients</th><th>Drain</th><th>RTT</th><th>Version</th><th>IP</th><th>Last Seen</th><th>Reconnect</th><th>Note</th><th>Action</th></tr></thead><tbody>
+    ${servers.map(s => `<tr><td>${esc(s.alias || '-')}</td><td class="code">${esc(s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.health)}</td><td>${s.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</td><td>${s.clients} / ${s.savedClients}</td><td>${s.drain && s.drain.active ? `<div class="drain-inline"><strong>${s.drain.ready ? 'READY' : `${s.drain.progress}%`}</strong><span>${s.drain.currentClients} live</span></div>` : '-'}</td><td>${s.rttMs >= 0 ? `${s.rttMs} ms` : '-'}</td><td>${esc(s.appVersion || '-')}</td><td>${esc(s.lastIP || '-')}</td><td>${esc(fmtTime(s.lastSeen))}</td><td>${s.reconnectCount}</td><td class="note-cell" title="${esc(s.note || '')}">${esc(s.note || '-')}</td><td>${actions(s)}</td></tr>`).join('') || '<tr><td colspan="14" class="empty">Server 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
@@ -266,7 +523,9 @@ async function renderClients() {
     const id = esc(client.id);
     let html = `<button data-client-action="detail" data-id="${id}">상세</button>`;
     if (roleCanOperate() && client.online) html += `<button data-client-action="notice" data-id="${id}">Notice</button>`;
+    if (roleCanOperate()) html += `<button data-client-action="note" data-id="${id}">Note</button>`;
     if (roleIsAdmin()) {
+      html += `<button data-client-action="alias" data-id="${id}">Alias</button>`;
       html += `<button data-client-action="move" data-id="${id}">Move</button>`;
       if (client.online && client.status !== 'DISABLED') html += `<button class="warning" data-client-action="kick" data-id="${id}">Kick 60s</button>`;
       html += client.status === 'DISABLED'
@@ -276,28 +535,32 @@ async function renderClients() {
     return `<div class="actions">${html}</div>`;
   };
 
-  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Disable은 Enable 전까지 재접속 차단</span></div><div class="table-wrap"><table><thead><tr><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Action</th></tr></thead><tbody>
-    ${clients.map(c => `<tr><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td class="code">${esc(c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td>${actions(c)}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">Client 없음</td></tr>'}
+  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Disable은 Enable 전까지 재접속 차단</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th>Action</th></tr></thead><tbody>
+    ${clients.map(c => `<tr><td>${esc(c.alias || '-')}</td><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td class="code">${esc(c.serverAlias || c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td class="note-cell" title="${esc(c.note || '')}">${esc(c.note || '-')}</td><td>${actions(c)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">Client 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
 async function renderLicenses() {
   const q = encodeURIComponent(licenseQuery);
   const s = encodeURIComponent(licenseStatus);
-  const { licenses } = await api(`/api/licenses?query=${q}&status=${s}`);
+  const e = encodeURIComponent(licenseExpiry);
+  const { licenses } = await api(`/api/licenses?query=${q}&status=${s}&expiry=${e}`);
   const operator = roleCanOperate();
+  const tagsHtml = tags => (tags || []).length ? tags.map(t => `<span class="tag-chip">${esc(t)}</span>`).join('') : '<span class="muted">-</span>';
   content.innerHTML = `
     <div class="toolbar">
-      <input id="license-search" placeholder="Key / Client / Memo 검색" value="${esc(licenseQuery)}">
+      <input id="license-search" placeholder="Key / Client / Memo / Tag 검색 · tag:VIP" value="${esc(licenseQuery)}">
       <select id="license-status"><option>ALL</option><option>AVAILABLE</option><option>BOUND</option><option>SUSPENDED</option><option>EXPIRED</option></select>
+      <select id="license-expiry"><option value="ALL">ALL EXPIRY</option><option value="EXPIRED">EXPIRED</option><option value="1D">≤ 24H</option><option value="3D">≤ 3D</option><option value="7D">≤ 7D</option><option value="30D">≤ 30D</option></select>
       <button id="license-search-btn">검색</button>
       ${roleIsAdmin() ? '<button id="license-create-btn" class="primary">+ License 생성</button>' : ''}
       ${operator ? '<button id="license-bulk-btn">선택 작업</button>' : ''}
     </div>
-    <div class="table-wrap"><table><thead><tr><th><input id="license-check-all" type="checkbox"></th><th>KEY</th><th>Status</th><th>Client</th><th>Expires</th><th>Memo</th><th>Auth</th><th>Send</th><th>Action</th></tr></thead><tbody>
-      ${licenses.map(l => `<tr><td><input class="license-check" type="checkbox" data-key="${esc(l.key)}" ${selectedLicenses.has(l.key) ? 'checked' : ''}></td><td class="code">${esc(l.key)}</td><td>${badge(l.status)}</td><td class="code">${esc(l.boundClient || '-')}</td><td>${esc(fmtTime(l.expiresAt))}</td><td>${esc(l.memo || '-')}</td><td>${l.authCount}</td><td>${l.sendCount}</td><td><div class="actions">${operator ? `<button data-license-action="extend" data-key="${esc(l.key)}">연장</button><button data-license-action="unbind" data-key="${esc(l.key)}">Unbind</button><button data-license-action="suspend" data-key="${esc(l.key)}">Suspend</button><button data-license-action="resume" data-key="${esc(l.key)}">Resume</button><button data-license-action="transfer" data-key="${esc(l.key)}">Transfer</button>` : ''}${roleIsAdmin() ? `<button data-license-action="reissue" data-key="${esc(l.key)}">Reissue</button><button class="danger" data-license-action="delete" data-key="${esc(l.key)}">Delete</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="9" class="empty">License 없음</td></tr>'}
+    <div class="table-wrap"><table><thead><tr><th><input id="license-check-all" type="checkbox"></th><th>KEY</th><th>Status</th><th>Client</th><th>Expires</th><th>Tags</th><th>Memo</th><th>Auth</th><th>Send</th><th>Action</th></tr></thead><tbody>
+      ${licenses.map(l => `<tr><td><input class="license-check" type="checkbox" data-key="${esc(l.key)}" ${selectedLicenses.has(l.key) ? 'checked' : ''}></td><td class="code">${esc(l.key)}</td><td>${badge(l.status)}</td><td class="code">${esc(l.boundClient || '-')}</td><td>${esc(fmtTime(l.expiresAt))}</td><td><div class="tag-list">${tagsHtml(l.tags)}</div></td><td>${esc(l.memo || '-')}</td><td>${l.authCount}</td><td>${l.sendCount}</td><td><div class="actions">${operator ? `<button data-license-action="tags" data-key="${esc(l.key)}">Tags</button><button data-license-action="extend" data-key="${esc(l.key)}">연장</button><button data-license-action="unbind" data-key="${esc(l.key)}">Unbind</button><button data-license-action="suspend" data-key="${esc(l.key)}">Suspend</button><button data-license-action="resume" data-key="${esc(l.key)}">Resume</button><button data-license-action="transfer" data-key="${esc(l.key)}">Transfer</button>` : ''}${roleIsAdmin() ? `<button data-license-action="reissue" data-key="${esc(l.key)}">Reissue</button><button class="danger" data-license-action="delete" data-key="${esc(l.key)}">Delete</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="10" class="empty">License 없음</td></tr>'}
     </tbody></table></div>`;
   document.getElementById('license-status').value = licenseStatus;
+  document.getElementById('license-expiry').value = licenseExpiry;
 }
 
 async function renderAudit() {
@@ -309,18 +572,55 @@ async function renderAudit() {
   if ([...typeEl.options].some(o => o.value === auditType)) typeEl.value = auditType;
 }
 
+async function renderActivity() {
+  const { activities } = await api(`/api/admin-activity?query=${encodeURIComponent(activityQuery)}&limit=500`);
+  content.innerHTML = `<div class="toolbar"><input id="activity-search" placeholder="Role / IP / API / Status 검색" value="${esc(activityQuery)}"><button id="activity-search-btn">검색</button><span class="small-note">비밀번호와 요청 본문은 기록하지 않습니다.</span></div>
+  <div class="table-wrap"><table><thead><tr><th>Time</th><th>Role</th><th>IP</th><th>Method</th><th>API</th><th>Status</th><th>Action</th></tr></thead><tbody>${activities.map(a => `<tr><td>${esc(fmtTime(a.time))}</td><td>${badge(a.role)}</td><td class="code">${esc(a.ip || '-')}</td><td class="code">${esc(a.method)}</td><td class="code">${esc(a.path)}</td><td>${a.status >= 200 && a.status < 300 ? badge('OK') : badge('ERROR')} ${a.status}</td><td>${esc(a.action || '-')}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">Activity 없음</td></tr>'}</tbody></table></div>`;
+}
+
+async function renderSessions() {
+  const { sessions } = await api('/api/sessions');
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">ACTIVE SESSIONS</div><div class="stat-value">${sessions.length}</div><div class="stat-sub">Current session included</div></div><div class="card"><div class="stat-label">ADMIN</div><div class="stat-value">${sessions.filter(x => x.role === 'admin').length}</div><div class="stat-sub">Privileged sessions</div></div><div class="card"><div class="stat-label">OTHER ROLES</div><div class="stat-value">${sessions.filter(x => x.role !== 'admin').length}</div><div class="stat-sub">Operator / Viewer</div></div></div>
+  <div class="toolbar"><button id="session-revoke-others-btn" class="warning">현재 세션 제외 전부 종료</button><button id="session-revoke-all-btn" class="danger">전체 세션 종료</button><span class="small-note">Session Token 원문은 화면/로그에 노출하지 않습니다.</span></div>
+  <div class="table-wrap"><table><thead><tr><th>Session ID</th><th>Role</th><th>IP</th><th>Created</th><th>Last Active</th><th>Expires</th><th>Current</th><th>Action</th></tr></thead><tbody>${sessions.map(s => `<tr><td class="code">${esc(s.id)}</td><td>${badge(s.role)}</td><td class="code">${esc(s.ip || '-')}</td><td>${esc(fmtTime(s.createdAt))}</td><td>${esc(fmtTime(s.lastSeenAt))}</td><td>${esc(fmtTime(s.expiresAt))}</td><td>${s.current ? badge('CURRENT') : '-'}</td><td>${s.current ? '<span class="muted">현재 세션</span>' : `<button class="danger" data-session-revoke="${esc(s.id)}">Terminate</button>`}</td></tr>`).join('') || '<tr><td colspan="8" class="empty">Session 없음</td></tr>'}</tbody></table></div>`;
+}
+
+async function renderSystemHealth() {
+  const [{ health: h }, { integrity }] = await Promise.all([api('/api/system/health'), api('/api/system/integrity')]);
+  const o = h.overall;
+  const db = h.database;
+  const b = h.backup;
+  const a = h.audit;
+  const w = h.web;
+  const n = h.node;
+  const r = h.relay;
+  content.innerHTML = `<div class="cards">
+    <div class="card"><div class="stat-label">RELAY</div><div class="stat-value">${o.serviceEnabled ? 'ONLINE' : 'OFFLINE'}</div><div class="stat-sub">Uptime ${esc(fmtDuration(o.uptimeMs))}</div></div>
+    <div class="card"><div class="stat-label">DATABASE</div><div class="stat-value">${db.exists && db.dataDirWritable && db.lastSaveOk ? 'OK' : 'CHECK'}</div><div class="stat-sub">${esc(fmtBytes(db.size))} · ${esc(fmtTime(db.lastSaveAt))}</div></div>
+    <div class="card"><div class="stat-label">BACKUPS</div><div class="stat-value">${b.count}</div><div class="stat-sub">Latest ${esc(b.latest ? fmtTime(b.latest.mtimeMs) : '-')}</div></div>
+    <div class="card"><div class="stat-label">WEB SESSIONS</div><div class="stat-value">${w.sessions.total}</div><div class="stat-sub">Admin ${w.sessions.roles.admin} · Operator ${w.sessions.roles.operator} · Viewer ${w.sessions.roles.viewer}</div></div>
+    <div class="card"><div class="stat-label">DB INTEGRITY</div><div class="stat-value">${integrity.ok ? 'HEALTHY' : 'ERROR'}</div><div class="stat-sub">Errors ${integrity.errors.length} · Warnings ${integrity.warnings.length}</div></div>
+  </div>
+  <div class="panel-grid health-panels">
+    <div class="section-card"><div class="section-head"><h3>Node Runtime</h3>${badge('ONLINE')}</div><div class="section-body"><div class="kv"><div>Node</div><div class="code">${esc(n.version)}</div><div>PID</div><div>${n.pid}</div><div>Platform</div><div>${esc(n.platform)} / ${esc(n.arch)}</div><div>Uptime</div><div>${esc(fmtDuration(n.uptimeMs))}</div><div>RSS</div><div>${esc(fmtBytes(n.rss))}</div><div>Heap</div><div>${esc(fmtBytes(n.heapUsed))} / ${esc(fmtBytes(n.heapTotal))}</div><div>CPU</div><div>${n.cpuCount} cores</div><div>Load 1/5/15m</div><div>${n.load1m} / ${n.load5m} / ${n.load15m}</div></div></div></div>
+    <div class="section-card"><div class="section-head"><h3>Database</h3>${badge(db.exists && db.dataDirWritable && db.lastSaveOk ? 'GOOD' : 'WARNING')}</div><div class="section-body"><div class="kv"><div>File</div><div class="code">${esc(db.file)}</div><div>Exists</div><div>${badge(db.exists ? 'GOOD' : 'ERROR')}</div><div>Writable</div><div>${badge(db.dataDirWritable ? 'GOOD' : 'ERROR')}</div><div>Size</div><div>${esc(fmtBytes(db.size))}</div><div>Modified</div><div>${esc(fmtTime(db.mtimeMs))}</div><div>Last Save</div><div>${esc(fmtTime(db.lastSaveAt))}</div><div>Last Save Result</div><div>${badge(db.lastSaveOk ? 'GOOD' : 'ERROR')}</div></div></div></div>
+    <div class="section-card"><div class="section-head"><h3>Backup / Audit</h3>${badge(b.writable && a.writable ? 'GOOD' : 'WARNING')}</div><div class="section-body"><div class="kv"><div>Backup Writable</div><div>${badge(b.writable ? 'GOOD' : 'ERROR')}</div><div>Backup Count</div><div>${b.count}</div><div>Latest Backup</div><div class="code">${esc(b.latest ? b.latest.file : '-')}</div><div>Latest Time</div><div>${esc(b.latest ? fmtTime(b.latest.mtimeMs) : '-')}</div><div>Audit Writable</div><div>${badge(a.writable ? 'GOOD' : 'ERROR')}</div><div>Audit Files</div><div>${a.count}</div><div>Latest Audit</div><div class="code">${esc(a.latest ? a.latest.file : '-')}</div></div></div></div>
+    <div class="section-card"><div class="section-head"><h3>Relay Runtime</h3>${badge(o.serviceEnabled ? 'GOOD' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Servers</div><div>${r.serversOnline} online</div><div>Clients</div><div>${r.clientsOnline} online</div><div>Pending ACK</div><div>${r.pendingAcks}</div><div>Request Traces</div><div>${r.requestTraces}</div><div>ACK OK</div><div>${r.ackOk}</div><div>ACK Error</div><div>${r.ackError}</div><div>ACK Timeout</div><div>${r.ackTimeout}</div><div>Retries</div><div>${r.ackRetries}</div><div>Connections</div><div>${r.connections}</div></div></div></div>
+  </div><div class="section-card integrity-panel"><div class="section-head"><h3>Database Integrity</h3>${badge(integrity.ok ? 'GOOD' : 'ERROR')}</div><div class="section-body"><div class="stats-summary"><span>Servers <strong>${integrity.stats.servers || 0}</strong></span><span>Clients <strong>${integrity.stats.clients || 0}</strong></span><span>Licenses <strong>${integrity.stats.licenses || 0}</strong></span><span>Errors <strong>${integrity.errors.length}</strong></span><span>Warnings <strong>${integrity.warnings.length}</strong></span><button id="integrity-run-btn">RUN CHECK</button></div>${integrity.errors.length || integrity.warnings.length ? `<div class="integrity-list">${[...integrity.errors.map(x=>({...x,severity:'ERROR'})),...integrity.warnings.map(x=>({...x,severity:'WARNING'}))].map(x=>`<div class="integrity-row">${badge(x.severity)}<span class="code">${esc(x.code)}</span><span>${esc(x.message)}</span><span class="code">${esc(x.entity || '-')}</span></div>`).join('')}</div>` : '<div class="integrity-ok">[ DATABASE_HEALTHY ] No broken bindings or structural errors detected.</div>'}</div></div>`;
+}
+
 async function renderBackups() {
   const { backups } = await api('/api/backups');
   content.innerHTML = `<div class="toolbar">${roleIsAdmin() ? '<button id="backup-create-btn" class="primary">백업 생성</button>' : ''}<span class="small-note">Restore는 현재 Server/Client를 재접속시킵니다.</span></div>
-  <div class="table-wrap"><table><thead><tr><th>File</th><th>Size</th><th>Created</th><th>Action</th></tr></thead><tbody>${backups.map(b => `<tr><td class="code">${esc(b.file)}</td><td>${esc(fmtBytes(b.size))}</td><td>${esc(fmtTime(b.mtimeMs))}</td><td>${roleIsAdmin() ? `<div class="actions"><button class="warning" data-backup-action="restore" data-file="${esc(b.file)}">Restore</button><button class="danger" data-backup-action="delete" data-file="${esc(b.file)}">Delete</button></div>` : '-'}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Backup 없음</td></tr>'}</tbody></table></div>`;
+  <div class="table-wrap"><table><thead><tr><th>File</th><th>Size</th><th>Created</th><th>Action</th></tr></thead><tbody>${backups.map(b => `<tr><td class="code">${esc(b.file)}</td><td>${esc(fmtBytes(b.size))}</td><td>${esc(fmtTime(b.mtimeMs))}</td><td><div class="actions"><button data-backup-action="verify" data-file="${esc(b.file)}">Verify</button>${roleIsAdmin() ? `<button data-open-view="danger" class="warning">Danger Zone</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="4" class="empty">Backup 없음</td></tr>'}</tbody></table></div>`;
 }
 
 async function renderSystem() {
   const { system: s } = await api('/api/system');
   const schedule = s.maintenanceSchedule;
   content.innerHTML = `<div class="panel-grid">
-    <div class="section-card"><div class="section-head"><h3>Service</h3>${badge(s.serviceEnabled ? 'ONLINE' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Maintenance</div><div>${badge(s.maintenanceMode ? 'ON' : 'OFF')}</div><div>Web Admin</div><div>v${esc(s.webAdminVersion || '-')}</div><div>Legacy TCP Admin</div><div>${badge(s.legacyTcpAdminEnabled ? 'ONLINE' : 'DISABLED')}</div><div>Data Dir</div><div class="code">${esc(s.dataDir)}</div><div>Max Clients / Server</div><div>${s.maxClientsPerServer}</div><div>Rate Limit</div><div>${s.rateLimit}/sec</div></div>${roleIsAdmin() ? `<div class="toolbar"><button id="service-start-btn">Service Start</button><button id="service-stop-btn" class="danger">Service Stop</button><button id="maint-on-btn" class="warning">Maintenance ON</button><button id="maint-off-btn">Maintenance OFF</button></div>` : ''}</div></div>
-    <div class="section-card"><div class="section-head"><h3>Version Policy</h3></div><div class="section-body"><div class="form-grid"><label>Protocol<input id="version-protocol" type="number" min="1" max="${s.currentProtocolVersion}" value="${s.minProtocolVersion}"></label><label>Server<input id="version-server" value="${esc(s.minServerVersion)}"></label><label>Client<input id="version-client" value="${esc(s.minClientVersion)}"></label><label>Current Protocol<input disabled value="${s.currentProtocolVersion}"></label></div>${roleIsAdmin() ? '<button id="version-apply-btn" class="warning">Version Policy 적용</button>' : ''}</div></div>
+    <div class="section-card"><div class="section-head"><h3>Service</h3>${badge(s.serviceEnabled ? 'ONLINE' : 'OFFLINE')}</div><div class="section-body"><div class="kv"><div>Maintenance</div><div>${badge(s.maintenanceMode ? 'ON' : 'OFF')}</div><div>Web Admin</div><div>v${esc(s.webAdminVersion || '-')}</div><div>Legacy TCP Admin</div><div>${badge(s.legacyTcpAdminEnabled ? 'ONLINE' : 'DISABLED')}</div><div>Data Dir</div><div class="code">${esc(s.dataDir)}</div><div>Max Clients / Server</div><div>${s.maxClientsPerServer}</div><div>Rate Limit</div><div>${s.rateLimit}/sec</div></div>${roleIsAdmin() ? `<div class="toolbar"><button id="service-start-btn">Service Start</button><button id="maint-on-btn" class="warning">Maintenance ON</button><button id="maint-off-btn">Maintenance OFF</button><button data-open-view="danger" class="danger">Danger Zone</button></div>` : ''}</div></div>
+    <div class="section-card"><div class="section-head"><h3>Version Policy</h3></div><div class="section-body"><div class="form-grid"><label>Protocol<input id="version-protocol" type="number" min="1" max="${s.currentProtocolVersion}" value="${s.minProtocolVersion}"></label><label>Server<input id="version-server" value="${esc(s.minServerVersion)}"></label><label>Client<input id="version-client" value="${esc(s.minClientVersion)}"></label><label>Current Protocol<input disabled value="${s.currentProtocolVersion}"></label></div>${roleIsAdmin() ? '<button data-open-view="danger" class="warning">Danger Zone에서 변경</button>' : ''}</div></div>
     <div class="section-card"><div class="section-head"><h3>Maintenance Schedule</h3></div><div class="section-body">${schedule ? `<div class="kv"><div>Start</div><div>${esc(fmtTime(schedule.startAt))}</div><div>End</div><div>${esc(fmtTime(schedule.endAt))}</div><div>Message</div><div>${esc(schedule.message)}</div></div>` : '<p class="muted">예약된 Maintenance가 없습니다.</p>'}${roleIsAdmin() ? '<div class="toolbar"><button id="schedule-create-btn">예약 설정</button><button id="schedule-clear-btn">예약 제거</button></div>' : ''}</div></div>
     <div class="section-card"><div class="section-head"><h3>Notice</h3></div><div class="section-body"><p class="muted">현재 온라인 Client 전체에 공지를 전송합니다.</p>${roleCanOperate() ? '<button id="notice-all-btn">전체 공지 보내기</button>' : ''}</div></div>
   </div>`;
@@ -362,6 +662,36 @@ function openModal(options) {
 
 content.addEventListener('click', async event => {
   try {
+    const openViewBtn = event.target.closest('[data-open-view]');
+    if (openViewBtn) { switchView(openViewBtn.dataset.openView); await renderCurrent(); return; }
+    if (event.target.id === 'terminal-help-btn') { await executeTerminalCommand('help'); await renderTerminal(); return; }
+    if (event.target.id === 'terminal-clear-btn') { terminalLines = []; await renderTerminal(); return; }
+    if (event.target.id === 'danger-service-stop') {
+      const confirmText=document.getElementById('danger-stop-confirm').value.trim();
+      if(confirmText.toUpperCase()!=='STOP') throw new Error('CONFIRM_REQUIRED (STOP)');
+      await api('/api/system/service/stop',{method:'POST',body:{confirmText}}); toast('Service OFFLINE'); await renderDangerZone(); return;
+    }
+    if (event.target.id === 'danger-backup-restore') {
+      const file=document.getElementById('danger-backup-file').value; const confirmText=document.getElementById('danger-restore-confirm').value.trim();
+      if(confirmText.toUpperCase()!=='RESTORE') throw new Error('CONFIRM_REQUIRED (RESTORE)');
+      const verify=await api(`/api/backups/${encodeURIComponent(file)}/verify`); if(!verify.verification.ok) throw new Error('BACKUP_VERIFY_FAILED');
+      await api(`/api/backups/${encodeURIComponent(file)}/restore`,{method:'POST',body:{confirmText}}); toast('Backup Restore 완료'); await renderDangerZone(); return;
+    }
+    if (event.target.id === 'danger-backup-delete') {
+      const file=document.getElementById('danger-backup-file').value; const confirmText=document.getElementById('danger-backup-delete-confirm').value.trim();
+      if(confirmText.toUpperCase()!=='DELETE') throw new Error('CONFIRM_REQUIRED (DELETE)');
+      await api(`/api/backups/${encodeURIComponent(file)}/delete`,{method:'POST',body:{confirmText}}); toast('Backup Delete 완료'); await renderDangerZone(); return;
+    }
+    if (event.target.id === 'danger-version-apply') {
+      const confirmText=document.getElementById('danger-version-confirm').value.trim(); if(confirmText.toUpperCase()!=='VERSION') throw new Error('CONFIRM_REQUIRED (VERSION)');
+      const protocol=Number(document.getElementById('danger-version-protocol').value), serverVersion=document.getElementById('danger-version-server').value.trim(), clientVersion=document.getElementById('danger-version-client').value.trim();
+      await api('/api/system/version',{method:'POST',body:{protocol,serverVersion,clientVersion,confirmText}}); toast('Version Policy 적용 완료'); await renderDangerZone(); return;
+    }
+    if (event.target.id === 'danger-license-delete') {
+      const confirmText=document.getElementById('danger-license-confirm').value.trim(); if(confirmText.toUpperCase()!=='DELETE') throw new Error('CONFIRM_REQUIRED (DELETE)');
+      const keys=document.getElementById('danger-license-keys').value.split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean).slice(0,500); if(!keys.length) throw new Error('NO_KEYS');
+      const r=await api('/api/licenses/bulk',{method:'POST',body:{action:'delete',keys}}); toast(`${r.success}/${r.total} License 삭제`); await renderDangerZone(); return;
+    }
     const serverBtn = event.target.closest('[data-server-action]');
     if (serverBtn) { await serverAction(serverBtn.dataset.serverAction, serverBtn.dataset.id); return; }
     const clientBtn = event.target.closest('[data-client-action]');
@@ -370,10 +700,60 @@ content.addEventListener('click', async event => {
     if (licBtn) { await licenseAction(licBtn.dataset.licenseAction, licBtn.dataset.key); return; }
     const backupBtn = event.target.closest('[data-backup-action]');
     if (backupBtn) { await backupAction(backupBtn.dataset.backupAction, backupBtn.dataset.file); return; }
+    const statsBtn = event.target.closest('[data-stats-range]');
+    if (statsBtn) { statsRange = statsBtn.dataset.statsRange || '1H'; await renderDashboard(); return; }
+    if (event.target.id === 'integrity-run-btn') { await renderSystemHealth(); toast('Database Integrity 검사 완료'); return; }
+
+    const expiryBtn = event.target.closest('[data-license-expiry]');
+    if (expiryBtn) {
+      licenseExpiry = expiryBtn.dataset.licenseExpiry || 'ALL';
+      licenseStatus = licenseExpiry === 'EXPIRED' ? 'EXPIRED' : 'ALL';
+      currentView = 'licenses';
+      nav.querySelectorAll('button[data-view]').forEach(x => x.classList.toggle('active', x.dataset.view === 'licenses'));
+      renderCurrent();
+      return;
+    }
+    const notificationReadBtn = event.target.closest('[data-notification-read]');
+    if (notificationReadBtn) {
+      await api(`/api/notifications/${encodeURIComponent(notificationReadBtn.dataset.notificationRead)}/read`, { method: 'POST', body: { read: true } });
+      await updateNotificationBadge();
+      await renderNotifications();
+      return;
+    }
+
+    if (event.target.id === 'activity-search-btn') { activityQuery = document.getElementById('activity-search').value.trim(); renderActivity(); return; }
+    const sessionRevokeBtn = event.target.closest('[data-session-revoke]');
+    if (sessionRevokeBtn) {
+      const v = await openModal({ title: 'Session Terminate', message: `${sessionRevokeBtn.dataset.sessionRevoke} 세션을 강제 종료합니다.`, danger: true, confirmLabel: 'Terminate' });
+      if (!v) return;
+      await api(`/api/sessions/${encodeURIComponent(sessionRevokeBtn.dataset.sessionRevoke)}/revoke`, { method: 'POST', body: {} });
+      toast('Session 종료 완료'); renderSessions(); return;
+    }
+    if (event.target.id === 'session-revoke-others-btn') {
+      const v = await openModal({ title: 'Other Sessions', message: '현재 브라우저를 제외한 모든 Web Admin 세션을 종료합니다.', danger: true, confirmLabel: '종료' });
+      if (!v) return;
+      const r = await api('/api/sessions/revoke-others', { method: 'POST', body: {} }); toast(`${r.count}개 세션 종료`); renderSessions(); return;
+    }
+    if (event.target.id === 'session-revoke-all-btn') {
+      const v = await openModal({ title: 'ALL Sessions', message: '현재 세션을 포함한 모든 Web Admin 세션을 종료합니다.', danger: true, confirmLabel: '전체 종료' });
+      if (!v) return;
+      await api('/api/sessions/revoke-all', { method: 'POST', body: {} }); showLogin(); return;
+    }
+
+    if (event.target.id === 'console-pause-btn') { consolePaused = !consolePaused; renderConsole(); return; }
+    if (event.target.id === 'console-clear-btn') { liveConsoleEvents = []; renderConsole(); return; }
+    if (event.target.id === 'trace-search-btn') { traceQuery = document.getElementById('trace-search').value.trim(); renderTrace(); return; }
+    const traceBtn = event.target.closest('[data-trace-detail]');
+    if (traceBtn) {
+      const t = traceRows.get(traceBtn.dataset.traceDetail);
+      if (t) await openModal({ title: `Trace ${t.requestId}`, html: `<div class="kv"><div>Status</div><div>${badge(t.status)}</div><div>Client</div><div class="code">${esc(t.clientId)}</div><div>Server</div><div class="code">${esc(t.serverId)}</div><div>Number</div><div class="code">${esc(t.number)}</div><div>Forwarded</div><div>${esc(fmtTime(t.forwardedAt))}</div><div>ACK / Complete</div><div>${esc(fmtTime(t.completedAt))}</div><div>Duration</div><div>${t.completedAt ? `${t.durationMs} ms` : '-'}</div><div>Retries</div><div>${t.retries}</div><div>Reason</div><div>${esc(t.reason || '-')}</div></div>`, confirmLabel: '닫기' });
+      return;
+    }
 
     if (event.target.id === 'license-search-btn') {
       licenseQuery = document.getElementById('license-search').value.trim();
       licenseStatus = document.getElementById('license-status').value;
+      licenseExpiry = document.getElementById('license-expiry').value;
       renderLicenses(); return;
     }
     if (event.target.id === 'license-create-btn') { await createLicense(); return; }
@@ -386,6 +766,21 @@ content.addEventListener('click', async event => {
       if (event.target.checked) selectedLicenses.add(event.target.dataset.key); else selectedLicenses.delete(event.target.dataset.key);
       return;
     }
+    if (event.target.id === 'notification-read-all-btn') {
+      await api('/api/notifications/read-all', { method: 'POST', body: {} });
+      await updateNotificationBadge();
+      await renderNotifications();
+      return;
+    }
+    if (event.target.id === 'notification-clear-btn') {
+      const v = await openModal({ title: 'Notification Clear', message: '현재 알림 목록을 모두 지웁니다. Audit Log는 삭제되지 않습니다.', danger: true, confirmLabel: '지우기' });
+      if (!v) return;
+      await api('/api/notifications/clear', { method: 'POST', body: {} });
+      await updateNotificationBadge();
+      await renderNotifications();
+      return;
+    }
+
     if (event.target.id === 'audit-search-btn') {
       auditQuery = document.getElementById('audit-search').value.trim();
       auditType = document.getElementById('audit-type').value;
@@ -408,13 +803,55 @@ content.addEventListener('click', async event => {
   } catch (error) { toast(error.message, true); }
 });
 
+
+content.addEventListener('submit', async event => {
+  if (event.target.id !== 'command-terminal-form') return;
+  event.preventDefault();
+  const input=document.getElementById('command-terminal-input');
+  const line=input ? input.value : '';
+  if(input) input.value='';
+  await executeTerminalCommand(line);
+  if(currentView==='terminal') await renderTerminal();
+});
+
+content.addEventListener('keydown', event => {
+  if (event.target.id !== 'command-terminal-input') return;
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    terminalHistoryIndex=Math.max(0, terminalHistoryIndex-1);
+    event.target.value=terminalHistory[terminalHistoryIndex] || '';
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    terminalHistoryIndex=Math.min(terminalHistory.length, terminalHistoryIndex+1);
+    event.target.value=terminalHistoryIndex>=terminalHistory.length?'':(terminalHistory[terminalHistoryIndex]||'');
+  }
+});
+
 async function serverAction(action, id) {
   const encodedId = encodeURIComponent(id);
   if (action === 'detail') {
     const { server } = await api(`/api/servers/${encodedId}`);
     const clients = server.clientsList.map(c => `<tr><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.licenseStatus)}</td></tr>`).join('') || '<tr><td colspan="3">Client 없음</td></tr>';
-    await openModal({ title: `Server ${id}`, html: `<div class="kv"><div>Device Key</div><div class="code">${esc(server.deviceKey)}</div><div>Status</div><div>${badge(server.status)}</div><div>Health</div><div>${badge(server.health)}</div><div>Accept Clients</div><div>${server.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</div><div>Live / Saved Clients</div><div>${server.clients} / ${server.savedClients}</div><div>RTT</div><div>${server.rttMs >= 0 ? `${server.rttMs} ms` : '-'}</div><div>Kick Until</div><div>${esc(fmtTime(server.kickedUntil))}</div><div>IP</div><div>${esc(server.lastIP || '-')}</div><div>Protocol / Version</div><div>${server.protocolVersion || '-'} / ${esc(server.appVersion || '-')}</div><div>Reconnect</div><div>${server.reconnectCount}</div><div>Last Seen</div><div>${esc(fmtTime(server.lastSeen))}</div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>License</th></tr></thead><tbody>${clients}</tbody></table></div>`, confirmLabel: '닫기' });
+    await openModal({ title: `Server ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(server.alias || '-')}</div><div>Note</div><div>${esc(server.note || '-')}</div><div>Device Key</div><div class="code">${esc(server.deviceKey)}</div><div>Status</div><div>${badge(server.status)}</div><div>Health</div><div>${badge(server.health)}</div><div>Accept Clients</div><div>${server.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</div><div>Live / Saved Clients</div><div>${server.clients} / ${server.savedClients}</div><div>RTT</div><div>${server.rttMs >= 0 ? `${server.rttMs} ms` : '-'}</div><div>Kick Until</div><div>${esc(fmtTime(server.kickedUntil))}</div><div>IP</div><div>${esc(server.lastIP || '-')}</div><div>Protocol / Version</div><div>${server.protocolVersion || '-'} / ${esc(server.appVersion || '-')}</div><div>Reconnect</div><div>${server.reconnectCount}</div><div>Last Seen</div><div>${esc(fmtTime(server.lastSeen))}</div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>License</th></tr></thead><tbody>${clients}</tbody></table></div>`, confirmLabel: '닫기' });
     return;
+  }
+
+  if (action === 'alias') {
+    const { server } = await api(`/api/servers/${encodedId}`);
+    const v = await openModal({ title: 'Server Alias', message: `${id} 표시용 별칭입니다. 실제 SERVER-ID는 변경되지 않습니다.`, fields: [{ name: 'alias', label: 'Alias', value: server.alias || '', placeholder: 'OFFICE-PC-01' }], confirmLabel: '저장' });
+    if (!v) return;
+    await api(`/api/servers/${encodedId}/alias`, { method: 'POST', body: v });
+    toast('Server Alias 저장');
+    await renderServers();
+    return;
+  }
+
+  if (action === 'note') {
+    const { server } = await api(`/api/servers/${encodedId}`);
+    const v = await openModal({ title: 'Server Note', message: `${id} 운영 메모입니다.`, fields: [{ name: 'note', label: 'Note', type: 'textarea', value: server.note || '', placeholder: '고객사 / 위치 / 장비 교체 이력 등' }], confirmLabel: '저장' });
+    if (!v) return;
+    await api(`/api/servers/${encodedId}/note`, { method: 'POST', body: v });
+    toast('Server Note 저장'); await renderServers(); return;
   }
 
   let body = {};
@@ -438,8 +875,26 @@ async function clientAction(action, id) {
   const encodedId = encodeURIComponent(id);
   if (action === 'detail') {
     const { client } = await api(`/api/clients/${encodedId}`);
-    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Server</div><div class="code">${esc(client.serverId)}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>License Status</div><div>${badge(client.licenseStatus)}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>Kick Until</div><div>${esc(fmtTime(client.kickedUntil))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Protocol / Version</div><div>${client.protocolVersion || '-'} / ${esc(client.appVersion || '-')}</div><div>RTT</div><div>${client.rttMs >= 0 ? `${client.rttMs} ms` : '-'}</div><div>Auth / Send / Reconnect</div><div>${client.authCount} / ${client.sendCount} / ${client.reconnectCount}</div><div>Last Auth</div><div>${esc(fmtTime(client.lastAuthAt))}</div><div>Last Seen</div><div>${esc(fmtTime(client.lastSeenAt))}</div></div>`, confirmLabel: '닫기' });
+    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(client.alias || '-')}</div><div>Note</div><div>${esc(client.note || '-')}</div><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Server</div><div class="code">${esc(client.serverAlias || client.serverId)}${client.serverAlias ? ` [${esc(client.serverId)}]` : ''}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>License Status</div><div>${badge(client.licenseStatus)}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>Kick Until</div><div>${esc(fmtTime(client.kickedUntil))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Protocol / Version</div><div>${client.protocolVersion || '-'} / ${esc(client.appVersion || '-')}</div><div>RTT</div><div>${client.rttMs >= 0 ? `${client.rttMs} ms` : '-'}</div><div>Auth / Send / Reconnect</div><div>${client.authCount} / ${client.sendCount} / ${client.reconnectCount}</div><div>Last Auth</div><div>${esc(fmtTime(client.lastAuthAt))}</div><div>Last Seen</div><div>${esc(fmtTime(client.lastSeenAt))}</div></div>`, confirmLabel: '닫기' });
     return;
+  }
+
+  if (action === 'alias') {
+    const { client } = await api(`/api/clients/${encodedId}`);
+    const v = await openModal({ title: 'Client Alias', message: `${id} 표시용 별칭입니다. 실제 CLIENT-ID는 변경되지 않습니다.`, fields: [{ name: 'alias', label: 'Alias', value: client.alias || '', placeholder: 'GALAXY-TEST' }], confirmLabel: '저장' });
+    if (!v) return;
+    await api(`/api/clients/${encodedId}/alias`, { method: 'POST', body: v });
+    toast('Client Alias 저장');
+    await renderClients();
+    return;
+  }
+
+  if (action === 'note') {
+    const { client } = await api(`/api/clients/${encodedId}`);
+    const v = await openModal({ title: 'Client Note', message: `${id} 운영 메모입니다.`, fields: [{ name: 'note', label: 'Note', type: 'textarea', value: client.note || '', placeholder: '사용자 / 장비 / 교체 이력 등' }], confirmLabel: '저장' });
+    if (!v) return;
+    await api(`/api/clients/${encodedId}/note`, { method: 'POST', body: v });
+    toast('Client Note 저장'); await renderClients(); return;
   }
 
   if (action === 'notice') {
@@ -458,7 +913,7 @@ async function clientAction(action, id) {
       return;
     }
     const v = await openModal({ title: 'Client Move', message: `${id}
-ONLINE이며 Drain/Disable/Kick 상태가 아닌 Server만 표시됩니다.`, fields: [{ name: 'serverId', label: '새 Server', type: 'select', options: eligible.map(s => ({ value: s.id, label: `${s.id} · ${s.health} · ${s.clients}/${s.savedClients}` })) }], confirmLabel: '이동' });
+ONLINE이며 Drain/Disable/Kick 상태가 아닌 Server만 표시됩니다.`, fields: [{ name: 'serverId', label: '새 Server', type: 'select', options: eligible.map(s => ({ value: s.id, label: `${s.alias ? s.alias + ' · ' : ''}${s.id} · ${s.health} · ${s.clients}/${s.savedClients}` })) }], confirmLabel: '이동' });
     if (!v) return;
     await api(`/api/clients/${encodedId}/move`, { method: 'POST', body: v });
     toast('Client 이동 완료');
@@ -481,15 +936,27 @@ ONLINE이며 Drain/Disable/Kick 상태가 아닌 Server만 표시됩니다.`, fi
 }
 
 async function createLicense() {
-  const v = await openModal({ title: 'License 생성', fields: [{ name: 'days', label: '기간(일)', type: 'number', value: '30' }, { name: 'memo', label: 'Memo' }], confirmLabel: '생성' });
+  const v = await openModal({ title: 'License 생성', fields: [{ name: 'days', label: '기간(일)', type: 'number', value: '30' }, { name: 'memo', label: 'Memo' }, { name: 'tags', label: 'Tags', placeholder: 'VIP, CUSTOMER-A, TEST' }], confirmLabel: '생성' });
   if (!v) return;
-  const r = await api('/api/licenses', { method: 'POST', body: { days: Number(v.days), memo: v.memo } });
-  await openModal({ title: 'License 생성 완료', html: `<div class="kv"><div>Key</div><div class="code">${esc(r.key)}</div><div>Expires</div><div>${esc(fmtTime(r.expiresAt))}</div></div>`, confirmLabel: '닫기' });
+  const tags = String(v.tags || '').split(',').map(x => x.trim()).filter(Boolean);
+  const r = await api('/api/licenses', { method: 'POST', body: { days: Number(v.days), memo: v.memo, tags } });
+  await openModal({ title: 'License 생성 완료', html: `<div class="kv"><div>Key</div><div class="code">${esc(r.key)}</div><div>Expires</div><div>${esc(fmtTime(r.expiresAt))}</div><div>Tags</div><div>${esc(tags.join(', ') || '-')}</div></div>`, confirmLabel: '닫기' });
   renderLicenses();
 }
 
 async function licenseAction(action, key) {
   let body = {};
+  if (action === 'tags') {
+    const { licenses } = await api(`/api/licenses?query=${encodeURIComponent(key)}&status=ALL&expiry=ALL`);
+    const current = licenses.find(x => x.key === key);
+    const v = await openModal({ title: 'License Tags', message: key, fields: [{ name: 'tags', label: 'Tags', value: current ? (current.tags || []).join(', ') : '', placeholder: 'VIP, CUSTOMER-A, TEST' }], confirmLabel: '저장' });
+    if (!v) return;
+    const tags = String(v.tags || '').split(',').map(x => x.trim()).filter(Boolean);
+    await api(`/api/licenses/${encodeURIComponent(key)}/tags`, { method: 'POST', body: { tags } });
+    toast('License Tags 저장');
+    renderLicenses();
+    return;
+  }
   if (action === 'extend') {
     const v = await openModal({ title: 'License 연장', message: key, fields: [{ name: 'days', label: '추가 일수', type: 'number', value: '30' }], confirmLabel: '연장' }); if (!v) return; body.days = Number(v.days);
   } else if (action === 'transfer') {
@@ -509,7 +976,6 @@ async function bulkLicense() {
   const keys = [...selectedLicenses];
   if (!keys.length) { toast('선택된 License가 없습니다.', true); return; }
   const options = [{ value: 'extend', label: 'Extend' }, { value: 'unbind', label: 'Unbind' }, { value: 'suspend', label: 'Suspend' }, { value: 'resume', label: 'Resume' }];
-  if (roleIsAdmin()) options.push({ value: 'delete', label: 'Delete' });
   const v = await openModal({ title: `선택 License ${keys.length}개`, fields: [{ name: 'action', label: '작업', type: 'select', options }, { name: 'days', label: '연장 일수(Extend만)', type: 'number', value: '30' }], confirmLabel: '계속' });
   if (!v) return;
   if (v.action === 'delete') {
@@ -521,6 +987,12 @@ async function bulkLicense() {
 }
 
 async function backupAction(action, file) {
+  if (action === 'verify') {
+    const { verification: v } = await api(`/api/backups/${encodeURIComponent(file)}/verify`);
+    const issues = [...(v.errors || []).map(x=>({...x,severity:'ERROR'})), ...(v.warnings || []).map(x=>({...x,severity:'WARNING'}))];
+    await openModal({ title: `Backup Verify // ${file}`, html: `<div class="kv"><div>Result</div><div>${badge(v.ok ? 'GOOD' : 'ERROR')}</div><div>Servers</div><div>${v.stats.servers || 0}</div><div>Clients</div><div>${v.stats.clients || 0}</div><div>Licenses</div><div>${v.stats.licenses || 0}</div><div>Errors</div><div>${(v.errors || []).length}</div><div>Warnings</div><div>${(v.warnings || []).length}</div></div>${issues.length ? `<div class="integrity-list">${issues.map(x=>`<div class="integrity-row">${badge(x.severity)}<span class="code">${esc(x.code)}</span><span>${esc(x.message)}</span><span class="code">${esc(x.entity || '-')}</span></div>`).join('')}</div>` : '<div class="integrity-ok">[ BACKUP_HEALTHY ] Restore structure verified.</div>'}`, confirmLabel: '닫기' });
+    return;
+  }
   const word = action === 'restore' ? 'RESTORE' : 'DELETE';
   const v = await openModal({ title: `Backup ${action}`, message: `${file}\n계속하려면 ${word}를 입력하세요.`, fields: [{ name: 'confirmText', label: '확인 문구' }], danger: true, confirmLabel: '실행' });
   if (!v) return;
@@ -554,5 +1026,66 @@ async function sendNoticeAll() {
   const r = await api('/api/system/notice', { method: 'POST', body: v });
   toast(`${r.count}개 Client에 전송 완료`);
 }
+
+
+function ensurePalette() {
+  let root = document.getElementById('command-palette');
+  if (root) return root;
+  root = document.createElement('div');
+  root.id = 'command-palette';
+  root.className = 'command-palette hidden';
+  root.innerHTML = `<div class="palette-backdrop" data-palette-close></div><div class="palette-card"><div class="palette-head"><span>&gt;_ GLOBAL_SEARCH</span><kbd>ESC</kbd></div><input id="palette-input" class="palette-input" placeholder="Server / Client / License / Request 검색"><div id="palette-results" class="palette-results"><div class="palette-hint">CTRL+K // TYPE TO SEARCH</div></div></div>`;
+  document.body.appendChild(root);
+  root.addEventListener('click', async event => {
+    if (event.target.closest('[data-palette-close]')) { closePalette(); return; }
+    const row = event.target.closest('[data-palette-kind]');
+    if (!row) return;
+    const kind = row.dataset.paletteKind;
+    const id = row.dataset.paletteId;
+    closePalette();
+    try {
+      if (kind === 'SERVER') { switchView('servers'); await renderCurrent(); await serverAction('detail', id); }
+      else if (kind === 'CLIENT') { switchView('clients'); await renderCurrent(); await clientAction('detail', id); }
+      else if (kind === 'LICENSE') { licenseQuery = id; licenseStatus = 'ALL'; licenseExpiry = 'ALL'; switchView('licenses'); await renderCurrent(); }
+      else if (kind === 'REQUEST') { traceQuery = row.dataset.paletteLabel || id; switchView('trace'); await renderCurrent(); }
+    } catch (error) { toast(error.message, true); }
+  });
+  root.querySelector('#palette-input').addEventListener('input', event => {
+    clearTimeout(paletteTimer);
+    paletteTimer = setTimeout(() => runPaletteSearch(event.target.value), 140);
+  });
+  return root;
+}
+
+function openPalette() {
+  if (!session) return;
+  const root = ensurePalette();
+  root.classList.remove('hidden');
+  const input = root.querySelector('#palette-input');
+  input.value = '';
+  root.querySelector('#palette-results').innerHTML = '<div class="palette-hint">Server ID / Alias / Client / License Tag / Request ID</div>';
+  setTimeout(() => input.focus(), 10);
+}
+
+function closePalette() {
+  const root = document.getElementById('command-palette');
+  if (root) root.classList.add('hidden');
+}
+
+async function runPaletteSearch(query) {
+  const resultsEl = document.getElementById('palette-results');
+  if (!resultsEl) return;
+  query = String(query || '').trim();
+  if (!query) { resultsEl.innerHTML = '<div class="palette-hint">Server ID / Alias / Client / License Tag / Request ID</div>'; return; }
+  try {
+    const { results } = await api(`/api/search?q=${encodeURIComponent(query)}`);
+    resultsEl.innerHTML = results.map(r => `<button class="palette-row" data-palette-kind="${esc(r.kind)}" data-palette-id="${esc(r.id)}" data-palette-label="${esc(r.label)}"><span class="palette-kind">${esc(r.kind)}</span><span class="palette-main"><strong>${esc(r.label)}</strong><small>${esc(r.detail)}</small></span>${r.status ? badge(r.status) : ''}</button>`).join('') || '<div class="palette-hint">NO_MATCH</div>';
+  } catch (error) { resultsEl.innerHTML = `<div class="palette-hint error-text">${esc(error.message)}</div>`; }
+}
+
+document.addEventListener('keydown', event => {
+  if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'k') { event.preventDefault(); openPalette(); return; }
+  if (event.key === 'Escape') closePalette();
+});
 
 restoreSession();
