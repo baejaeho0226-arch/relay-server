@@ -57,6 +57,28 @@ function HandleSecretAck(type,id){
     return IssueChallenge(type,id);
 }
 
+function HandleDeviceAuthError(type,id,parts){
+    type=String(type||'').toUpperCase(); id=NormalizeID(id);
+    const c=Online(type,id);
+    const challengeId=String(parts&&parts[1]||'').toUpperCase();
+    const reason=String(parts&&parts[2]||'').toUpperCase();
+    const ch=state.deviceAuthChallenges.get(challengeId);
+    if(!c||reason!=='NO_SECRET'||!ch||ch.type!==type||ch.id!==id||ch.expiresAt<Now()){
+        if(c) SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|RECOVERY_DENIED`);
+        return {ok:false,reason:'RECOVERY_DENIED'};
+    }
+    if(Number(c.deviceSecretRecoveryAt||0)>Now()-60000){
+        SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|RECOVERY_RATE_LIMIT`);
+        return {ok:false,reason:'RECOVERY_RATE_LIMIT'};
+    }
+    c.deviceSecretRecoveryAt=Now();
+    c.deviceAuthVerified=false;
+    state.deviceAuthChallenges.delete(challengeId);
+    require('../storage/audit').LogEvent('DEVICE_SECRET_RECOVERY',`${type} ${id} / LOCAL_SECRET_MISSING`);
+    try{require('./notificationCenter').AddNotification({severity:'WARNING',type:'DEVICE_SECRET_RECOVERY',title:'Device secret recovered',message:`${type} ${id} re-enrolled after local secret loss.`,entityType:type,entityId:id,dedupeKey:`DEVICE_SECRET_RECOVERY|${type}|${id}`});}catch(_){}
+    return SendEnrollmentSecret(type,id,true);
+}
+
 function Expected(ch,secret){
     return crypto.createHmac('sha256',secret).update(`${ch.type}|${ch.id}|${ch.challengeId}|${ch.nonce}|${ch.issuedAt}`,'utf8').digest('hex').toUpperCase();
 }
@@ -117,4 +139,4 @@ function Reset(type,id){
     return SendEnrollmentSecret(type,id,true);
 }
 
-module.exports={K,SendEnrollmentSecret,IssueChallenge,HandleSecretAck,HandleAuth,Enforced,Verified,RequireVerified,Overview,Reset};
+module.exports={K,SendEnrollmentSecret,IssueChallenge,HandleSecretAck,HandleDeviceAuthError,HandleAuth,Enforced,Verified,RequireVerified,Overview,Reset};

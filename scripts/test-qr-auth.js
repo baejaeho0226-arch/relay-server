@@ -164,6 +164,34 @@ async function run() {
         .digest('hex').toUpperCase();
     clientHandlerModule.HandleClientLine(serverlessConnection, `DEVICE_AUTH|${challenge[1]}|${authHmac}`);
     assert.ok(serverlessWrites.some(line => line.startsWith(`DEVICE_AUTH_OK|${challenge[1]}`)));
+
+    // Reinstalling the APK removes its local secret while Relay still has the
+    // old one. A valid outstanding challenge + NO_SECRET must re-enroll once,
+    // not fall through to ERROR|UNKNOWN_COMMAND and strand the QR screen.
+    const deviceAuth = require('../services/deviceAuth');
+    serverlessConnection.deviceAuthVerified = false;
+    const recoveryStart = serverlessWrites.length;
+    deviceAuth.IssueChallenge('CLIENT', serverlessConnection.clientId);
+    const recoveryChallengeLine = serverlessWrites.slice(recoveryStart).find(line => line.startsWith('AUTH_CHALLENGE|'));
+    assert.ok(recoveryChallengeLine);
+    const recoveryChallenge = recoveryChallengeLine.trim().split('|');
+    clientHandlerModule.HandleClientLine(serverlessConnection, `DEVICE_AUTH_ERROR|${recoveryChallenge[1]}|NO_SECRET`);
+    const recoveryWrites = serverlessWrites.slice(recoveryStart);
+    const recoveredSecretLine = recoveryWrites.find(line => line.startsWith('DEVICE_SECRET|'));
+    assert.ok(recoveredSecretLine, 'Missing local secret must trigger bounded re-enrollment');
+    assert.ok(!recoveryWrites.some(line => line.trim() === 'ERROR|UNKNOWN_COMMAND'));
+    const recoveredSecret = recoveredSecretLine.trim().split('|')[1];
+    assert.notStrictEqual(recoveredSecret, deviceSecret);
+    const recoveryAckStart = serverlessWrites.length;
+    clientHandlerModule.HandleClientLine(serverlessConnection, 'DEVICE_SECRET_ACK');
+    const recoveredChallengeLine = serverlessWrites.slice(recoveryAckStart).find(line => line.startsWith('AUTH_CHALLENGE|'));
+    assert.ok(recoveredChallengeLine);
+    const recoveredChallenge = recoveredChallengeLine.trim().split('|');
+    const recoveredHmac = crypto.createHmac('sha256', recoveredSecret)
+        .update(`CLIENT|${serverlessConnection.clientId}|${recoveredChallenge[1]}|${recoveredChallenge[2]}|${recoveredChallenge[3]}`, 'utf8')
+        .digest('hex').toUpperCase();
+    clientHandlerModule.HandleClientLine(serverlessConnection, `DEVICE_AUTH|${recoveredChallenge[1]}|${recoveredHmac}`);
+    assert.strictEqual(serverlessConnection.deviceAuthVerified, true);
     clientHandlerModule.HandleClientLine(serverlessConnection, `QR_AUTH_RESUME|${serverlessConnection.clientId}`);
     assert.ok(serverlessWrites.some(line => line.startsWith('QR_AUTH_CHALLENGE|')));
 
@@ -246,6 +274,7 @@ async function run() {
     console.log('- APK QR/password/Type UI and fixed numeric injection: PASS');
     console.log('- APK responsive QR frame and expiry countdown: PASS');
     console.log('- Relay QR issuance with WinSockServer offline: PASS');
+    console.log('- APK reinstall secret recovery without UNKNOWN_COMMAND: PASS');
     console.log('- Late WinSockServer first-binding handoff: PASS');
     console.log('- Web selected-photo persistence across live refresh: PASS');
     console.log('- Sidebar grouped navigation scrolling: PASS');
