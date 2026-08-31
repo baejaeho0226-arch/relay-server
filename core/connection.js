@@ -28,7 +28,7 @@ function CreateConnection(socket) {
     try { require('../services/dailyHealth').Record('connections'); } catch (_) {}
     const connection={
         socket,type:null,registered:false,connected:false,identityKey:'',serverId:'',clientId:'',
-        protocolVersion:0,appVersion:'',licenseAuthorized:false,licenseKey:'',licenseExpiresAt:0,lastExpiryWarningDay:null,
+        protocolVersion:0,appVersion:'',licenseAuthorized:false,licenseKey:'',licenseExpiresAt:0,passwordVerified:false,accessType:'',lastExpiryWarningDay:null,
         lastServerAuthState:'',adminAuthenticated:false,adminAuthenticatedAt:0,adminNonce:'',adminNonceCreatedAt:0,
         adminRole:'',pendingAdminRole:'',lastSeen:Now(),lastIP:SafeIP(socket),clients:new Set(),buffer:'',
         pendingPingToken:'',pendingPingAt:0,rttMs:-1,reconnectCount:0,disconnected:false,deviceAuthVerified:false,sequenceStats:{tx:0,rxLast:0,rxReceived:0,rxMissing:0,rxDuplicates:0,rxOutOfOrder:0,lastGapAt:0,lastRxAt:0,lastTxAt:0},heartbeatStats:{sent:0,received:0,missed:0,consecutiveMisses:0,rttMin:-1,rttMax:-1,rttSum:0,rttSamples:0,lastRtt:-1,jitterSum:0,jitterSamples:0}

@@ -423,7 +423,7 @@ kbd{border:1px solid rgba(50,255,139,.25);padding:2px 6px;border-radius:3px;back
 .code-block{white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:420px;padding:12px;background:#010403;border:1px solid rgba(0,255,136,.18);color:#8dffbd;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:12px;line-height:1.55}
 .schema-preview{max-height:60vh;min-width:min(820px,80vw)}
 
-/* v3.1.2 // QR-first device authorization fixes */
+/* v3.2.0 // QR preview, password gate and typed-device routing */
 .nav-filter-hidden{display:none!important}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .qr-auth-layout{display:grid;grid-template-columns:minmax(330px,.9fr) minmax(380px,1.1fr);gap:15px;margin:15px 0}
@@ -433,7 +433,7 @@ kbd{border:1px solid rgba(50,255,139,.25);padding:2px 6px;border-radius:3px;back
 .qr-drop-zone strong{color:#bafcff;font-size:14px;letter-spacing:.4px;z-index:2}
 .qr-drop-zone span{max-width:330px;color:#6f9d90;font-size:10px;z-index:2}
 .qr-drop-icon{display:grid;place-items:center;width:80px;height:80px;border:1px solid rgba(0,224,255,.46);color:#00e0ff;font-size:42px;line-height:1;background:rgba(0,224,255,.045);box-shadow:0 0 30px rgba(0,224,255,.09);z-index:2}
-.qr-drop-zone img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#010503;opacity:.42;filter:saturate(.55);z-index:1}
+.qr-drop-zone img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#010503;opacity:1;z-index:1}
 .qr-scan-button{width:100%;margin-top:12px;padding:13px;font-size:11px;letter-spacing:.8px}
 .qr-security-strip{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
 .qr-security-strip span{flex:1;min-width:80px;text-align:center;padding:6px;border:1px solid rgba(50,255,139,.16);background:rgba(50,255,139,.025);color:#5f9170;font-size:8px;letter-spacing:.7px}

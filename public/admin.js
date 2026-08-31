@@ -52,16 +52,16 @@ let terminalHistoryIndex = -1;
 let deferredInstallPrompt = null;
 let qrScanResult = null;
 let qrSelectedFile = null;
-let qrSelectedPreviewUrl = '';
+let qrSelectedPreviewDataUrl = '';
 
-function setQrSelectedFile(file) {
-  if (qrSelectedPreviewUrl) URL.revokeObjectURL(qrSelectedPreviewUrl);
+async function setQrSelectedFile(file) {
   qrSelectedFile = file || null;
-  qrSelectedPreviewUrl = qrSelectedFile ? URL.createObjectURL(qrSelectedFile) : '';
+  qrSelectedPreviewDataUrl = qrSelectedFile ? await fileAsDataUrl(qrSelectedFile) : '';
 }
 
 function clearQrSelectedFile() {
-  setQrSelectedFile(null);
+  qrSelectedFile = null;
+  qrSelectedPreviewDataUrl = '';
 }
 
 const titles = {
@@ -743,8 +743,8 @@ async function renderQrAuth() {
   if (qrScanResult) qrScanResult.defaultDays = summary.defaultDays;
   const scanned = qrScanResult && qrScanResult.request ? qrScanResult.request : null;
   const selectedFileName = qrSelectedFile ? `${qrSelectedFile.name} · ${fmtBytes(qrSelectedFile.size)}` : 'APK 화면을 촬영하거나 전달받은 사진을 올리세요.';
-  const selectedPreview = qrSelectedPreviewUrl
-    ? `<img id="qr-auth-preview" src="${esc(qrSelectedPreviewUrl)}" alt="선택한 QR 사진 미리보기">`
+  const selectedPreview = qrSelectedPreviewDataUrl
+    ? `<img id="qr-auth-preview" src="${esc(qrSelectedPreviewDataUrl)}" alt="선택한 QR 사진 미리보기">`
     : '<img id="qr-auth-preview" class="hidden" alt="선택한 QR 사진 미리보기">';
   const secretWarning = summary.durableSigningSecret ? '' : '<div class="warning-box">QR_APPROVAL_SECRET가 설정되지 않아 현재 프로세스의 임시 서명키를 사용 중입니다. 운영·HA 배포 전에 모든 Relay에 같은 전용 비밀값을 설정하세요.</div>';
   const scannedCard = scanned ? `<div class="qr-approval-card">
@@ -752,7 +752,7 @@ async function renderQrAuth() {
     <div class="qr-approval-main"><span class="small-note">SIGNED REQUEST VERIFIED</span><strong>${esc(scanned.clientId)}</strong><div class="code">${esc(scanned.requestId)}</div><div class="qr-approval-meta"><span>만료 ${esc(fmtTime(scanned.expiresAt))}</span><span>IP ${esc(scanned.lastIP || '-')}</span><span>Scan ${scanned.scanCount}</span></div></div>
     <div class="qr-approval-actions"><button id="qr-auth-approve-btn" class="primary">기기 승인</button><button id="qr-auth-clear-btn" class="ghost">지우기</button></div>
   </div>` : '<div class="qr-scan-empty">QR 사진을 선택하면 서버가 이미지, 서명, 일회용 토큰과 기기 결합을 모두 검증합니다.</div>';
-  const rows = requests.map(item => `<tr><td>${badge(item.status)}</td><td class="code">${esc(item.requestId)}</td><td class="code">${esc(item.clientId)}</td><td>${esc(fmtTime(item.issuedAt))}</td><td>${esc(fmtTime(item.expiresAt))}</td><td>${esc(item.approvedBy || item.rejectedBy || '-')}</td><td>${esc(item.reason || '-')}</td><td>${item.status === 'PENDING' ? `<button class="danger" data-qr-reject="${esc(item.requestId)}">거절</button>` : '-'}</td></tr>`).join('');
+  const rows = requests.map(item => `<tr><td>${badge(item.status)}</td><td class="code">${esc(item.requestId)}</td><td class="code">${esc(item.clientId)}</td><td>${badge(item.accessType || 'TYPE1')}</td><td>${esc(fmtTime(item.issuedAt))}</td><td>${esc(fmtTime(item.expiresAt))}</td><td>${esc(item.approvedBy || item.rejectedBy || '-')}</td><td>${esc(item.reason || '-')}</td><td>${item.status === 'PENDING' ? `<button class="danger" data-qr-reject="${esc(item.requestId)}">거절</button>` : '-'}</td></tr>`).join('');
   content.innerHTML = `${secretWarning}<div class="cards qr-summary-cards">
     <div class="card"><div class="stat-label">PENDING</div><div class="stat-value">${summary.pending}</div><div class="stat-sub">관리자 스캔 대기</div></div>
     <div class="card"><div class="stat-label">APPROVED</div><div class="stat-value">${summary.approved}</div><div class="stat-sub">일회용 승인 완료</div></div>
@@ -768,14 +768,14 @@ async function renderQrAuth() {
     </div></div>
     <div class="section-card"><div class="section-head"><h3>검증 결과</h3><span class="small-note">승인 전에는 라이선스가 생성되지 않습니다.</span></div><div class="section-body">${scannedCard}</div></div>
   </div>
-  <div class="section-card"><div class="section-head"><h3>QR 인증 요청 이력</h3><span class="small-note">승인·거절·만료 감사 추적</span></div><div class="table-wrap"><table><thead><tr><th>Status</th><th>Request</th><th>Client</th><th>Issued</th><th>Expires</th><th>Operator</th><th>Reason</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="empty">QR 인증 요청 없음</td></tr>'}</tbody></table></div></div>`;
+  <div class="section-card"><div class="section-head"><h3>QR 인증 요청 이력</h3><span class="small-note">승인·거절·만료 감사 추적</span></div><div class="table-wrap"><table><thead><tr><th>Status</th><th>Request</th><th>Client</th><th>Type</th><th>Issued</th><th>Expires</th><th>Operator</th><th>Reason</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="9" class="empty">QR 인증 요청 없음</td></tr>'}</tbody></table></div></div>`;
 
   const fileInput = document.getElementById('qr-auth-file');
   if (fileInput) fileInput.onchange = async () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
     qrScanResult = null;
-    setQrSelectedFile(file);
+    await setQrSelectedFile(file);
     await renderQrAuth();
   };
 }
@@ -795,8 +795,8 @@ async function renderLicenses() {
       <button id="license-search-btn">검색</button>
       ${operator ? '<button id="license-bulk-btn">선택 작업</button>' : ''}
     </div>
-    <div class="table-wrap"><table><thead><tr><th><input id="license-check-all" type="checkbox"></th><th>KEY</th><th>Status</th><th>Client</th><th>Expires</th><th>Tags</th><th>Memo</th><th>Auth</th><th>Send</th><th>Action</th></tr></thead><tbody>
-      ${licenses.map(l => `<tr><td><input class="license-check" type="checkbox" data-key="${esc(l.key)}" ${selectedLicenses.has(l.key) ? 'checked' : ''}></td><td class="code">QR-${esc(l.key.slice(-8))}</td><td>${badge(l.status)}</td><td class="code">${esc(l.boundClient || '-')}</td><td>${esc(fmtTime(l.expiresAt))}</td><td><div class="tag-list">${tagsHtml(l.tags)}</div></td><td>${esc(l.memo || '-')}</td><td>${l.authCount}</td><td>${l.sendCount}</td><td><div class="actions">${operator ? `<button data-license-action="tags" data-key="${esc(l.key)}">Tags</button><button data-license-action="extend" data-key="${esc(l.key)}">연장</button><button data-license-action="unbind" data-key="${esc(l.key)}">Unbind</button><button data-license-action="suspend" data-key="${esc(l.key)}">Suspend</button><button data-license-action="resume" data-key="${esc(l.key)}">Resume</button><button data-license-action="transfer" data-key="${esc(l.key)}">Transfer</button>` : ''}${roleIsAdmin() ? `<button data-license-action="reissue" data-key="${esc(l.key)}">Reissue</button><button class="danger" data-license-action="delete" data-key="${esc(l.key)}">Delete</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="10" class="empty">License 없음</td></tr>'}
+    <div class="table-wrap"><table><thead><tr><th><input id="license-check-all" type="checkbox"></th><th>KEY</th><th>Status</th><th>Client</th><th>Type</th><th>Expires</th><th>Tags</th><th>Memo</th><th>Auth</th><th>Send</th><th>Action</th></tr></thead><tbody>
+      ${licenses.map(l => `<tr><td><input class="license-check" type="checkbox" data-key="${esc(l.key)}" ${selectedLicenses.has(l.key) ? 'checked' : ''}></td><td class="code">QR-${esc(l.key.slice(-8))}</td><td>${badge(l.status)}</td><td class="code">${esc(l.boundClient || '-')}</td><td>${badge(l.accessType || 'TYPE1')}</td><td>${esc(fmtTime(l.expiresAt))}</td><td><div class="tag-list">${tagsHtml(l.tags)}</div></td><td>${esc(l.memo || '-')}</td><td>${l.authCount}</td><td>${l.sendCount}</td><td><div class="actions">${operator ? `<button data-license-action="tags" data-key="${esc(l.key)}">Tags</button><button data-license-action="extend" data-key="${esc(l.key)}">연장</button><button data-license-action="unbind" data-key="${esc(l.key)}">Unbind</button><button data-license-action="suspend" data-key="${esc(l.key)}">Suspend</button><button data-license-action="resume" data-key="${esc(l.key)}">Resume</button><button data-license-action="transfer" data-key="${esc(l.key)}">Transfer</button>` : ''}${roleIsAdmin() ? `<button data-license-action="reissue" data-key="${esc(l.key)}">Reissue</button><button class="danger" data-license-action="delete" data-key="${esc(l.key)}">Delete</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="11" class="empty">License 없음</td></tr>'}
     </tbody></table></div>`;
   document.getElementById('license-status').value = licenseStatus;
   document.getElementById('license-expiry').value = licenseExpiry;
@@ -1108,6 +1108,7 @@ content.addEventListener('click', async event => {
         message: `${qrScanResult.request.clientId}\n승인 시 서버가 전용 라이선스를 자동 생성하고 기기에 고정합니다.`,
         fields: [
           { name: 'days', label: '사용 기간(일)', type: 'number', value: String(qrScanResult.defaultDays || 30) },
+          { name: 'accessType', label: 'APK 전용 페이지', type: 'select', value: 'TYPE1', options: ['TYPE1', 'TYPE2', 'TYPE3'] },
           { name: 'memo', label: '메모', value: `QR 승인 ${qrScanResult.request.clientId}` },
           { name: 'tags', label: '태그', value: 'QR', placeholder: 'QR, CUSTOMER-A' }
         ],
@@ -1118,6 +1119,7 @@ content.addEventListener('click', async event => {
         requestId: qrScanResult.request.requestId,
         approvalToken: qrScanResult.approvalToken,
         days: Number(values.days),
+        accessType: values.accessType,
         memo: values.memo,
         tags: String(values.tags || '').split(',').map(x => x.trim()).filter(Boolean)
       }});

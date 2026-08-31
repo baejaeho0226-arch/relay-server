@@ -1,7 +1,7 @@
 {
   "name": "pure-tcp-relay",
-  "version": "6.1.2",
-  "description": "Pure TCP Relay with signed one-time QR device approval, SQLite storage, active/standby HA and endpoint failover",
+  "version": "6.2.0",
+  "description": "Pure TCP Relay with signed QR approval, password proof gate, typed APK routing, SQLite storage and active/standby HA",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

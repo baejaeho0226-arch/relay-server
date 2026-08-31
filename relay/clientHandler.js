@@ -44,6 +44,8 @@ function AttachClient(connection, saved) {
     connection.licenseAuthorized = false;
     connection.licenseKey = '';
     connection.licenseExpiresAt = 0;
+    connection.passwordVerified = false;
+    connection.accessType = '';
     connection.lastServerAuthState = '';
     connection.deviceAuthVerified = false;
     connection.lastSeen = Now();
@@ -122,6 +124,12 @@ function HandleClientSend(connection, line) {
     // Maintenance intentionally allows already-authorized live sessions to continue.
     if (state.maintenanceMode && !connection.licenseAuthorized) { SendLine(connection.socket, 'SERVICE_STATE|MAINTENANCE'); return; }
     if (IsRateLimited(connection)) { SendLine(connection.socket, 'ERROR|RATE_LIMIT'); return; }
+
+    if (!connection.passwordVerified) {
+        SendLine(connection.socket, 'ERROR|PASSWORD_AUTH_REQUIRED');
+        require('../services/clientPassword').Begin(connection, connection.accessType);
+        return;
+    }
 
     const parts = line.split('|');
     if (parts.length !== 4) { SendLine(connection.socket, 'ERROR|INVALID_SEND'); return; }
@@ -254,6 +262,16 @@ function HandleClientLine(connection, line) {
         const requestedClient = parts.length >= 3 ? NormalizeID(parts[2]) : '';
         if (requestedClient && requestedClient !== connection.clientId) { SendLine(connection.socket, 'QR_AUTH_ERROR|CLIENT_NOT_OWNER'); return; }
         require('../services/qrApproval').Status(connection, parts[1] || '');
+        return;
+    }
+
+    if (line.startsWith('PASSWORD_SETUP|')) {
+        require('../services/clientPassword').HandleSetup(connection, line.split('|'));
+        return;
+    }
+
+    if (line.startsWith('PASSWORD_VERIFY|')) {
+        require('../services/clientPassword').HandleVerify(connection, line.split('|'));
         return;
     }
 

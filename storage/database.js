@@ -19,7 +19,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 120,
+        version: 121,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -62,6 +62,7 @@ function BuildDatabaseObject() {
         dailyHealthReports: Object.fromEntries(state.dailyHealthReports),
         dailyHealthAccumulator: state.dailyHealthAccumulator,
         qrAuthRequests: Object.fromEntries(state.qrAuthRequests),
+        clientPasswordProfiles: Object.fromEntries(state.clientPasswordProfiles),
         licenseRevision: Number(state.licenseRevision) || 0,
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
@@ -175,7 +176,8 @@ function ImportDatabaseObject(data) {
                 sendCount: Number(value.sendCount) || 0,
                 suspended: Boolean(value.suspended),
                 memo: SafeField(value.memo || ''),
-                tags: require('../license/licenseManager').NormalizeTags(value.tags || [])
+                tags: require('../license/licenseManager').NormalizeTags(value.tags || []),
+                accessType: require('../services/clientPassword').NormalizeAccessType(value.accessType)
             });
         }
     }
@@ -192,7 +194,7 @@ function ImportDatabaseObject(data) {
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
     state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
-    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear(); state.clientPasswordProfiles.clear(); state.clientPasswordChallenges.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -295,6 +297,26 @@ function ImportDatabaseObject(data) {
     require('../services/pushManager').ImportPersisted(data);
     require('../services/dailyHealth').ImportPersisted(data);
     require('../services/qrApproval').ImportPersisted(data);
+    if (data.clientPasswordProfiles && typeof data.clientPasswordProfiles === 'object') {
+        for (const [rawClientId, raw] of Object.entries(data.clientPasswordProfiles)) {
+            const clientId = NormalizeID(rawClientId);
+            if (!clientId || !raw || typeof raw !== 'object') continue;
+            const salt = String(raw.salt || '').toUpperCase();
+            const verifier = String(raw.verifier || '').toUpperCase();
+            const iterations = Math.max(1, Math.min(20000, Number(raw.iterations) || 4096));
+            if (!/^[0-9A-F]{32}$/.test(salt) || !/^[0-9A-F]{64}$/.test(verifier)) continue;
+            state.clientPasswordProfiles.set(clientId, {
+                salt,
+                iterations,
+                verifier,
+                accessType: require('../services/clientPassword').NormalizeAccessType(raw.accessType),
+                createdAt: Number(raw.createdAt) || Now(),
+                updatedAt: Number(raw.updatedAt) || 0,
+                failedAttempts: Math.max(0, Math.min(4, Number(raw.failedAttempts) || 0)),
+                lockUntil: Math.max(0, Number(raw.lockUntil) || 0)
+            });
+        }
+    }
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
 
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;

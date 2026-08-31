@@ -96,6 +96,8 @@ module.exports = {
     pendingDeviceCommands: new Map(),
     licenseRevision: 0,
     qrAuthRequests: new Map(),
+    clientPasswordProfiles: new Map(),
+    clientPasswordChallenges: new Map(),
 
     runtimeStats: {
         startedAt: Date.now(),

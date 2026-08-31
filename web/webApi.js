@@ -319,6 +319,7 @@ function BuildLicenseItem(key, license) {
         authCount: license.authCount || 0,
         sendCount: license.sendCount || 0,
         suspended: !!license.suspended,
+        accessType: require('../services/clientPassword').NormalizeAccessType(license.accessType),
         tags: NormalizeTags(license.tags || [])
     };
 }
@@ -446,7 +447,8 @@ async function HandleApiRequest(req, res, session) {
         const result = qrApproval.Approve(body.requestId, body.approvalToken, {
             days: body.days,
             memo: body.memo,
-            tags: body.tags
+            tags: body.tags,
+            accessType: body.accessType
         }, session.role);
         if (!result.ok) {
             LogEvent('QR_AUTH_APPROVE_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);
