@@ -294,6 +294,14 @@ tr:hover td { background: rgba(50,255,139,.027); color: #ecfff3; }
 .icon-btn { border: 0; background: transparent; font-size: 22px; padding: 0 5px; color: var(--muted); }
 .modal-body { padding: 18px; }
 .modal-body p { color: #9fc2aa; line-height: 1.6; font-size: 10px; margin: 0 0 12px; white-space: pre-wrap; }
+.password-input-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: center; }
+.password-input-row input { min-width: 0; font-size: 15px; letter-spacing: 2px; }
+.password-input-row button { min-width: 68px; }
+.password-status { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; margin: 0 0 15px; padding: 12px; border: 1px solid rgba(50,255,139,.15); background: rgba(50,255,139,.025); font-size: 10px; }
+.password-status > span:nth-of-type(2) { color: #719481; }
+.password-once { display: grid; gap: 12px; padding: 18px; text-align: center; border: 1px solid rgba(50,255,139,.35); background: rgba(50,255,139,.055); }
+.password-once span, .password-once small { color: #82ac91; font-size: 10px; }
+.password-once strong { color: #e7fff0; font-family: var(--mono); font-size: 30px; letter-spacing: 8px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 17px; border-top: 1px solid var(--line); }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -423,7 +431,7 @@ kbd{border:1px solid rgba(50,255,139,.25);padding:2px 6px;border-radius:3px;back
 .code-block{white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:420px;padding:12px;background:#010403;border:1px solid rgba(0,255,136,.18);color:#8dffbd;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:12px;line-height:1.55}
 .schema-preview{max-height:60vh;min-width:min(820px,80vw)}
 
-/* v3.2.1 // QR preview, password gate, typed routing and secret recovery */
+/* v3.3.0 // stable live lists, complete console clear, PIN reset and client-safe APK panel */
 .nav-filter-hidden{display:none!important}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .qr-auth-layout{display:grid;grid-template-columns:minmax(330px,.9fr) minmax(380px,1.1fr);gap:15px;margin:15px 0}

@@ -192,6 +192,80 @@ function SetAccessType(clientId, accessType) {
     return normalized;
 }
 
+function PublicStatus(clientId) {
+    clientId = NormalizeID(clientId);
+    const profile = clientId ? state.clientPasswordProfiles.get(clientId) : null;
+    if (!profile) {
+        return {
+            registered: false,
+            masked: '-',
+            accessType: 'TYPE1',
+            createdAt: 0,
+            updatedAt: 0,
+            failedAttempts: 0,
+            lockUntil: 0,
+            locked: false,
+            resetAt: 0,
+            resetBy: ''
+        };
+    }
+    const lockUntil = Math.max(0, Number(profile.lockUntil) || 0);
+    return {
+        registered: true,
+        masked: '\u2022\u2022\u2022\u2022\u2022\u2022',
+        accessType: NormalizeAccessType(profile.accessType),
+        createdAt: Number(profile.createdAt) || 0,
+        updatedAt: Number(profile.updatedAt) || 0,
+        failedAttempts: Math.max(0, Number(profile.failedAttempts) || 0),
+        lockUntil,
+        locked: lockUntil > Now(),
+        resetAt: Number(profile.resetAt) || 0,
+        resetBy: String(profile.resetBy || '')
+    };
+}
+
+function ResetPassword(clientId, password, actor = 'WEB_ADMIN') {
+    clientId = NormalizeID(clientId);
+    const pin = String(password || '').trim();
+    if (!clientId) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
+    if (!/^\d{4,8}$/.test(pin)) return { ok: false, reason: 'PASSWORD_FORMAT' };
+
+    const previous = state.clientPasswordProfiles.get(clientId) || null;
+    const connection = state.clients.get(clientId) || null;
+    const bound = require('../license/licenseManager').GetBoundLicenseEntry(clientId);
+    const now = Now();
+    const salt = crypto.randomBytes(16).toString('hex').toUpperCase();
+    const accessType = NormalizeAccessType(
+        (previous && previous.accessType) ||
+        (connection && connection.accessType) ||
+        (bound && bound.license && bound.license.accessType) ||
+        'TYPE1'
+    );
+    state.clientPasswordProfiles.set(clientId, {
+        salt,
+        iterations: PASSWORD_ITERATIONS,
+        verifier: DeriveVerifier(pin, salt, PASSWORD_ITERATIONS),
+        accessType,
+        createdAt: previous ? (Number(previous.createdAt) || now) : now,
+        updatedAt: now,
+        failedAttempts: 0,
+        lockUntil: 0,
+        resetAt: now,
+        resetBy: String(actor || 'WEB_ADMIN').replace(/[\r\n|]/g, '').slice(0, 64)
+    });
+    state.clientPasswordChallenges.delete(clientId);
+    require('../storage/database').SaveDatabase();
+    require('../storage/audit').LogEvent('CLIENT_PASSWORD_RESET', `${clientId} / ${accessType} / ${String(actor || 'WEB_ADMIN').slice(0, 64)}`);
+
+    if (connection && connection.connected && connection.socket && !connection.socket.destroyed) {
+        connection.passwordVerified = false;
+        SendLine(connection.socket, 'PASSWORD_RESET|ADMIN');
+        require('../relay/notifications').NotifyServerUnauthorized(clientId, 'PASSWORD_RESET');
+        Begin(connection, accessType);
+    }
+    return { ok: true, status: PublicStatus(clientId) };
+}
+
 module.exports = {
     PASSWORD_ITERATIONS,
     NormalizeAccessType,
@@ -200,5 +274,7 @@ module.exports = {
     Begin,
     HandleSetup,
     HandleVerify,
-    SetAccessType
+    SetAccessType,
+    PublicStatus,
+    ResetPassword
 };

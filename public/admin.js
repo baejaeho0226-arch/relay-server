@@ -38,6 +38,7 @@ let auditType = 'ALL';
 let activityQuery = '';
 let selectedLicenses = new Set();
 let liveConsoleEvents = [];
+let consoleHistoryLoaded = false;
 let consolePaused = false;
 let traceQuery = '';
 let traceRows = new Map();
@@ -136,9 +137,9 @@ function fmtBytes(value) {
 function badge(value) {
   const text = String(value || 'UNKNOWN').toUpperCase();
   let cls = text.toLowerCase();
-  if (['GOOD', 'ONLINE', 'BOUND', 'AVAILABLE', 'ACTIVE', 'APPROVED'].includes(text)) cls = 'good';
+  if (['GOOD', 'ONLINE', 'BOUND', 'AVAILABLE', 'ACTIVE', 'APPROVED', 'SET'].includes(text)) cls = 'good';
   else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED', 'FLAPPING', 'WARNING', 'STANDBY', 'CANDIDATE', 'PENDING'].includes(text)) cls = 'warn';
-  else if (['OFFLINE', 'DISABLED', 'EXPIRED', 'SUSPENDED', 'CRITICAL', 'REJECTED', 'SUPERSEDED'].includes(text)) cls = 'bad';
+  else if (['OFFLINE', 'DISABLED', 'EXPIRED', 'SUSPENDED', 'CRITICAL', 'REJECTED', 'SUPERSEDED', 'LOCKED'].includes(text)) cls = 'bad';
   else if (text === 'NONE') cls = 'none';
   return `<span class="badge ${esc(cls)}">${esc(text)}</span>`;
 }
@@ -203,6 +204,8 @@ function pushLiveEvent(event) {
   if (consolePaused || currentView !== 'console') return;
   const list = document.getElementById('live-console-list');
   if (!list) return;
+  const empty = list.querySelector('.empty');
+  if (empty) empty.remove();
   const row = document.createElement('div');
   row.className = 'console-line';
   row.innerHTML = `<span class="console-time">${esc(fmtTime(event.time))}</span><span class="console-type">${esc(event.type)}</span><span class="console-detail">${esc(event.detail)}</span>`;
@@ -302,8 +305,50 @@ if (navFilter) navFilter.addEventListener('input', () => {
 function roleIsAdmin() { return session && session.role === 'admin'; }
 function roleCanOperate() { return session && (session.role === 'admin' || session.role === 'operator'); }
 
+const PRESERVED_SCROLL_SELECTOR = '.table-wrap,.live-console,.event-list,.terminal-output,.command-terminal-output';
+
+function captureScrollState(view) {
+  const scrolling = document.scrollingElement || document.documentElement;
+  return {
+    view,
+    documentTop: scrolling ? scrolling.scrollTop : 0,
+    documentLeft: scrolling ? scrolling.scrollLeft : 0,
+    navTop: nav ? nav.scrollTop : 0,
+    nodes: Array.from(content.querySelectorAll(PRESERVED_SCROLL_SELECTOR)).map((element, index) => ({
+      element,
+      index,
+      signature: `${element.tagName}|${element.id}|${element.className}`,
+      top: element.scrollTop,
+      left: element.scrollLeft
+    }))
+  };
+}
+
+function restoreScrollState(snapshot) {
+  if (!snapshot || snapshot.view !== currentView) return;
+  const scrolling = document.scrollingElement || document.documentElement;
+  if (scrolling) {
+    scrolling.scrollTop = snapshot.documentTop;
+    scrolling.scrollLeft = snapshot.documentLeft;
+  }
+  if (nav) nav.scrollTop = snapshot.navTop;
+  const nodes = Array.from(content.querySelectorAll(PRESERVED_SCROLL_SELECTOR));
+  for (const saved of snapshot.nodes) {
+    let element = nodes[saved.index];
+    const signature = element ? `${element.tagName}|${element.id}|${element.className}` : '';
+    if (!element || signature !== saved.signature) {
+      element = nodes.find(candidate => `${candidate.tagName}|${candidate.id}|${candidate.className}` === saved.signature);
+    }
+    if (!element) continue;
+    element.scrollTop = saved.element ? saved.element.scrollTop : saved.top;
+    element.scrollLeft = saved.element ? saved.element.scrollLeft : saved.left;
+  }
+}
+
 async function renderCurrent(silent = false) {
   if (!session || rendering) return;
+  const view = currentView;
+  const scrollState = silent ? captureScrollState(view) : null;
   rendering = true;
   const meta = titles[currentView] || titles.dashboard;
   pageTitle.textContent = meta[0];
@@ -345,6 +390,7 @@ async function renderCurrent(silent = false) {
     if (!silent) content.innerHTML = `<div class="empty">${esc(error.message)}</div>`;
     toast(error.message, true);
   } finally {
+    if (scrollState) restoreScrollState(scrollState);
     rendering = false;
   }
 }
@@ -412,9 +458,10 @@ async function renderDashboard() {
 }
 
 async function renderConsole() {
-  if (!liveConsoleEvents.length) {
+  if (!consoleHistoryLoaded) {
     const { events } = await api('/api/audit');
-    liveConsoleEvents = events.slice(-300);
+    if (!liveConsoleEvents.length) liveConsoleEvents = events.slice(-300);
+    consoleHistoryLoaded = true;
   }
   content.innerHTML = `<div class="terminal-panel"><div class="terminal-head"><span>LIVE_EVENT_STREAM</span><div class="actions"><button id="console-pause-btn">${consolePaused ? 'Resume' : 'Pause'}</button><button id="console-clear-btn">Clear</button></div></div><div id="live-console-list" class="live-console">${liveConsoleEvents.slice(-300).map(e => `<div class="console-line"><span class="console-time">${esc(fmtTime(e.time))}</span><span class="console-type">${esc(e.type)}</span><span class="console-detail">${esc(e.detail)}</span></div>`).join('') || '<div class="empty">이벤트 없음</div>'}</div></div>`;
   const list = document.getElementById('live-console-list');
@@ -713,6 +760,7 @@ async function renderClients() {
     if (roleCanOperate() && client.online) html += `<button data-client-action="notice" data-id="${id}">Notice</button>`;
     if (roleCanOperate()) html += `<button data-client-action="note" data-id="${id}">Note</button>`;
     if (roleIsAdmin()) {
+      html += `<button data-client-action="password" data-id="${id}">Password</button>`;
       html += `<button data-client-action="alias" data-id="${id}">Alias</button>`;
       html += `<button data-client-action="move" data-id="${id}">Move</button>`;
       if (client.online && client.status !== 'DISABLED') html += `<button class="warning" data-client-action="kick" data-id="${id}">Kick 60s</button>`;
@@ -723,8 +771,8 @@ async function renderClients() {
     return `<div class="actions">${html}</div>`;
   };
 
-  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Disable은 Enable 전까지 재접속 차단</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th>Action</th></tr></thead><tbody>
-    ${clients.map(c => `<tr><td>${esc(c.alias || '-')}</td><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td class="code">${esc(c.serverAlias || c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td class="note-cell" title="${esc(c.note || '')}">${esc(c.note || '-')}</td><td>${actions(c)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">Client 없음</td></tr>'}
+  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Disable은 Enable 전까지 재접속 차단 · 비밀번호 원문은 저장하지 않습니다.</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Password</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th>Action</th></tr></thead><tbody>
+    ${clients.map(c => `<tr><td>${esc(c.alias || '-')}</td><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td>${badge(c.password?.locked ? 'LOCKED' : (c.password?.registered ? 'SET' : 'NONE'))}</td><td class="code">${esc(c.serverAlias || c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td class="note-cell" title="${esc(c.note || '')}">${esc(c.note || '-')}</td><td>${actions(c)}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">Client 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
@@ -1048,6 +1096,7 @@ function openModal(options) {
     modalBody.innerHTML = `${options.message ? `<p>${esc(options.message)}</p>` : ''}${options.html || ''}${fields.map(f => {
       if (f.type === 'textarea') return `<label>${esc(f.label)}<textarea data-modal-field="${esc(f.name)}" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea></label>`;
       if (f.type === 'select') return `<label>${esc(f.label)}<select data-modal-field="${esc(f.name)}">${(f.options || []).map(o => `<option value="${esc(o.value ?? o)}" ${String(o.value ?? o)===String(f.value ?? '')?'selected':''}>${esc(o.label ?? o)}</option>`).join('')}</select></label>`;
+      if (f.type === 'password') return `<label>${esc(f.label)}<div class="password-input-row"><input data-modal-field="${esc(f.name)}" type="password" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" inputmode="${esc(f.inputmode || 'numeric')}" autocomplete="new-password" maxlength="${Number(f.maxLength || 8)}"><button type="button" data-modal-reveal="${esc(f.name)}">보기</button></div></label>`;
       return `<label>${esc(f.label)}<input data-modal-field="${esc(f.name)}" type="${esc(f.type || 'text')}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"></label>`;
     }).join('')}`;
     modalConfirm.textContent = options.confirmLabel || '확인';
@@ -1060,11 +1109,22 @@ function openModal(options) {
       modalEl.setAttribute('aria-hidden', 'true');
       modalConfirm.onclick = null;
       modalCancel.onclick = null;
+      modalBody.onclick = null;
       modalEl.querySelectorAll('[data-modal-close]').forEach(x => x.onclick = null);
       resolve(value);
     };
     modalCancel.onclick = () => close(null);
     modalEl.querySelectorAll('[data-modal-close]').forEach(x => x.onclick = () => close(null));
+    modalBody.onclick = event => {
+      const reveal = event.target.closest('[data-modal-reveal]');
+      if (!reveal) return;
+      const input = modalBody.querySelector(`[data-modal-field="${CSS.escape(reveal.dataset.modalReveal)}"]`);
+      if (!input) return;
+      const visible = input.type === 'text';
+      input.type = visible ? 'password' : 'text';
+      reveal.textContent = visible ? '보기' : '숨기기';
+      input.focus();
+    };
     modalConfirm.onclick = () => {
       const values = {};
       modalBody.querySelectorAll('[data-modal-field]').forEach(el => values[el.dataset.modalField] = el.value);
@@ -1334,7 +1394,7 @@ content.addEventListener('click', async event => {
     }
 
     if (event.target.id === 'console-pause-btn') { consolePaused = !consolePaused; renderConsole(); return; }
-    if (event.target.id === 'console-clear-btn') { liveConsoleEvents = []; renderConsole(); return; }
+    if (event.target.id === 'console-clear-btn') { liveConsoleEvents = []; consoleHistoryLoaded = true; renderConsole(); return; }
     if (event.target.id === 'trace-search-btn') { traceQuery = document.getElementById('trace-search').value.trim(); renderTrace(); return; }
     const traceBtn = event.target.closest('[data-trace-detail]');
     if (traceBtn) {
@@ -1524,7 +1584,35 @@ async function clientAction(action, id) {
   const encodedId = encodeURIComponent(id);
   if (action === 'detail') {
     const { client } = await api(`/api/clients/${encodedId}`);
-    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(client.alias || '-')}</div><div>Note</div><div>${esc(client.note || '-')}</div><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Server</div><div class="code">${esc(client.serverAlias || client.serverId)}${client.serverAlias ? ` [${esc(client.serverId)}]` : ''}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>License Status</div><div>${badge(client.licenseStatus)}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>Kick Until</div><div>${esc(fmtTime(client.kickedUntil))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Protocol / Version</div><div>${client.protocolVersion || '-'} / ${esc(client.appVersion || '-')}</div><div>RTT</div><div>${client.rttMs >= 0 ? `${client.rttMs} ms` : '-'}</div><div>Auth / Send / Reconnect</div><div>${client.authCount} / ${client.sendCount} / ${client.reconnectCount}</div><div>Last Auth</div><div>${esc(fmtTime(client.lastAuthAt))}</div><div>Last Seen</div><div>${esc(fmtTime(client.lastSeenAt))}</div></div>`, confirmLabel: '닫기' });
+    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(client.alias || '-')}</div><div>Note</div><div>${esc(client.note || '-')}</div><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Password</div><div>${badge(client.password?.locked ? 'LOCKED' : (client.password?.registered ? 'SET' : 'NONE'))} <span class="code">${esc(client.password?.masked || '-')}</span></div><div>Password Updated</div><div>${esc(fmtTime(client.password?.updatedAt))}</div><div>Password Lock</div><div>${esc(fmtTime(client.password?.lockUntil))}</div><div>Server</div><div class="code">${esc(client.serverAlias || client.serverId)}${client.serverAlias ? ` [${esc(client.serverId)}]` : ''}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>License Status</div><div>${badge(client.licenseStatus)}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>Kick Until</div><div>${esc(fmtTime(client.kickedUntil))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Protocol / Version</div><div>${client.protocolVersion || '-'} / ${esc(client.appVersion || '-')}</div><div>RTT</div><div>${client.rttMs >= 0 ? `${client.rttMs} ms` : '-'}</div><div>Auth / Send / Reconnect</div><div>${client.authCount} / ${client.sendCount} / ${client.reconnectCount}</div><div>Last Auth</div><div>${esc(fmtTime(client.lastAuthAt))}</div><div>Last Seen</div><div>${esc(fmtTime(client.lastSeenAt))}</div></div>`, confirmLabel: '닫기' });
+    return;
+  }
+
+  if (action === 'password') {
+    const { client } = await api(`/api/clients/${encodedId}`);
+    let v = null;
+    while (true) {
+      v = await openModal({
+        title: 'Client Password Reset',
+        message: `${id}\n기존 비밀번호는 단방향 검증값으로만 저장되어 원문 조회가 불가능합니다. 새 PIN을 입력하면 즉시 교체되며, 온라인 APK는 다시 로그인해야 합니다.`,
+        html: `<div class="password-status"><span>현재 상태</span>${badge(client.password?.locked ? 'LOCKED' : (client.password?.registered ? 'SET' : 'NONE'))}<span>마지막 변경</span><strong>${esc(fmtTime(client.password?.updatedAt))}</strong></div>`,
+        fields: [
+          { name: 'password', label: '새 PIN (4~8자리 숫자)', type: 'password', placeholder: '새 PIN', maxLength: 8 },
+          { name: 'confirmPassword', label: '새 PIN 재확인', type: 'password', placeholder: '같은 PIN 입력', maxLength: 8 }
+        ],
+        confirmLabel: '재설정'
+      });
+      if (!v) return;
+      v.password = String(v.password || '').trim();
+      v.confirmPassword = String(v.confirmPassword || '').trim();
+      if (!/^\d{4,8}$/.test(v.password)) { toast('PIN은 4~8자리 숫자만 사용할 수 있습니다.', true); continue; }
+      if (v.password !== v.confirmPassword) { toast('PIN 재확인이 일치하지 않습니다.', true); continue; }
+      break;
+    }
+    await api(`/api/clients/${encodedId}/password/reset`, { method: 'POST', body: { password: v.password } });
+    await openModal({ title: '비밀번호 재설정 완료', html: `<div class="password-once"><span>새 PIN · 이번 화면에서만 표시</span><strong>${esc(v.password)}</strong><small>서버에는 PIN 원문이 아닌 HMAC 검증값만 저장됩니다.</small></div>`, confirmLabel: '닫기' });
+    toast('Client 비밀번호 재설정 완료');
+    await renderClients();
     return;
   }
 

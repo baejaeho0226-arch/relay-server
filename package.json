@@ -1,6 +1,6 @@
 {
   "name": "pure-tcp-relay",
-  "version": "6.2.1",
+  "version": "6.3.0",
   "description": "Pure TCP Relay with signed QR approval, password proof gate, typed APK routing, SQLite storage and active/standby HA",
   "main": "server.js",
   "scripts": {

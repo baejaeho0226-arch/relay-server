@@ -52,6 +52,7 @@ const requestRecovery = require('../services/requestRecovery');
 const processorCenter = require('../services/processorCenter');
 const pushManager = require('../services/pushManager');
 const dailyHealth = require('../services/dailyHealth');
+const clientPassword = require('../services/clientPassword');
 
 const {
     BACKUP_DIR, DATA_DIR, CURRENT_PROTOCOL_VERSION,
@@ -291,7 +292,8 @@ function BuildClients() {
             protocolVersion: live ? live.protocolVersion : 0,
             appVersion: live ? live.appVersion : '',
             rttMs: live ? live.rttMs : -1,
-            kickedUntil
+            kickedUntil,
+            password: clientPassword.PublicStatus(saved.id)
         });
     }
     return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -591,6 +593,17 @@ async function HandleApiRequest(req, res, session) {
         SaveDatabase();
         LogEvent('CLIENT_NOTE', `${id} ${note ? 'updated' : 'cleared'}`);
         Json(res, 200, { ok: true, id, note });
+        return;
+    }
+
+    match = pathname.match(/^\/api\/clients\/([^/]+)\/password\/reset$/);
+    if (method === 'POST' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const id = NormalizeID(DecodePart(match[1]));
+        if (!ClientExists(id)) { ApiError(res, 404, 'CLIENT_NOT_FOUND'); return; }
+        const result = clientPassword.ResetPassword(id, body.password, `WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
+        if (!result.ok) { ApiError(res, 400, result.reason); return; }
+        Json(res, 200, { ok: true, id, password: result.status });
         return;
     }
 

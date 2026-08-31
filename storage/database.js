@@ -313,7 +313,9 @@ function ImportDatabaseObject(data) {
                 createdAt: Number(raw.createdAt) || Now(),
                 updatedAt: Number(raw.updatedAt) || 0,
                 failedAttempts: Math.max(0, Math.min(4, Number(raw.failedAttempts) || 0)),
-                lockUntil: Math.max(0, Number(raw.lockUntil) || 0)
+                lockUntil: Math.max(0, Number(raw.lockUntil) || 0),
+                resetAt: Math.max(0, Number(raw.resetAt) || 0),
+                resetBy: String(raw.resetBy || '').replace(/[\r\n|]/g, '').slice(0, 64)
             });
         }
     }

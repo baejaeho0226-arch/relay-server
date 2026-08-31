@@ -120,6 +120,23 @@ async function run() {
     assert.strictEqual(passwordService.HandleVerify(passwordConnection, ['PASSWORD_VERIFY', login[2], loginProof]), true);
     assert.strictEqual(passwordConnection.passwordVerified, true);
 
+    const resetWriteStart = passwordWrites.length;
+    const resetPin = '97531';
+    const resetResult = passwordService.ResetPassword(clientId, resetPin, 'TEST_ADMIN');
+    assert.strictEqual(resetResult.ok, true);
+    assert.strictEqual(resetResult.status.registered, true);
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(resetResult.status, 'verifier'), false);
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(resetResult.status, 'salt'), false);
+    assert.ok(passwordWrites.slice(resetWriteStart).some(line => line.startsWith('PASSWORD_RESET|ADMIN')));
+    const resetLoginLine = passwordWrites.slice(resetWriteStart).find(line => line.startsWith('PASSWORD_CHALLENGE|LOGIN|'));
+    assert.ok(resetLoginLine, 'Admin password reset must force a fresh APK login challenge');
+    const resetLogin = resetLoginLine.trim().split('|');
+    const resetVerifier = passwordService.DeriveVerifier(resetPin, resetLogin[3], Number(resetLogin[4]));
+    const resetProof = passwordService.Proof(resetVerifier, 'LOGIN', clientId, resetLogin[2], resetLogin[5]);
+    assert.strictEqual(passwordService.HandleVerify(passwordConnection, ['PASSWORD_VERIFY', resetLogin[2], resetProof]), true);
+    assert.strictEqual(passwordConnection.passwordVerified, true);
+    assert.strictEqual(Object.values(state.clientPasswordProfiles.get(clientId)).includes(resetPin), false);
+
     assert.throws(() => service.InspectPayload(payload), /QR_REQUEST_APPROVED/);
     const tampered = payload.replace(`c=${clientId}`, 'c=FFFFFFFFFFFFFFFF');
     assert.throws(() => service.ParsePayload(tampered), /QR_SIGNATURE_INVALID/);
@@ -147,7 +164,7 @@ async function run() {
     assert.strictEqual(state.servers.size, 0);
     assert.strictEqual(state.serverIdentities.size, 0);
     const clientHandlerModule = require('../relay/clientHandler');
-    clientHandlerModule.HandleClientConnect(serverlessConnection, 'ANDROID-NO-WINSOCK', 2, '2.4.0');
+    clientHandlerModule.HandleClientConnect(serverlessConnection, 'ANDROID-NO-WINSOCK', 2, '2.5.0');
     assert.strictEqual(serverlessConnection.connected, true);
     assert.strictEqual(serverlessConnection.serverId, '');
     assert.ok(serverlessWrites.some(line => line.startsWith(`CONNECTED|${serverlessConnection.clientId}||`)));
@@ -216,6 +233,7 @@ async function run() {
     const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
     const webApi = fs.readFileSync(path.join(__dirname, '..', 'web', 'webApi.js'), 'utf8');
     const clientHandler = fs.readFileSync(path.join(__dirname, '..', 'relay', 'clientHandler.js'), 'utf8');
+    const userPanelSource = apk.slice(apk.indexOf('procedure TForm1.UpdateUserPanel;'), apk.indexOf('procedure TForm1.SubmitPassword;'));
 
     assert.ok(apk.includes('FQrImage: TImage'));
     assert.ok(apk.includes('FQrPanel: TLayout'));
@@ -225,6 +243,12 @@ async function run() {
     assert.ok(apk.includes('FPasswordPad: TGridLayout'));
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_CHALLENGE|')"));
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_OK|')"));
+    assert.ok(apk.includes("ALine.StartsWith('PASSWORD_RESET|')"));
+    assert.ok(apk.includes('FUserPanel: TLayout'));
+    assert.ok(apk.includes("FUserHealthText.Text := 'HEALTH'"));
+    assert.ok(apk.includes("FTypeTitle.Text := FTypeTitle.Text + ' 사용자 페이지'"));
+    assert.ok(!userPanelSource.includes('ServerID'));
+    assert.ok(!userPanelSource.includes('RELAY_HOST'));
     assert.ok(apk.includes("ReportUiState('AUTHORIZED', FState.AccessType)"));
     assert.ok(apk.includes('procedure TForm1.ResizeQrLayout'));
     assert.ok(apk.includes('Fill.Color := COLOR_QR_BG'));
@@ -256,10 +280,16 @@ async function run() {
     assert.ok(admin.includes("name: 'accessType'"));
     assert.ok(admin.includes('const file = qrSelectedFile'));
     assert.ok(admin.includes('qrEditInProgress'));
+    assert.ok(admin.includes('function captureScrollState(view)'));
+    assert.ok(admin.includes('restoreScrollState(scrollState)'));
+    assert.ok(admin.includes('consoleHistoryLoaded = true'));
+    assert.ok(admin.includes('data-client-action="password"'));
+    assert.ok(admin.includes("type: 'password'"));
     assert.ok(adminCss.includes('#nav {') && adminCss.includes('overflow-y: scroll'));
     assert.ok(index.includes('data-view="qrauth"'));
     assert.ok(index.includes('class="nav-group"'));
     assert.ok(webApi.includes("pathname === '/api/qr-auth/scan'"));
+    assert.ok(webApi.includes('/password\\/reset'));
     assert.ok(clientHandler.includes('FindAssignableServerId'));
     assert.ok(!clientHandler.includes('!GetOnlineServer(saved.serverId)'));
     assert.ok(!`${admin}\n${webApi}`.includes('relaylicense://auth?key='));
@@ -268,6 +298,7 @@ async function run() {
     console.log('- Signed one-time QR image decode: PASS');
     console.log('- Admin approval and server-side license binding: PASS');
     console.log('- Password setup/login proof and no plaintext storage: PASS');
+    console.log('- Web Admin PIN reset, one-time reveal and forced APK re-login: PASS');
     console.log('- Type1/Type2/Type3 approval routing: PASS');
     console.log('- Replay and signature tamper rejection: PASS');
     console.log('- Oversized image dimension rejection: PASS');
@@ -280,6 +311,8 @@ async function run() {
     console.log('- Sidebar grouped navigation scrolling: PASS');
     console.log('- WinSockServer QR authorization source: PASS');
     console.log('- Grouped Web Admin navigation: PASS');
+    console.log('- Live list scroll preservation and complete console clear: PASS');
+    console.log('- APK user-safe dashboard without relay details: PASS');
 }
 
 run().finally(() => {
