@@ -1,4 +1,4 @@
-PURE TCP RELAY / WEB ADMIN v3.0.0 - SQLite + HA Ready
+PURE TCP RELAY / WEB ADMIN v3.4.0 - SQLite + HA Ready
 
 1. Replace the Railway GitHub repository contents with this folder contents.
 2. Keep the repository root as:
@@ -16,7 +16,7 @@ PURE TCP RELAY / WEB ADMIN v3.0.0 - SQLite + HA Ready
 7. Redeploy after upload. Existing JSON data is imported into relay.db.
 
 Expected startup log:
-Web Admin: v3.0.0
+Web Admin: v3.4.0
 Storage: SQLITE
 Device Extensions: ENABLED (CAPABILITIES / DEVICE_INFO / HMAC / CONFIG / SEQUENCE)
 

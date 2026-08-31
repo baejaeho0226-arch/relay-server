@@ -1,6 +1,6 @@
 # Operations Roadmap 19–23
 
-Web Admin `3.0.0` · Node Relay `6.0.0` · Delphi apps `2.2.0` · Protocol `2`
+Web Admin `3.4.0` · Node Relay `6.4.0` · ApkWinSock `2.6.0` · Protocol `2`
 
 ## 19 — SQLite primary
 

@@ -124,7 +124,7 @@ npm run test:roadmap23
 ----
 npm start
 
-FINAL 3.0.0 NOTE
+FINAL 3.4.0 NOTE
 - Web Admin includes the original features and Operations Roadmap 11-23.
 - SQLite is authoritative; JSON is an automatic import/recovery mirror.
 - Relay HA is disabled unless HA_ENABLED=1 and all peer variables are valid.

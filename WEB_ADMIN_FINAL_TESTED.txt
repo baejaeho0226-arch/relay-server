@@ -1,5 +1,5 @@
 PURE TCP RELAY // WEB ADMIN FINAL TEST RECORD
-Web Admin Version: 3.0.0
+Web Admin Version: 3.4.0
 Protocol Version: 2
 Client/Server App Version: 2.2.0
 
