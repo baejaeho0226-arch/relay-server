@@ -46,6 +46,7 @@ function AttachClient(connection, saved) {
     connection.licenseExpiresAt = 0;
     connection.passwordVerified = false;
     connection.accessType = '';
+    connection.buildCompleted = false;
     connection.lastServerAuthState = '';
     connection.deviceAuthVerified = false;
     connection.lastSeen = Now();
@@ -169,11 +170,16 @@ function HandleClientSend(connection, line) {
     };
     let unavailableReason = '';
     if (!server) unavailableReason = 'SERVER_OFFLINE';
+    else if (server.buildGateCapable && (!(server.buildClients instanceof Set) || !server.buildClients.has(clientId))) unavailableReason = 'SERVER_BUILD_REQUIRED';
     else if (deviceAuth.Enforced('SERVER',saved.serverId) && !deviceAuth.Verified('SERVER',saved.serverId)) {
         unavailableReason = 'SERVER_AUTH_REQUIRED';
         deviceAuth.IssueChallenge('SERVER',saved.serverId);
     }
     if (unavailableReason) {
+        if (unavailableReason === 'SERVER_BUILD_REQUIRED') {
+            SendLine(connection.socket, 'ERROR|SERVER_BUILD_REQUIRED');
+            return;
+        }
         const queued = recovery.EnqueueRequest({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, unavailableReason);
         if (!queued.ok) {
             recovery.AddDeadLetter({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, unavailableReason, { detail: queued.reason });
@@ -205,6 +211,74 @@ function HandleClientSend(connection, line) {
 
     SendLine(connection.socket, `SENT|OK|${requestId}`);
     LogEvent('NUMBER_SEND', `${requestId} / ${clientId} / ${number}`);
+}
+
+function HandleClientBuild(connection, line) {
+    if (!state.serviceEnabled) { SendLine(connection.socket, 'SERVICE_STATE|DISABLED'); return; }
+    if (state.maintenanceMode && !connection.licenseAuthorized) { SendLine(connection.socket, 'SERVICE_STATE|MAINTENANCE'); return; }
+    if (IsRateLimited(connection)) { SendLine(connection.socket, 'ERROR|RATE_LIMIT'); return; }
+
+    const parts = line.split('|');
+    if (parts.length !== 3) { SendLine(connection.socket, 'ERROR|INVALID_BUILD'); return; }
+    const requestId = String(parts[1] || '').trim();
+    const clientId = NormalizeID(parts[2] || '');
+    if (!requestId || requestId.length > 64) { SendLine(connection.socket, 'ERROR|REQUEST_ID_INVALID'); return; }
+    if (!clientId || connection.clientId !== clientId) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_OWNER'); return; }
+
+    const deviceAuth = require('../services/deviceAuth');
+    if (!deviceAuth.Verified('CLIENT', clientId)) {
+        SendLine(connection.socket, 'ERROR|DEVICE_AUTH_REQUIRED');
+        deviceAuth.IssueChallenge('CLIENT', clientId);
+        return;
+    }
+    if (!connection.passwordVerified) {
+        SendLine(connection.socket, 'ERROR|PASSWORD_AUTH_REQUIRED');
+        require('../services/clientPassword').Begin(connection, connection.accessType);
+        return;
+    }
+    const active = GetUsableLicenseForConnection(connection);
+    if (!active) {
+        connection.licenseAuthorized = false;
+        connection.licenseExpiresAt = 0;
+        SendLine(connection.socket, 'ERROR|LICENSE_REQUIRED');
+        NotifyServerUnauthorized(clientId, 'LICENSE_REQUIRED');
+        return;
+    }
+
+    const saved = GetSavedClientByID(clientId);
+    if (!saved) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND'); return; }
+    const server = GetOnlineServer(saved.serverId);
+    if (!server) { SendLine(connection.socket, 'ERROR|SERVER_OFFLINE'); return; }
+    if (!require('../services/deviceControl').Capabilities('SERVER', saved.serverId).includes('BUILD_GATE')) {
+        SendLine(connection.socket, 'ERROR|SERVER_BUILD_UNSUPPORTED');
+        return;
+    }
+    if (!deviceAuth.Verified('SERVER', saved.serverId)) {
+        SendLine(connection.socket, 'ERROR|SERVER_AUTH_REQUIRED');
+        deviceAuth.IssueChallenge('SERVER', saved.serverId);
+        return;
+    }
+
+    const requestKey = MakeRequestKey(clientId, requestId);
+    if (requestHistory.has(requestKey) || pendingRequests.has(requestKey)) {
+        SendLine(connection.socket, 'ERROR|DUPLICATE_REQUEST');
+        return;
+    }
+    const payload = `BUILD|${requestId}|${clientId}`;
+    if (!SendLine(server.socket, payload)) { SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED'); return; }
+
+    const forwardedAt = Now();
+    requestHistory.set(requestKey, forwardedAt);
+    require('../services/requestTrace').StartTrace(clientId, requestId, saved.serverId, 'BUILD', forwardedAt, { source: 'CLIENT_BUILD', notifyClient: true });
+    pendingRequests.set(requestKey, {
+        kind: 'BUILD', clientId, serverId: saved.serverId, requestId,
+        number: 'BUILD', payload, createdAt: forwardedAt,
+        originCreatedAt: forwardedAt, lastSendAt: forwardedAt, retries: 0,
+        source: 'CLIENT_BUILD', replayOf: '', notifyClient: true
+    });
+    connection.buildCompleted = false;
+    SendLine(connection.socket, `BUILD_ACCEPTED|${requestId}`);
+    LogEvent('BUILD_REQUEST', `${requestId} / ${clientId} / ${saved.serverId}`);
 }
 
 function HandleClientLine(connection, line) {
@@ -277,6 +351,7 @@ function HandleClientLine(connection, line) {
     }
 
     if (line === 'PONG' || line.startsWith('PONG|')) { HandlePong(connection, line.split('|')); return; }
+    if (line.startsWith('BUILD|')) { HandleClientBuild(connection, line); return; }
     if (line.startsWith('SEND|')) { HandleClientSend(connection, line); return; }
     SendLine(connection.socket, 'ERROR|UNKNOWN_COMMAND');
 }
@@ -286,5 +361,6 @@ module.exports = {
     HandleClientConnect,
     IsRateLimited,
     HandleClientSend,
+    HandleClientBuild,
     HandleClientLine
 };

@@ -33,6 +33,10 @@ function NotifyServerUnauthorized(clientId, reason) {
     if (!saved) return;
     const server = GetOnlineServer(saved.serverId);
     if (!server) return;
+    if (server.buildClients instanceof Set) {
+        server.buildClients.delete(NormalizeID(clientId));
+        if (server.buildGateCapable && server.buildClients.size === 0) server.buildUnlocked = false;
+    }
     const client = GetOnlineClient(clientId);
     const state = `UNAUTHORIZED|${reason}`;
     if (client && client.lastServerAuthState === state) return;

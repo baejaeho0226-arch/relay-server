@@ -137,6 +137,39 @@ async function run() {
     assert.strictEqual(passwordConnection.passwordVerified, true);
     assert.strictEqual(Object.values(state.clientPasswordProfiles.get(clientId)).includes(resetPin), false);
 
+    // BUILD is a separate, authenticated gate. Relay only forwards it after
+    // client HMAC + QR license + PIN + server HMAC have all succeeded, and it
+    // unlocks the server connection only after the WinSockServer ACK.
+    const buildServerId = state.clientIdentities.get('ANDROID-QR-TEST').serverId;
+    const buildServerWrites = [];
+    const buildServerSocket = {
+        destroyed: false,
+        remoteAddress: '127.0.0.1',
+        write(value) { buildServerWrites.push(String(value)); return true; },
+        destroy() { this.destroyed = true; }
+    };
+    const buildServer = {
+        socket: buildServerSocket, type: 'server', registered: true,
+        serverId: buildServerId, deviceAuthVerified: true,
+        buildGateCapable: true, buildUnlocked: false, buildClients: new Set(),
+        clients: new Set([clientId]),
+        sequenceStats: { tx: 0, rxLast: 0, rxReceived: 0, rxMissing: 0, rxDuplicates: 0, rxOutOfOrder: 0, lastGapAt: 0, lastRxAt: 0, lastTxAt: 0 }
+    };
+    buildServerSocket.__relayConnection = buildServer;
+    passwordConnection.serverId = buildServerId;
+    passwordConnection.deviceAuthVerified = true;
+    state.servers.set(buildServerId, buildServer);
+    require('../services/deviceControl').RecordCapabilities('SERVER', buildServerId, 'DEVICE_HMAC,BUILD_GATE');
+    const buildRequestId = 'BUILD-001122334455';
+    require('../relay/clientHandler').HandleClientBuild(passwordConnection, `BUILD|${buildRequestId}|${clientId}`);
+    assert.ok(buildServerWrites.some(line => line.trim() === `BUILD|${buildRequestId}|${clientId}`));
+    assert.strictEqual(buildServer.buildUnlocked, false);
+    require('../relay/serverHandler').HandleServerLine(buildServer, `ACK|${buildRequestId}|${clientId}|OK|0|BUILD_GATE|TICKET=TEST1234`);
+    assert.strictEqual(buildServer.buildUnlocked, true);
+    assert.strictEqual(buildServer.buildClients.has(clientId), true);
+    assert.ok(passwordWrites.some(line => line.startsWith(`BUILD_OK|${buildRequestId}|TICKET=TEST1234`)));
+    state.servers.delete(buildServerId);
+
     assert.throws(() => service.InspectPayload(payload), /QR_REQUEST_APPROVED/);
     const tampered = payload.replace(`c=${clientId}`, 'c=FFFFFFFFFFFFFFFF');
     assert.throws(() => service.ParsePayload(tampered), /QR_SIGNATURE_INVALID/);
@@ -164,7 +197,7 @@ async function run() {
     assert.strictEqual(state.servers.size, 0);
     assert.strictEqual(state.serverIdentities.size, 0);
     const clientHandlerModule = require('../relay/clientHandler');
-    clientHandlerModule.HandleClientConnect(serverlessConnection, 'ANDROID-NO-WINSOCK', 2, '2.5.0');
+    clientHandlerModule.HandleClientConnect(serverlessConnection, 'ANDROID-NO-WINSOCK', 2, '2.6.0');
     assert.strictEqual(serverlessConnection.connected, true);
     assert.strictEqual(serverlessConnection.serverId, '');
     assert.ok(serverlessWrites.some(line => line.startsWith(`CONNECTED|${serverlessConnection.clientId}||`)));
@@ -228,13 +261,13 @@ async function run() {
     const passwordCrypto = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkPasswordCrypto.pas'), 'utf8');
     const deepLink = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkDeepLink.pas'), 'utf8');
     const serverProtocol = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'RelayProtocol.pas'), 'utf8');
+    const serverRuntime = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'ServerRuntime.pas'), 'utf8');
+    const numberProcessor = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'NumberProcessor.pas'), 'utf8');
     const admin = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
     const adminCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.css'), 'utf8');
     const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
     const webApi = fs.readFileSync(path.join(__dirname, '..', 'web', 'webApi.js'), 'utf8');
     const clientHandler = fs.readFileSync(path.join(__dirname, '..', 'relay', 'clientHandler.js'), 'utf8');
-    const userPanelSource = apk.slice(apk.indexOf('procedure TForm1.UpdateUserPanel;'), apk.indexOf('procedure TForm1.SubmitPassword;'));
-
     assert.ok(apk.includes('FQrImage: TImage'));
     assert.ok(apk.includes('FQrPanel: TLayout'));
     assert.ok(apk.includes('FQrTimeLabel: TLabel'));
@@ -244,11 +277,12 @@ async function run() {
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_CHALLENGE|')"));
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_OK|')"));
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_RESET|')"));
-    assert.ok(apk.includes('FUserPanel: TLayout'));
-    assert.ok(apk.includes("FUserHealthText.Text := 'HEALTH'"));
-    assert.ok(apk.includes("FTypeTitle.Text := FTypeTitle.Text + ' 사용자 페이지'"));
-    assert.ok(!userPanelSource.includes('ServerID'));
-    assert.ok(!userPanelSource.includes('RELAY_HOST'));
+    assert.ok(apk.includes('FSendButton: TButton'));
+    assert.ok(apk.includes('FFinalCheckBox: TCheckBox'));
+    assert.ok(apk.includes("FSendButton.Text := BUILD_BUTTON_TEXT"));
+    assert.ok(apk.includes("FFinalCheckBox.Text := 'Ready'"));
+    assert.ok(!apk.includes('FUserStatusText'));
+    assert.ok(!apk.includes('COLOR_DASH_BG'));
     assert.ok(apk.includes("ReportUiState('AUTHORIZED', FState.AccessType)"));
     assert.ok(apk.includes('procedure TForm1.ResizeQrLayout'));
     assert.ok(apk.includes('Fill.Color := COLOR_QR_BG'));
@@ -261,14 +295,21 @@ async function run() {
     assert.ok(qrRenderer.includes('QUIET_ZONE_MODULES = 8'));
     assert.ok(apk.includes("ALine.StartsWith('SERVER_ASSIGNED|')"));
     assert.ok(apk.includes("Format('QR 남은 시간"));
-    assert.ok(apk.includes("BuildSendLine(RequestID, FState.ClientID, '1')"));
+    assert.ok(apk.includes('BuildBuildLine(RequestID, FState.ClientID)'));
+    assert.ok(apk.includes("ALine.StartsWith('BUILD_OK|')"));
+    assert.ok(apk.includes('FBuildCompleted := True'));
     assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
     assert.ok(!apk.includes('FLicenseEdit'));
-    assert.ok(!apk.includes('TCheckBox'));
     assert.ok(!`${apk}\n${deepLink}`.includes('relaylicense://'));
     assert.ok(protocol.includes('QR_DEVICE_APPROVAL'));
     assert.ok(protocol.includes('PASSWORD_KEYPAD'));
     assert.ok(protocol.includes('TYPE_ROUTING'));
+    assert.ok(protocol.includes('BUILD_GATE'));
+    assert.ok(serverProtocol.includes('BUILD_GATE'));
+    assert.ok(serverRuntime.includes('function TWinSockRelayServer.HandleBuild'));
+    assert.ok(serverRuntime.includes('if not FBuildUnlocked or not FBuildAuthorizedClients.IsAuthorized(ClientID) then'));
+    assert.ok(serverRuntime.includes("BuildCommandAck(CommandID, 'ERROR', 'BUILD_REQUIRED')"));
+    assert.ok(numberProcessor.includes('GProcessor := nil'));
     assert.ok(passwordCrypto.includes('DerivePasswordVerifier'));
     assert.ok(passwordCrypto.includes('BuildPasswordProof'));
     assert.ok(serverProtocol.includes('AuthSource'));
@@ -285,8 +326,12 @@ async function run() {
     assert.ok(admin.includes('consoleHistoryLoaded = true'));
     assert.ok(admin.includes('data-client-action="password"'));
     assert.ok(admin.includes("type: 'password'"));
+    assert.ok(admin.includes('async function renderClientPasswords()'));
+    assert.ok(admin.includes('PIN 재설정 / 보기'));
     assert.ok(adminCss.includes('#nav {') && adminCss.includes('overflow-y: scroll'));
     assert.ok(index.includes('data-view="qrauth"'));
+    assert.ok(index.includes('data-view="clientpasswords"'));
+    assert.ok(index.includes('WEB v3.4.0'));
     assert.ok(index.includes('class="nav-group"'));
     assert.ok(webApi.includes("pathname === '/api/qr-auth/scan'"));
     assert.ok(webApi.includes('/password\\/reset'));
@@ -302,7 +347,8 @@ async function run() {
     console.log('- Type1/Type2/Type3 approval routing: PASS');
     console.log('- Replay and signature tamper rejection: PASS');
     console.log('- Oversized image dimension rejection: PASS');
-    console.log('- APK QR/password/Type UI and fixed numeric injection: PASS');
+    console.log('- APK QR/PIN/Build/final-checkbox flow: PASS');
+    console.log('- Authenticated WinSockServer Build gate and dynamic server ACK: PASS');
     console.log('- APK responsive QR frame and expiry countdown: PASS');
     console.log('- Relay QR issuance with WinSockServer offline: PASS');
     console.log('- APK reinstall secret recovery without UNKNOWN_COMMAND: PASS');
@@ -312,7 +358,7 @@ async function run() {
     console.log('- WinSockServer QR authorization source: PASS');
     console.log('- Grouped Web Admin navigation: PASS');
     console.log('- Live list scroll preservation and complete console clear: PASS');
-    console.log('- APK user-safe dashboard without relay details: PASS');
+    console.log('- APK minimal centered Build UI without status dashboard: PASS');
 }
 
 run().finally(() => {

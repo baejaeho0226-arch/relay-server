@@ -55,6 +55,32 @@ function HandleServerAck(connection, line) {
     if (pending.serverId !== connection.serverId) { SendLine(connection.socket, 'ERROR|ACK_NOT_OWNER'); return; }
     pendingRequests.delete(key);
     const client = GetOnlineClient(clientId);
+    if (pending.kind === 'BUILD' && result === 'OK') {
+        const detail = parts.length >= 7 ? SafeField(parts.slice(6).join(' ')) : '';
+        connection.buildUnlocked = true;
+        if (!(connection.buildClients instanceof Set)) connection.buildClients = new Set();
+        connection.buildClients.add(clientId);
+        if (client) client.buildCompleted = true;
+        runtimeStats.ackOk++;
+        RecordAck(connection.serverId, clientId, 'OK');
+        CompleteTrace(clientId, requestId, 'OK', '', Now());
+        require('../services/dailyHealth').Record('ackOk');
+        if (client && pending.notifyClient !== false) SendLine(client.socket, `BUILD_OK|${requestId}|${detail}`);
+        SendLine(connection.socket, `ACK_RESULT|OK|${requestId}`);
+        LogEvent('BUILD_UNLOCKED', `${requestId} / ${clientId} / ${connection.serverId}`);
+        return;
+    }
+    if (pending.kind === 'BUILD') {
+        const reason = parts.length >= 5 ? SafeField(parts[4]) : 'BUILD_FAILED';
+        runtimeStats.ackError++;
+        RecordAck(connection.serverId, clientId, 'ERROR');
+        CompleteTrace(clientId, requestId, 'ERROR', reason, Now());
+        require('../services/dailyHealth').Record('ackError');
+        if (client && pending.notifyClient !== false) SendLine(client.socket, `ACK|ERROR|${requestId}|${reason}`);
+        SendLine(connection.socket, `ACK_RESULT|ERROR|${requestId}`);
+        LogEvent('BUILD_FAILED', `${requestId} / ${clientId} / ${reason}`);
+        return;
+    }
     if (result === 'OK') {
         runtimeStats.ackOk++;
         RecordAck(connection.serverId, clientId, 'OK');
@@ -113,6 +139,9 @@ function ProcessPendingRequests() {
 function FailPendingRequestsForServer(serverId, reason) {
     for(const [key,p] of Array.from(pendingRequests.entries())){
         if(p.serverId!==serverId)continue;pendingRequests.delete(key);
+        if(p.kind==='BUILD'){
+            CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');require('../services/dailyHealth').Record('ackError');LogEvent('BUILD_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);continue;
+        }
         const queued=require('../services/requestRecovery').RequeuePending(p,reason);
         if(queued.ok){LogEvent('ACK_REQUEUED',`${p.requestId} / ${p.clientId} / ${reason}`);continue;}
         CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());require('../services/requestRecovery').AddDeadLetter(p,reason,{detail:queued.reason});const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');require('../services/dailyHealth').Record('ackError');LogEvent('ACK_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);

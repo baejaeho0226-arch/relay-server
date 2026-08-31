@@ -192,8 +192,12 @@ nav button.active { color: var(--accent); background: linear-gradient(90deg, rgb
 .qr-nav { color: #7de9ff!important; border-color: rgba(0,224,255,.10)!important; }
 .qr-nav::before { color: #00e0ff!important; }
 .qr-nav.active { color: #8ff8ff!important; background: linear-gradient(90deg,rgba(0,224,255,.12),rgba(0,224,255,.015))!important; box-shadow: inset 3px 0 0 #00e0ff!important; border-color: rgba(0,224,255,.25)!important; }
+.pin-nav { color: #c8b9ff!important; border-color: rgba(150,120,255,.10)!important; }
+.pin-nav::before { color: #8e72ff!important; }
+.pin-nav.active { color: #e4dcff!important; background: linear-gradient(90deg,rgba(115,92,255,.16),rgba(115,92,255,.02))!important; box-shadow: inset 3px 0 0 #8e72ff!important; border-color: rgba(142,114,255,.30)!important; }
 .sidebar-footer { border-top: 1px dashed var(--line); padding: 12px 8px 20px; display: grid; gap: 9px; }
 .sidebar-footer div { display: flex; justify-content: space-between; font-size: 10px; }
+#web-version-label { color: #c8b9ff; }
 
 .main { min-width: 0; }
 .topbar {
@@ -302,6 +306,20 @@ tr:hover td { background: rgba(50,255,139,.027); color: #ecfff3; }
 .password-once { display: grid; gap: 12px; padding: 18px; text-align: center; border: 1px solid rgba(50,255,139,.35); background: rgba(50,255,139,.055); }
 .password-once span, .password-once small { color: #82ac91; font-size: 10px; }
 .password-once strong { color: #e7fff0; font-family: var(--mono); font-size: 30px; letter-spacing: 8px; }
+.pin-manage-open { border-color: rgba(142,114,255,.65); color: #e1d9ff; background: rgba(115,92,255,.16); }
+.pin-hero { position: relative; min-height: 180px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 24px; padding: 28px 32px; margin-bottom: 14px; overflow: hidden; border: 1px solid rgba(142,114,255,.32); border-radius: 8px; background: radial-gradient(circle at 85% 20%,rgba(115,92,255,.22),transparent 34%),linear-gradient(135deg,rgba(17,24,39,.98),rgba(4,13,9,.96)); box-shadow: 0 18px 55px rgba(0,0,0,.28),inset 4px 0 0 #735cff; }
+.pin-hero::after { content:"HMAC / SECURE RESET"; position:absolute; right:22px; bottom:13px; color:rgba(200,185,255,.28); font-size:8px; letter-spacing:1.7px; }
+.pin-hero h3 { margin: 7px 0 9px; color: #f1edff; font-size: clamp(22px,3vw,34px); }
+.pin-hero p { max-width: 720px; margin: 0; color: #9eb3a5; font-size: 11px; line-height: 1.7; }
+.pin-eyebrow { color: #9f8aff; font-size: 9px; font-weight: 800; letter-spacing: 1.8px; }
+.pin-hero-lock { min-width: 150px; padding: 24px 18px; border: 1px solid rgba(142,114,255,.38); border-radius: 8px; background: rgba(115,92,255,.10); color: #ded5ff; text-align:center; font-size: 32px; letter-spacing: 12px; box-shadow: inset 0 0 25px rgba(115,92,255,.09); }
+.pin-summary-cards { margin-bottom: 14px; }
+.pin-summary-cards .card:nth-child(1)::before,.pin-summary-cards .card:nth-child(4)::before { background:#8e72ff; }
+.pin-client-list table { min-width: 940px; }
+.pin-client-list td:first-child { min-width: 210px; }
+.pin-client-id { margin-top: 5px; color: #6f8b78; }
+.pin-reset-button { min-width: 155px; border-color: rgba(142,114,255,.58); color:#ded5ff; background:rgba(115,92,255,.14); }
+@media(max-width:760px){.pin-hero{grid-template-columns:1fr;padding:22px}.pin-hero-lock{display:none}.pin-summary-cards{grid-template-columns:1fr 1fr}}
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 17px; border-top: 1px solid var(--line); }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -431,7 +449,7 @@ kbd{border:1px solid rgba(50,255,139,.25);padding:2px 6px;border-radius:3px;back
 .code-block{white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:420px;padding:12px;background:#010403;border:1px solid rgba(0,255,136,.18);color:#8dffbd;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:12px;line-height:1.55}
 .schema-preview{max-height:60vh;min-width:min(820px,80vw)}
 
-/* v3.3.0 // stable live lists, complete console clear, PIN reset and client-safe APK panel */
+/* v3.4.0 // dedicated PIN center, cache-safe assets and premium APK dashboard */
 .nav-filter-hidden{display:none!important}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .qr-auth-layout{display:grid;grid-template-columns:minmax(330px,.9fr) minmax(380px,1.1fr);gap:15px;margin:15px 0}

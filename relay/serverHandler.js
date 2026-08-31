@@ -89,6 +89,11 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     connection.lastIP = SafeIP(connection.socket);
     connection.clients = new Set();
     connection.deviceAuthVerified = false;
+    // Legacy servers remain compatible at Relay level. Updated WinSockServer
+    // advertises BUILD_GATE immediately and also enforces the gate locally.
+    connection.buildGateCapable = false;
+    connection.buildUnlocked = true;
+    connection.buildClients = new Set();
     connection.reconnectCount = (runtimeStats.serverReconnects.get(serverId) || 0) + 1;
     runtimeStats.serverReconnects.set(serverId, connection.reconnectCount);
     require('../services/reconnectMonitor').RecordReconnect('SERVER', serverId);
@@ -121,7 +126,8 @@ function HandleServerLine(connection, line) {
     if (!line) return;
 
     if (connection.serverId) {
-        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('SERVER', connection.serverId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('SERVER', connection.serverId); if(dc.Capabilities('SERVER',connection.serverId).includes('PROCESSOR_POLICY'))require('../services/processorCenter').PushToServer(connection.serverId); require('../services/releaseManager').NotifyDevice('SERVER', connection.serverId); require('../services/deviceAuth').SendEnrollmentSecret('SERVER', connection.serverId, false); return; }
+        if (line.startsWith('BUILD_GATE_LOCKED|')) { connection.buildUnlocked=false;connection.buildClients=new Set();for(const client of clients.values()){if(client.serverId!==connection.serverId)continue;client.buildCompleted=false;SendLine(client.socket,`BUILD_REQUIRED|${connection.serverId}`);} return; }
+        if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('SERVER', connection.serverId, line.substring('CAPABILITIES|'.length)); const capabilities=dc.Capabilities('SERVER',connection.serverId); if(capabilities.includes('BUILD_GATE')){connection.buildGateCapable=true;connection.buildUnlocked=false;connection.buildClients=new Set();for(const client of clients.values()){if(client.serverId!==connection.serverId)continue;client.buildCompleted=false;SendLine(client.socket,`BUILD_REQUIRED|${connection.serverId}`);}} dc.PushDesiredConfig('SERVER', connection.serverId); if(capabilities.includes('PROCESSOR_POLICY'))require('../services/processorCenter').PushToServer(connection.serverId); require('../services/releaseManager').NotifyDevice('SERVER', connection.serverId); require('../services/deviceAuth').SendEnrollmentSecret('SERVER', connection.serverId, false); return; }
         if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('SERVER', connection.serverId, line.split('|').slice(1)); return; }
         if (line.startsWith('PROTOCOL_PROFILE|')) { const p=line.split('|'); require('../services/protocolReadiness').RecordProfile('SERVER', connection.serverId, p[1], p[2], p.slice(3).join('|')); return; }
         if (line === 'DEVICE_SECRET_ACK' || line.startsWith('DEVICE_SECRET_ACK|')) { require('../services/deviceAuth').HandleSecretAck('SERVER', connection.serverId); return; }

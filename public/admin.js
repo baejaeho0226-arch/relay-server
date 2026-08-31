@@ -24,6 +24,7 @@ const notificationBadge = document.getElementById('notification-badge');
 const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
+const webVersionLabel = document.getElementById('web-version-label');
 
 let session = null;
 let currentView = 'dashboard';
@@ -79,6 +80,7 @@ const titles = {
   reports: ['Push / Daily Report', 'PWA Push 구독과 날짜별 Relay Health 리포트를 관리합니다.'],
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
+  clientpasswords: ['Client PIN 관리', 'APK Client PIN 상태 확인과 안전한 재설정을 수행합니다.'],
   licenses: ['Licenses', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
   qrauth: ['QR 인증', 'APK의 QR 사진을 서버에서 검증하고 해당 기기를 승인합니다.'],
   releases: ['Releases / Updates', 'Auto Update, Release Channel, Canary Rollout을 관리합니다.'],
@@ -194,7 +196,18 @@ function showApp() {
   startEvents();
   updateNotificationBadge();
   updateQrAuthBadge();
+  updateWebVersion();
   renderCurrent();
+}
+
+async function updateWebVersion() {
+  if (!webVersionLabel) return;
+  try {
+    const { system } = await api('/api/system');
+    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '3.4.0'}`;
+  } catch (_) {
+    webVersionLabel.textContent = 'WEB v3.4.0';
+  }
 }
 
 function pushLiveEvent(event) {
@@ -234,7 +247,7 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    const liveViews = ['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
+    const liveViews = ['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'clientpasswords', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
     const qrEditInProgress = currentView === 'qrauth' && (qrSelectedFile || qrScanResult);
     if (liveViews.includes(currentView) && !qrEditInProgress) renderCurrent(true);
     updateNotificationBadge();
@@ -368,6 +381,7 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'reports') await renderReports();
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
+    else if (currentView === 'clientpasswords') await renderClientPasswords();
     else if (currentView === 'qrauth') await renderQrAuth();
     else if (currentView === 'licenses') await renderLicenses();
     else if (currentView === 'releases') await renderReleases();
@@ -760,7 +774,7 @@ async function renderClients() {
     if (roleCanOperate() && client.online) html += `<button data-client-action="notice" data-id="${id}">Notice</button>`;
     if (roleCanOperate()) html += `<button data-client-action="note" data-id="${id}">Note</button>`;
     if (roleIsAdmin()) {
-      html += `<button data-client-action="password" data-id="${id}">Password</button>`;
+      html += `<button class="primary" data-client-action="password" data-id="${id}">PIN 관리</button>`;
       html += `<button data-client-action="alias" data-id="${id}">Alias</button>`;
       html += `<button data-client-action="move" data-id="${id}">Move</button>`;
       if (client.online && client.status !== 'DISABLED') html += `<button class="warning" data-client-action="kick" data-id="${id}">Kick 60s</button>`;
@@ -771,9 +785,33 @@ async function renderClients() {
     return `<div class="actions">${html}</div>`;
   };
 
-  content.innerHTML = `<div class="toolbar"><span class="small-note">Kick은 60초 임시 차단 · Disable은 Enable 전까지 재접속 차단 · 비밀번호 원문은 저장하지 않습니다.</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Password</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th>Action</th></tr></thead><tbody>
+  content.innerHTML = `<div class="toolbar">${roleIsAdmin() ? '<button class="primary pin-manage-open" data-open-view="clientpasswords">CLIENT PIN 관리 열기</button>' : ''}<span class="small-note">Kick은 60초 임시 차단 · Disable은 Enable 전까지 재접속 차단 · PIN 원문은 저장하지 않습니다.</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>PIN</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th>Action</th></tr></thead><tbody>
     ${clients.map(c => `<tr><td>${esc(c.alias || '-')}</td><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td>${badge(c.password?.locked ? 'LOCKED' : (c.password?.registered ? 'SET' : 'NONE'))}</td><td class="code">${esc(c.serverAlias || c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td class="note-cell" title="${esc(c.note || '')}">${esc(c.note || '-')}</td><td>${actions(c)}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">Client 없음</td></tr>'}
   </tbody></table></div>`;
+}
+
+async function renderClientPasswords() {
+  if (!roleIsAdmin()) { content.innerHTML = '<div class="empty">ADMIN 권한이 필요합니다.</div>'; return; }
+  const { clients } = await api('/api/clients');
+  const registered = clients.filter(client => client.password?.registered).length;
+  const locked = clients.filter(client => client.password?.locked).length;
+  const missing = clients.length - registered;
+  content.innerHTML = `
+    <div class="pin-hero">
+      <div><span class="pin-eyebrow">CLIENT ACCESS SECURITY</span><h3>PIN 관리 센터</h3><p>기존 PIN 원문은 저장하지 않습니다. 새 PIN을 재설정할 때 입력값을 확인하고, 완료 직후 한 번만 볼 수 있습니다.</p></div>
+      <div class="pin-hero-lock">••••</div>
+    </div>
+    <div class="cards pin-summary-cards">
+      <div class="card"><div class="stat-label">REGISTERED</div><div class="stat-value">${registered}</div><div class="stat-sub">PIN 등록 완료</div></div>
+      <div class="card"><div class="stat-label">NOT SET</div><div class="stat-value">${missing}</div><div class="stat-sub">PIN 미등록</div></div>
+      <div class="card"><div class="stat-label">LOCKED</div><div class="stat-value">${locked}</div><div class="stat-sub">입력 제한 상태</div></div>
+      <div class="card"><div class="stat-label">STORAGE</div><div class="stat-value compact">HMAC</div><div class="stat-sub">원문 저장 안 함</div></div>
+    </div>
+    <div class="section-card pin-client-list"><div class="section-head"><h3>Client PIN Status</h3><span class="small-note">관리할 Client의 PIN 재설정을 누르세요.</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>PIN</th><th>Access Type</th><th>Updated</th><th>Lock Until</th><th>Action</th></tr></thead><tbody>
+        ${clients.map(client => `<tr><td><strong>${esc(client.alias || '이름 없음')}</strong><div class="code pin-client-id">${esc(client.id)}</div></td><td>${badge(client.status)}</td><td>${badge(client.password?.locked ? 'LOCKED' : (client.password?.registered ? 'SET' : 'NONE'))}</td><td>${badge(client.password?.accessType || 'TYPE1')}</td><td>${esc(fmtTime(client.password?.updatedAt))}</td><td>${esc(fmtTime(client.password?.lockUntil))}</td><td><button class="primary pin-reset-button" data-client-action="password" data-id="${esc(client.id)}">PIN 재설정 / 보기</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Client 없음</td></tr>'}
+      </tbody></table></div>
+    </div>`;
 }
 
 function fileAsDataUrl(file) {
@@ -1612,7 +1650,8 @@ async function clientAction(action, id) {
     await api(`/api/clients/${encodedId}/password/reset`, { method: 'POST', body: { password: v.password } });
     await openModal({ title: '비밀번호 재설정 완료', html: `<div class="password-once"><span>새 PIN · 이번 화면에서만 표시</span><strong>${esc(v.password)}</strong><small>서버에는 PIN 원문이 아닌 HMAC 검증값만 저장됩니다.</small></div>`, confirmLabel: '닫기' });
     toast('Client 비밀번호 재설정 완료');
-    await renderClients();
+    if (currentView === 'clientpasswords') await renderClientPasswords();
+    else await renderClients();
     return;
   }
 
