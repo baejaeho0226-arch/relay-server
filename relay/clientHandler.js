@@ -247,38 +247,15 @@ function HandleClientBuild(connection, line) {
 
     const saved = GetSavedClientByID(clientId);
     if (!saved) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND'); return; }
-    const server = GetOnlineServer(saved.serverId);
-    if (!server) { SendLine(connection.socket, 'ERROR|SERVER_OFFLINE'); return; }
-    if (!require('../services/deviceControl').Capabilities('SERVER', saved.serverId).includes('BUILD_GATE')) {
-        SendLine(connection.socket, 'ERROR|SERVER_BUILD_UNSUPPORTED');
-        return;
-    }
-    if (!deviceAuth.Verified('SERVER', saved.serverId)) {
-        SendLine(connection.socket, 'ERROR|SERVER_AUTH_REQUIRED');
-        deviceAuth.IssueChallenge('SERVER', saved.serverId);
-        return;
-    }
-
     const requestKey = MakeRequestKey(clientId, requestId);
-    if (requestHistory.has(requestKey) || pendingRequests.has(requestKey)) {
+    if (requestHistory.has(requestKey) || pendingRequests.has(requestKey) || state.pendingBuildGrants.has(clientId)) {
         SendLine(connection.socket, 'ERROR|DUPLICATE_REQUEST');
         return;
     }
-    const payload = `BUILD|${requestId}|${clientId}`;
-    if (!SendLine(server.socket, payload)) { SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED'); return; }
-
-    const forwardedAt = Now();
-    requestHistory.set(requestKey, forwardedAt);
-    require('../services/requestTrace').StartTrace(clientId, requestId, saved.serverId, 'BUILD', forwardedAt, { source: 'CLIENT_BUILD', notifyClient: true });
-    pendingRequests.set(requestKey, {
-        kind: 'BUILD', clientId, serverId: saved.serverId, requestId,
-        number: 'BUILD', payload, createdAt: forwardedAt,
-        originCreatedAt: forwardedAt, lastSendAt: forwardedAt, retries: 0,
-        source: 'CLIENT_BUILD', replayOf: '', notifyClient: true
-    });
-    connection.buildCompleted = false;
-    SendLine(connection.socket, `BUILD_ACCEPTED|${requestId}`);
-    LogEvent('BUILD_REQUEST', `${requestId} / ${clientId} / ${saved.serverId}`);
+    const buildGate = require('../services/buildGate');
+    const queued = buildGate.Queue(connection, requestId);
+    if (!queued.ok) { SendLine(connection.socket, `ERROR|${queued.reason}`); return; }
+    buildGate.TryDispatchClient(clientId);
 }
 
 function HandleClientLine(connection, line) {

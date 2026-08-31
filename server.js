@@ -118,6 +118,7 @@ setInterval(() => {
     ProcessOfflineQueue();
     require('./services/dailyHealth').EnsureCurrent();
     require('./services/qrApproval').Cleanup();
+    require('./services/buildGate').Cleanup();
 }, 1000);
 
 setInterval(() => {

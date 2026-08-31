@@ -66,6 +66,7 @@ function HandleServerAck(connection, line) {
         CompleteTrace(clientId, requestId, 'OK', '', Now());
         require('../services/dailyHealth').Record('ackOk');
         if (client && pending.notifyClient !== false) SendLine(client.socket, `BUILD_OK|${requestId}|${detail}`);
+        require('../services/buildGate').Complete(clientId, requestId);
         SendLine(connection.socket, `ACK_RESULT|OK|${requestId}`);
         LogEvent('BUILD_UNLOCKED', `${requestId} / ${clientId} / ${connection.serverId}`);
         return;
@@ -76,7 +77,7 @@ function HandleServerAck(connection, line) {
         RecordAck(connection.serverId, clientId, 'ERROR');
         CompleteTrace(clientId, requestId, 'ERROR', reason, Now());
         require('../services/dailyHealth').Record('ackError');
-        if (client && pending.notifyClient !== false) SendLine(client.socket, `ACK|ERROR|${requestId}|${reason}`);
+        require('../services/buildGate').Fail(clientId, requestId, reason);
         SendLine(connection.socket, `ACK_RESULT|ERROR|${requestId}`);
         LogEvent('BUILD_FAILED', `${requestId} / ${clientId} / ${reason}`);
         return;
@@ -127,6 +128,7 @@ function ProcessPendingRequests() {
     const now=Now();
     for(const [key,p] of Array.from(pendingRequests.entries())) {
         if(now-p.createdAt>=ACK_TIMEOUT_MS){
+            if(p.kind==='BUILD'&&require('../services/buildGate').Requeue(p,'ACK_TIMEOUT')){CompleteTrace(p.clientId,p.requestId,'TIMEOUT','ACK_TIMEOUT',now);runtimeStats.ackTimeout++;RecordAck(p.serverId,p.clientId,'TIMEOUT');require('../services/dailyHealth').Record('ackTimeout');continue;}
             pendingRequests.delete(key);runtimeStats.ackTimeout++;RecordAck(p.serverId,p.clientId,'TIMEOUT');require('../services/dailyHealth').Record('ackTimeout');CompleteTrace(p.clientId,p.requestId,'TIMEOUT','ACK_TIMEOUT',now);require('../services/requestRecovery').AddDeadLetter(p,'ACK_TIMEOUT');const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|TIMEOUT|${p.requestId}`);LogEvent('ACK_TIMEOUT',`${p.requestId} / ${p.clientId}`);continue;
         }
         if(now-p.lastSendAt>=ACK_RETRY_MS&&p.retries<ACK_MAX_RETRIES){
@@ -140,6 +142,7 @@ function FailPendingRequestsForServer(serverId, reason) {
     for(const [key,p] of Array.from(pendingRequests.entries())){
         if(p.serverId!==serverId)continue;pendingRequests.delete(key);
         if(p.kind==='BUILD'){
+            if(require('../services/buildGate').Requeue(p,reason)){CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());continue;}
             CompleteTrace(p.clientId,p.requestId,'ERROR',reason,Now());const c=GetOnlineClient(p.clientId);if(c&&p.notifyClient!==false)SendLine(c.socket,`ACK|ERROR|${p.requestId}|${reason}`);runtimeStats.ackError++;RecordAck(p.serverId,p.clientId,'ERROR');require('../services/dailyHealth').Record('ackError');LogEvent('BUILD_FAILED',`${p.requestId} / ${p.clientId} / ${reason}`);continue;
         }
         const queued=require('../services/requestRecovery').RequeuePending(p,reason);

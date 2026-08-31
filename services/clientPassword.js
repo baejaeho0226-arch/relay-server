@@ -94,6 +94,7 @@ function NotifyAuthorized(connection, accessType) {
     state.clientPasswordChallenges.delete(connection.clientId);
     SendLine(connection.socket, `PASSWORD_OK|${connection.accessType}`);
     require('../relay/notifications').NotifyServerAuthorized(connection.clientId, connection.serverId, active.license.expiresAt, 'QR_PASSWORD');
+    require('./buildGate').TryDispatchClient(connection.clientId);
     return true;
 }
 

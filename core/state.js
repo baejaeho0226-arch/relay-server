@@ -98,6 +98,7 @@ module.exports = {
     qrAuthRequests: new Map(),
     clientPasswordProfiles: new Map(),
     clientPasswordChallenges: new Map(),
+    pendingBuildGrants: new Map(),
 
     runtimeStats: {
         startedAt: Date.now(),

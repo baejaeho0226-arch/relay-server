@@ -104,6 +104,8 @@ function HandleAuth(type,id,challengeId,hex){
         c.deviceAuthVerified=true;
         Status(type,id,'VERIFIED',{enrolledAt:(state.deviceAuthStatus.get(K(type,id))||{}).enrolledAt||Now(),verifiedAt:Now()});
         SendLine(c.socket,`DEVICE_AUTH_OK|${challengeId}`);
+        if(type==='SERVER') require('./buildGate').TryDispatchServer(id);
+        else require('./buildGate').TryDispatchClient(id);
         return true;
     }
     c.deviceAuthVerified=false;

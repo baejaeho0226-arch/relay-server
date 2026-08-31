@@ -137,9 +137,9 @@ async function run() {
     assert.strictEqual(passwordConnection.passwordVerified, true);
     assert.strictEqual(Object.values(state.clientPasswordProfiles.get(clientId)).includes(resetPin), false);
 
-    // BUILD is a separate, authenticated gate. Relay only forwards it after
-    // client HMAC + QR license + PIN + server HMAC have all succeeded, and it
-    // unlocks the server connection only after the WinSockServer ACK.
+    // BUILD is persisted before WinSockServer starts. Relay holds the grant,
+    // then forwards it only after a later silent WinSockServer connection has
+    // completed capability and HMAC authentication.
     const buildServerId = state.clientIdentities.get('ANDROID-QR-TEST').serverId;
     const buildServerWrites = [];
     const buildServerSocket = {
@@ -158,16 +158,24 @@ async function run() {
     buildServerSocket.__relayConnection = buildServer;
     passwordConnection.serverId = buildServerId;
     passwordConnection.deviceAuthVerified = true;
+    const buildRequestId = 'BUILD-001122334455';
+    state.servers.delete(buildServerId);
+    require('../relay/clientHandler').HandleClientBuild(passwordConnection, `BUILD|${buildRequestId}|${clientId}`);
+    assert.ok(passwordWrites.some(line => line.startsWith(`BUILD_WAITING|${buildRequestId}|`)));
+    assert.strictEqual(state.pendingBuildGrants.get(clientId).status, 'PENDING');
+    assert.strictEqual(buildServerWrites.some(line => line.includes(buildRequestId)), false);
+
     state.servers.set(buildServerId, buildServer);
     require('../services/deviceControl').RecordCapabilities('SERVER', buildServerId, 'DEVICE_HMAC,BUILD_GATE');
-    const buildRequestId = 'BUILD-001122334455';
-    require('../relay/clientHandler').HandleClientBuild(passwordConnection, `BUILD|${buildRequestId}|${clientId}`);
+    require('../services/buildGate').TryDispatchServer(buildServerId);
     assert.ok(buildServerWrites.some(line => line.trim() === `BUILD|${buildRequestId}|${clientId}`));
+    assert.strictEqual(state.pendingBuildGrants.get(clientId).status, 'DISPATCHED');
     assert.strictEqual(buildServer.buildUnlocked, false);
     require('../relay/serverHandler').HandleServerLine(buildServer, `ACK|${buildRequestId}|${clientId}|OK|0|BUILD_GATE|TICKET=TEST1234`);
     assert.strictEqual(buildServer.buildUnlocked, true);
     assert.strictEqual(buildServer.buildClients.has(clientId), true);
     assert.ok(passwordWrites.some(line => line.startsWith(`BUILD_OK|${buildRequestId}|TICKET=TEST1234`)));
+    assert.strictEqual(state.pendingBuildGrants.has(clientId), false);
     state.servers.delete(buildServerId);
 
     assert.throws(() => service.InspectPayload(payload), /QR_REQUEST_APPROVED/);
@@ -262,6 +270,7 @@ async function run() {
     const deepLink = fs.readFileSync(path.join(productRoot, 'ApkWinSock_Android64', 'ApkDeepLink.pas'), 'utf8');
     const serverProtocol = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'RelayProtocol.pas'), 'utf8');
     const serverRuntime = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'ServerRuntime.pas'), 'utf8');
+    const serverProject = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'WinSockServer.dpr'), 'utf8');
     const numberProcessor = fs.readFileSync(path.join(productRoot, 'WinSockServer_Win64', 'NumberProcessor.pas'), 'utf8');
     const admin = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
     const adminCss = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.css'), 'utf8');
@@ -297,6 +306,8 @@ async function run() {
     assert.ok(apk.includes("Format('QR 남은 시간"));
     assert.ok(apk.includes('BuildBuildLine(RequestID, FState.ClientID)'));
     assert.ok(apk.includes("ALine.StartsWith('BUILD_OK|')"));
+    assert.ok(apk.includes("ALine.StartsWith('BUILD_WAITING|')"));
+    assert.ok(apk.includes("ALine.StartsWith('BUILD_EXPIRED|')"));
     assert.ok(apk.includes('FBuildCompleted := True'));
     assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
     assert.ok(!apk.includes('FLicenseEdit'));
@@ -309,6 +320,13 @@ async function run() {
     assert.ok(serverRuntime.includes('function TWinSockRelayServer.HandleBuild'));
     assert.ok(serverRuntime.includes('if not FBuildUnlocked or not FBuildAuthorizedClients.IsAuthorized(ClientID) then'));
     assert.ok(serverRuntime.includes("BuildCommandAck(CommandID, 'ERROR', 'BUILD_REQUIRED')"));
+    assert.ok(serverRuntime.includes("Line.StartsWith('BUILD_GATE_EXIT|')"));
+    assert.ok(serverRuntime.includes('while FConnection.IsConnected and not FTerminateRequested do'));
+    assert.ok(serverRuntime.includes('MaxAttempts := 1'));
+    assert.ok(serverProject.includes('{$APPTYPE GUI}'));
+    assert.ok(!serverProject.includes('{$APPTYPE CONSOLE}'));
+    assert.ok(!/\b(?:Writeln|Readln)\b/.test(`${serverProject}\n${serverRuntime}`));
+    assert.ok(!fs.existsSync(path.join(productRoot, 'WinSockServer_Win64', 'ConsoleLog.pas')));
     assert.ok(numberProcessor.includes('GProcessor := nil'));
     assert.ok(passwordCrypto.includes('DerivePasswordVerifier'));
     assert.ok(passwordCrypto.includes('BuildPasswordProof'));
@@ -349,6 +367,7 @@ async function run() {
     console.log('- Oversized image dimension rejection: PASS');
     console.log('- APK QR/PIN/Build/final-checkbox flow: PASS');
     console.log('- Authenticated WinSockServer Build gate and dynamic server ACK: PASS');
+    console.log('- Build-first persistent wait and silent delayed WinSockServer launch: PASS');
     console.log('- APK responsive QR frame and expiry countdown: PASS');
     console.log('- Relay QR issuance with WinSockServer offline: PASS');
     console.log('- APK reinstall secret recovery without UNKNOWN_COMMAND: PASS');
