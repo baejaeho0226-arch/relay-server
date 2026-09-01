@@ -1,6 +1,12 @@
 PURE TCP RELAY // WEB ADMIN FINAL TEST RECORD
 Web Admin Version: 3.5.0
 Relay Version: 6.7.0
+
+INTERNAL ERROR FIX REVISION: 3.5.0-fix2
+- Dashboard qrApproval/buildGate dependency restored.
+- 38 authenticated GET APIs return JSON without HTTP 500 in empty state.
+- Dedicated API error panel no longer prefixes errors with [NO_DATA].
+- Internal errors carry a safe REF shared with the server log.
 Protocol Version: 2 + signed extensions
 APK Version: 2.9.0
 WinSockServer Version: 2.6.0

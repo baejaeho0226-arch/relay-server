@@ -165,16 +165,23 @@ async function api(url, options = {}) {
     request.body = JSON.stringify(options.body);
   }
   const response = await fetch(url, request);
-  let data = {};
-  try { data = await response.json(); } catch (_) {}
+  const responseText = await response.text();
+  let data = null;
+  if (responseText) {
+    try { data = JSON.parse(responseText); }
+    catch (_) {
+      throw new Error(`INVALID_API_RESPONSE [${method} ${url}]`);
+    }
+  }
   if (response.status === 401) {
     showLogin();
     throw new Error('로그인이 만료되었습니다.');
   }
-  if (!response.ok || data.ok === false) {
-    const detail = data.detail ? ` (${data.detail})` : '';
-    throw new Error(`${data.error || `HTTP_${response.status}`}${detail}`);
+  if (!response.ok || (data && data.ok === false)) {
+    const detail = data && data.detail ? ` [${data.detail}]` : '';
+    throw new Error(`${data && data.error || `HTTP_${response.status}`}${detail}`);
   }
+  if (!data || typeof data !== 'object') throw new Error(`EMPTY_API_RESPONSE [${method} ${url}]`);
   return data;
 }
 
@@ -404,8 +411,12 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'system') await renderSystem();
     else if (currentView === 'danger') await renderDangerZone();
   } catch (error) {
-    if (!silent) content.innerHTML = `<div class="empty">${esc(error.message)}</div>`;
-    toast(error.message, true);
+    if (!silent) {
+      content.innerHTML = `<div class="api-error"><strong>REQUEST FAILED</strong><span>${esc(error.message)}</span><small>새로고침 후에도 반복되면 서버 로그의 REF 번호를 확인하세요.</small></div>`;
+      toast(error.message, true);
+    } else {
+      console.warn(`[WEB AUTO REFRESH] ${view}:`, error.message);
+    }
   } finally {
     if (scrollState) restoreScrollState(scrollState);
     rendering = false;

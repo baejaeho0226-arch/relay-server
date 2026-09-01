@@ -37,6 +37,8 @@ const deviceControl = require('../services/deviceControl');
 const featureFlags = require('../services/featureFlags');
 const protocolReadiness = require('../services/protocolReadiness');
 const deviceAuth = require('../services/deviceAuth');
+const qrApproval = require('../services/qrApproval');
+const buildGate = require('../services/buildGate');
 const buildQrRoutes = require('./routes/buildQrRoutes');
 const loadSimulator = require('../services/loadSimulator');
 const storageMigration = require('../services/storageMigration');
@@ -62,7 +64,18 @@ const {
 } = config;
 
 function Json(res, status, data) {
-    const text = JSON.stringify(data);
+    let text;
+    try {
+        text = JSON.stringify(data);
+    } catch (error) {
+        console.error('[WEB JSON ERROR]', error && error.stack ? error.stack : error);
+        status = 500;
+        text = JSON.stringify({
+            ok: false,
+            error: 'RESPONSE_SERIALIZATION_FAILED',
+            detail: 'JSON_SERIALIZATION'
+        });
+    }
     res.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
         'Content-Length': Buffer.byteLength(text),

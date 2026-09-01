@@ -284,6 +284,10 @@ tr:hover td { background: rgba(50,255,139,.027); color: #ecfff3; }
 .kv div:nth-child(odd) { color: #719481; text-transform: uppercase; letter-spacing: .4px; }
 .empty { padding: 38px; text-align: center; color: var(--muted); }
 .empty::before { content: "[ NO_DATA ] "; color: #42644f; }
+.api-error { display: grid; gap: 8px; padding: 18px 20px; border: 1px solid #8a3030; border-left: 4px solid #e04b4b; border-radius: 8px; background: rgba(92, 20, 20, .24); color: #ffd4d4; }
+.api-error strong { color: #ff7070; letter-spacing: .08em; }
+.api-error span { font-family: var(--mono); overflow-wrap: anywhere; }
+.api-error small { color: #c99595; }
 .small-note { font-size: 9px; color: var(--muted); }
 
 .toast { position: fixed; right: 24px; bottom: 24px; max-width: 430px; padding: 12px 15px; border-radius: 4px; background: #06150d; border: 1px solid var(--line-strong); box-shadow: var(--shadow); z-index: 50; font-size: 10px; color: var(--accent); }

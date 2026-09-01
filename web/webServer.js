@@ -3,6 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const config = require('../config/config');
 const { HealthSnapshot } = require('../services/dashboard');
@@ -260,8 +261,12 @@ function StartWebAdmin() {
 
     const server = http.createServer((req, res) => {
         Promise.resolve(RequestHandler(req, res)).catch(error => {
-            console.error('[WEB ADMIN ERROR]', error && error.stack ? error.stack : error);
-            if (!res.headersSent) ApiError(res, 500, 'INTERNAL_ERROR');
+            const reference = crypto.randomBytes(6).toString('hex').toUpperCase();
+            console.error(
+                `[WEB ADMIN ERROR ${reference}] ${String(req.method || 'GET').toUpperCase()} ${req.url}`,
+                error && error.stack ? error.stack : error
+            );
+            if (!res.headersSent) ApiError(res, 500, 'INTERNAL_ERROR', `REF:${reference}`);
             else { try { res.end(); } catch (_) {} }
         });
     });
