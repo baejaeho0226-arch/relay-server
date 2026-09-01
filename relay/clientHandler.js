@@ -251,12 +251,20 @@ function HandleClientBuild(connection, line) {
 
     const saved = GetSavedClientByID(clientId);
     if (!saved) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND'); return; }
+    const buildGate = require('../services/buildGate');
+    const existingGrant = state.pendingBuildGrants.get(clientId);
+    if (existingGrant) {
+        connection.buildCompleted = false;
+        connection.buildSessionId = '';
+        SendLine(connection.socket, `BUILD_WAITING|${existingGrant.requestId}|${existingGrant.expiresAt}|${existingGrant.sessionId}`);
+        buildGate.TryDispatchClient(clientId);
+        return;
+    }
     const requestKey = MakeRequestKey(clientId, requestId);
-    if (requestHistory.has(requestKey) || pendingRequests.has(requestKey) || state.pendingBuildGrants.has(clientId)) {
+    if (requestHistory.has(requestKey) || pendingRequests.has(requestKey)) {
         SendLine(connection.socket, 'ERROR|DUPLICATE_REQUEST');
         return;
     }
-    const buildGate = require('../services/buildGate');
     const queued = buildGate.Queue(connection, requestId);
     if (!queued.ok) {
         if (queued.reason === 'BUILD_SESSION_ACTIVE') {
