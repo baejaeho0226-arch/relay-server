@@ -44,6 +44,10 @@ function IssueChallenge(type,id){
     const challengeId=crypto.randomBytes(8).toString('hex').toUpperCase();
     const nonce=crypto.randomBytes(16).toString('hex').toUpperCase();
     const issuedAt=Now();
+    if(c.deviceAuthVerified===true){
+        if(type==='SERVER') require('./buildGate').RevokeForServer(id,'SERVER_HMAC_REFRESH');
+        else require('./buildGate').RevokeForClient(id,'CLIENT_HMAC_REFRESH');
+    }
     c.deviceAuthVerified=false;
     state.deviceAuthChallenges.set(challengeId,{challengeId,type,id,nonce,issuedAt,expiresAt:issuedAt+30000});
     Status(type,id,'CHALLENGED',{lastChallengeAt:issuedAt});

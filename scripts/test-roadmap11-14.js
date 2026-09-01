@@ -2,6 +2,7 @@
 
 const assert = require('assert');
 const childProcess = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
@@ -14,6 +15,7 @@ const WEB_PORT = TCP_PORT + 1000;
 const SECRET = 'roadmap14-test-secret';
 let relay = null;
 let relayOutput = '';
+const deviceSecrets = new Map();
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -140,11 +142,32 @@ async function api(session, method, url, body) {
     return data;
 }
 
+function hmac(key, data) {
+    return crypto.createHmac('sha256', String(key)).update(String(data), 'utf8').digest('hex').toUpperCase();
+}
+
+async function authenticateDevice(socket, type, id, deviceKey) {
+    let line = await socket.waitFor(x => x.startsWith('DEVICE_SECRET|') || x.startsWith('AUTH_CHALLENGE|'));
+    if (line.startsWith('DEVICE_SECRET|')) {
+        deviceSecrets.set(`${type}:${deviceKey}`, line.split('|')[1]);
+        socket.send('DEVICE_SECRET_ACK');
+        line = await socket.waitFor(x => x.startsWith('AUTH_CHALLENGE|'));
+    }
+    const secret = deviceSecrets.get(`${type}:${deviceKey}`);
+    assert.ok(secret, `Missing ${type} secret for ${deviceKey}`);
+    const challenge = line.split('|');
+    socket.send(`DEVICE_AUTH|${challenge[1]}|${hmac(secret, `${type}|${id}|${challenge[1]}|${challenge[2]}|${challenge[3]}`)}`);
+    await socket.waitFor(x => x.startsWith(`DEVICE_AUTH_OK|${challenge[1]}`));
+}
+
 async function registerServer(deviceKey) {
     const socket = await connectLineSocket();
     socket.send(`REGISTER|2|2.0.0|${deviceKey}`);
     const line = await socket.waitFor(x => x.startsWith('REGISTERED|'));
-    return { socket, id: line.split('|')[1] };
+    const id = line.split('|')[1];
+    socket.send('CAPABILITIES|DEVICE_HMAC,BUILD_GATE,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING,TYPE_PROCESSOR_ROUTING');
+    await authenticateDevice(socket, 'SERVER', id, deviceKey);
+    return { socket, id, deviceKey };
 }
 
 async function connectClient(deviceKey, licenseKey) {
@@ -152,9 +175,21 @@ async function connectClient(deviceKey, licenseKey) {
     socket.send(`CONNECT|2|2.0.0|${deviceKey}`);
     const connected = await socket.waitFor(x => x.startsWith('CONNECTED|'));
     const parts = connected.split('|');
+    socket.send('CAPABILITIES|DEVICE_HMAC,BUILD_GATE,BUILD_SESSION_LEASE');
+    await authenticateDevice(socket, 'CLIENT', parts[1], deviceKey);
     socket.send(`LICENSE_AUTH|${licenseKey}|${parts[1]}`);
     await socket.waitFor(x => x.startsWith('LICENSE_OK|'));
-    return { socket, id: parts[1], serverId: parts[2] };
+    return { socket, id: parts[1], serverId: parts[2], deviceKey };
+}
+
+async function authorizeBuild(server, client, requestId) {
+    client.socket.send(`BUILD|${requestId}|${client.id}`);
+    await client.socket.waitFor(x => x.startsWith(`BUILD_WAITING|${requestId}|`));
+    const build = await server.socket.waitFor(x => x.startsWith(`BUILD|${requestId}|${client.id}|BLS-`));
+    const parts = build.split('|');
+    assert.equal(parts.length, 7);
+    server.socket.send(`ACK|${requestId}|${client.id}|OK|0|BUILD_SESSION|SESSION=${parts[3]}`);
+    await client.socket.waitFor(x => x.startsWith(`BUILD_OK|${requestId}|${parts[3]}|`));
 }
 
 async function run() {
@@ -199,6 +234,7 @@ async function run() {
     serverA = await registerServer('ROADMAP14-SERVER-A');
     client = await connectClient('ROADMAP14-CLIENT-A', license.key);
     assert.equal(client.serverId, serverA.id);
+    await authorizeBuild(serverA, client, 'BUILD-ROADMAP14-A1');
 
     await api(session, 'POST', '/api/request-recovery/policy', {
         enabled: true, maxItemsPerClient: 20, ttlSeconds: 300, maxDeliveryAttempts: 3
@@ -217,27 +253,29 @@ async function run() {
     await waitHealth();
     session = await login();
     serverA = await registerServer('ROADMAP14-SERVER-A');
-    const queuedNumber = await serverA.socket.waitFor(x => x === `NUMBER|QUEUE-REQUEST-1|${client.id}|101`, 10000);
+    client = await connectClient('ROADMAP14-CLIENT-A', license.key);
+    assert.equal(client.serverId, serverA.id);
+    await authorizeBuild(serverA, client, 'BUILD-ROADMAP14-A2');
+    const queuedNumber = await serverA.socket.waitFor(x => x === `NUMBER|QUEUE-REQUEST-1|${client.id}|TYPE1|101`, 10000);
     assert.ok(queuedNumber);
     serverA.socket.send(`ACK|QUEUE-REQUEST-1|${client.id}|OK|12|DEFAULT|QUEUED_OK`);
     recovery = await api(session, 'GET', '/api/request-recovery');
     assert.equal(recovery.recovery.summary.queued, 0);
-    client = await connectClient('ROADMAP14-CLIENT-A', license.key);
-    assert.equal(client.serverId, serverA.id);
 
     serverA.socket.close();
     await delay(200);
     client.socket.send(`SEND|QUEUE-REQUEST-2|${client.id}|102`);
     await client.socket.waitFor(x => x.startsWith('QUEUED|OK|QUEUE-REQUEST-2|'));
     serverA = await registerServer('ROADMAP14-SERVER-A');
-    await serverA.socket.waitFor(x => x === `NUMBER|QUEUE-REQUEST-2|${client.id}|102`, 10000);
+    await authorizeBuild(serverA, client, 'BUILD-ROADMAP14-A3');
+    await serverA.socket.waitFor(x => x === `NUMBER|QUEUE-REQUEST-2|${client.id}|TYPE1|102`, 10000);
     serverA.socket.send(`ACK|QUEUE-REQUEST-2|${client.id}|OK|11|DEFAULT|LIVE_QUEUE_OK`);
     await client.socket.waitFor(x => x === 'DEQUEUED|QUEUE-REQUEST-2|' + serverA.id);
     await client.socket.waitFor(x => x.startsWith('ACK|OK|QUEUE-REQUEST-2'));
 
     client.socket.send(`SEND|FAILED-REQUEST-1|${client.id}|202`);
     await client.socket.waitFor(x => x === 'SENT|OK|FAILED-REQUEST-1');
-    await serverA.socket.waitFor(x => x === `NUMBER|FAILED-REQUEST-1|${client.id}|202`);
+    await serverA.socket.waitFor(x => x === `NUMBER|FAILED-REQUEST-1|${client.id}|TYPE1|202`);
     serverA.socket.send(`ACK|FAILED-REQUEST-1|${client.id}|ERROR|PROCESS_ERROR|9|DEFAULT|TEST_FAILURE`);
     await client.socket.waitFor(x => x.startsWith('ACK|ERROR|FAILED-REQUEST-1|PROCESS_ERROR'));
     recovery = await api(session, 'GET', '/api/request-recovery');
@@ -248,14 +286,14 @@ async function run() {
     const failedTrace = traces.traces.find(x => x.requestId === 'FAILED-REQUEST-1');
     assert.ok(failedTrace && failedTrace.status === 'ERROR');
     const replay = await api(session, 'POST', '/api/request-traces/replay', { key: failedTrace.key });
-    const replayLine = await serverA.socket.waitFor(x => x.startsWith('NUMBER|REPLAY-') && x.endsWith(`|${client.id}|202`));
+    const replayLine = await serverA.socket.waitFor(x => x.startsWith('NUMBER|REPLAY-') && x.endsWith(`|${client.id}|TYPE1|202`));
     const replayId = replayLine.split('|')[1];
     assert.notEqual(replayId, 'FAILED-REQUEST-1');
     assert.equal(replay.requestId, replayId);
     serverA.socket.send(`ACK|${replayId}|${client.id}|OK|4|DEFAULT|REPLAY_OK`);
 
     const dlqRetry = await api(session, 'POST', `/api/dead-letters/${dlq.deadLetterId}/retry`, {});
-    const retryLine = await serverA.socket.waitFor(x => x.startsWith('NUMBER|DLQRETRY-') && x.endsWith(`|${client.id}|202`));
+    const retryLine = await serverA.socket.waitFor(x => x.startsWith('NUMBER|DLQRETRY-') && x.endsWith(`|${client.id}|TYPE1|202`));
     const retryId = retryLine.split('|')[1];
     assert.notEqual(retryId, replayId);
     assert.equal(dlqRetry.deadLetter.lastReplayRequestId, retryId);
@@ -263,7 +301,7 @@ async function run() {
 
     client.socket.send(`SEND|DISCARD-REQUEST-1|${client.id}|303`);
     await client.socket.waitFor(x => x === 'SENT|OK|DISCARD-REQUEST-1');
-    await serverA.socket.waitFor(x => x === `NUMBER|DISCARD-REQUEST-1|${client.id}|303`);
+    await serverA.socket.waitFor(x => x === `NUMBER|DISCARD-REQUEST-1|${client.id}|TYPE1|303`);
     serverA.socket.send(`ACK|DISCARD-REQUEST-1|${client.id}|ERROR|PROCESS_ERROR`);
     await client.socket.waitFor(x => x.startsWith('ACK|ERROR|DISCARD-REQUEST-1|PROCESS_ERROR'));
     recovery = await api(session, 'GET', '/api/request-recovery?query=DISCARD-REQUEST-1');

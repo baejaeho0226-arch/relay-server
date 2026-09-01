@@ -1,4 +1,4 @@
-# Web Admin Feature Matrix // v3.4.0
+# Web Admin Feature Matrix // v3.5.0
 
 01. Live Event Console
 02. Request Trace

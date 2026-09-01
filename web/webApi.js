@@ -37,7 +37,7 @@ const deviceControl = require('../services/deviceControl');
 const featureFlags = require('../services/featureFlags');
 const protocolReadiness = require('../services/protocolReadiness');
 const deviceAuth = require('../services/deviceAuth');
-const qrApproval = require('../services/qrApproval');
+const buildQrRoutes = require('./routes/buildQrRoutes');
 const loadSimulator = require('../services/loadSimulator');
 const storageMigration = require('../services/storageMigration');
 const releaseManager = require('../services/releaseManager');
@@ -170,6 +170,7 @@ function BuildDashboard() {
             suspended
         },
         qrAuth: qrApproval.Summary(),
+        buildSessions: buildGate.Summary(),
         ack: {
             pending: state.pendingRequests.size,
             ok: state.runtimeStats.ackOk,
@@ -293,7 +294,9 @@ function BuildClients() {
             appVersion: live ? live.appVersion : '',
             rttMs: live ? live.rttMs : -1,
             kickedUntil,
-            password: clientPassword.PublicStatus(saved.id)
+            password: clientPassword.PublicStatus(saved.id),
+            buildSession: buildGate.PublicSession(buildGate.ActiveSessionForClient(saved.id)),
+            buildBinding: buildGate.BindingForClient(saved.id)
         });
     }
     return out.sort((a, b) => a.id.localeCompare(b.id));
@@ -424,54 +427,10 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
-    if (method === 'GET' && pathname === '/api/qr-auth') {
-        if (!RequireAdmin(res, session)) return;
-        Json(res, 200, { ok: true, requests: qrApproval.List(), summary: qrApproval.Summary() });
-        return;
-    }
-
-    if (method === 'POST' && pathname === '/api/qr-auth/scan') {
-        if (!RequireAdmin(res, session)) return;
-        try {
-            const result = qrApproval.ScanImage(body.imageData || '');
-            LogEvent('QR_AUTH_SCANNED', `${result.request.requestId} -> ${result.request.clientId} / ${session.role}`);
-            Json(res, 200, { ok: true, ...result });
-        } catch (error) {
-            const code = String(error && error.message || 'QR_SCAN_FAILED');
-            LogEvent('QR_AUTH_SCAN_FAILED', `${code} / ${session.role}`);
-            ApiError(res, code.includes('EXPIRED') || code.includes('APPROVED') || code.includes('REJECTED') ? 409 : 400, code);
-        }
-        return;
-    }
-
-    if (method === 'POST' && pathname === '/api/qr-auth/approve') {
-        if (!RequireAdmin(res, session)) return;
-        const result = qrApproval.Approve(body.requestId, body.approvalToken, {
-            days: body.days,
-            memo: body.memo,
-            tags: body.tags,
-            accessType: body.accessType
-        }, session.role);
-        if (!result.ok) {
-            LogEvent('QR_AUTH_APPROVE_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);
-            ApiError(res, 409, result.reason);
-            return;
-        }
-        Json(res, 200, result);
-        return;
-    }
-
-    if (method === 'POST' && pathname === '/api/qr-auth/reject') {
-        if (!RequireAdmin(res, session)) return;
-        const result = qrApproval.Reject(body.requestId, body.reason, session.role);
-        if (!result.ok) {
-            LogEvent('QR_AUTH_REJECT_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);
-            ApiError(res, 409, result.reason);
-            return;
-        }
-        Json(res, 200, result);
-        return;
-    }
+    if (await buildQrRoutes.Handle({
+        method, pathname, body, res, session,
+        BuildServers, RequireAdmin, Json, ApiError
+    })) return;
 
     if (method === 'GET' && pathname === '/api/servers') {
         if (!RequireOperation(res, session, 'SERVER_LIST')) return;

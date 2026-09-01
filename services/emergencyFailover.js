@@ -16,6 +16,10 @@ function GetSavedClientByID(id) { return require('../identity/identityManager').
 function GetServerClientCount(id) { return require('../identity/identityManager').GetServerClientCount(id); }
 function GetKickUntil(map, id) { return require('../identity/identityManager').GetKickUntil(map, id); }
 function ServerExists(id) { return require('../identity/identityManager').ServerExists(id); }
+function GetFixedBuildBinding(clientId) {
+    try { return require('./buildGate').BindingForClient(clientId); }
+    catch (_) { return null; }
+}
 
 function DefaultPolicy() {
     return {
@@ -346,12 +350,29 @@ function Evaluate() {
 
     let moves = 0;
     let returns = 0;
+    let changed = false;
     const maxMoves = policy.maxMovesPerCycle;
     for (const clientId of Array.from(state.clientFailoverEnabled)) {
         if (moves + returns >= maxMoves) break;
         const saved = GetSavedClientByID(clientId);
-        if (!saved) { state.clientFailoverEnabled.delete(clientId); continue; }
+        if (!saved) {
+            state.clientFailoverEnabled.delete(clientId);
+            changed = true;
+            continue;
+        }
         let record = state.clientFailoverRecords.get(clientId);
+
+        // A successful Build permanently binds this APK to its WinSockServer.
+        // Automatic failover/return must never rewrite that binding. Only the
+        // explicit Web Admin rebind operation may move a Build-bound client.
+        if (GetFixedBuildBinding(clientId)) {
+            if (record) {
+                state.clientFailoverRecords.delete(clientId);
+                LogEvent('CLIENT_FAILOVER_BLOCKED_BUILD_BINDING', `${clientId} BUILD_BINDING_FIXED`);
+                changed = true;
+            }
+            continue;
+        }
 
         if (record) {
             const current = NormalizeID(saved.serverId);
@@ -361,10 +382,12 @@ function Evaluate() {
             if (current !== failover && current !== primary) {
                 state.clientFailoverRecords.delete(clientId);
                 LogEvent('CLIENT_FAILOVER_RECORD_CLEARED', `${clientId} manualCurrent=${current}`);
+                changed = true;
                 continue;
             }
             if (current === primary) {
                 state.clientFailoverRecords.delete(clientId);
+                changed = true;
                 continue;
             }
 
@@ -396,7 +419,7 @@ function Evaluate() {
         if (result.ok) moves++;
     }
 
-    if (moves || returns) SaveDatabase();
+    if (moves || returns || changed) SaveDatabase();
     return { moves, returns, skipped: false };
 }
 
@@ -415,9 +438,12 @@ function BuildStatus() {
         const primaryStatus = ServerUsability(primary);
         const backupStatus = backup ? ServerUsability(backup) : { reason: 'NOT_CONFIGURED' };
         const currentStatus = ServerUsability(current);
+        const buildBinding = GetFixedBuildBinding(clientId);
         rows.push({
             clientId,
             enabled: state.clientFailoverEnabled.has(clientId),
+            buildBindingFixed: Boolean(buildBinding),
+            buildBindingServerId: buildBinding ? NormalizeID(buildBinding.serverId) : '',
             failedOver: Boolean(record),
             primaryServerId: primary,
             backupServerId: backup,

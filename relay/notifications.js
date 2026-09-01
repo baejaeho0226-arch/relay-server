@@ -29,6 +29,7 @@ function NotifyServerAuthorized(clientId, serverId, expiresAt, source = 'LICENSE
 }
 
 function NotifyServerUnauthorized(clientId, reason) {
+    require('../services/buildGate').RevokeForClient(clientId, reason || 'CLIENT_UNAUTHORIZED');
     const saved = GetSavedClientByID(clientId);
     if (!saved) return;
     const server = GetOnlineServer(saved.serverId);

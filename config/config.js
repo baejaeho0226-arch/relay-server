@@ -8,7 +8,7 @@ const HEALTH_PORT = Number(process.env.HEALTH_PORT || 0);
 const WEB_ADMIN_PORT = Number(process.env.WEB_ADMIN_PORT || 8080);
 const WEB_ADMIN_SESSION_MS = Number(process.env.WEB_ADMIN_SESSION_MS || 30 * 60 * 1000);
 const ENABLE_LEGACY_TCP_ADMIN = String(process.env.ENABLE_LEGACY_TCP_ADMIN || '') === '1';
-const WEB_ADMIN_VERSION = '3.4.0';
+const WEB_ADMIN_VERSION = '3.5.0';
 const UPDATE_BASE_URL = String(process.env.UPDATE_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')).replace(/\/+$/, '');
 
 const DATA_DIR = process.env.DATA_DIR
@@ -84,6 +84,16 @@ const QR_AUTH_MAX_REQUESTS = Math.max(100, Math.min(5000, Number(process.env.QR_
 const QR_AUTH_DEFAULT_DAYS = Math.max(1, Math.min(3650, Number(process.env.QR_AUTH_DEFAULT_DAYS || 30)));
 const QR_APPROVAL_SECRET = String(process.env.QR_APPROVAL_SECRET || '');
 
+const buildWaitTtlInput = Number(process.env.BUILD_GATE_WAIT_TTL_MS || 30 * 60 * 1000);
+const sessionTtlInput = Number(process.env.BUILD_SESSION_TTL_MINUTES || 30);
+const sessionHistoryInput = Number(process.env.MAX_BUILD_SESSION_HISTORY || 2000);
+const BUILD_WAIT_TTL_MS = Math.max(60 * 1000, Math.min(24 * 60 * 60 * 1000,
+    Number.isFinite(buildWaitTtlInput) ? buildWaitTtlInput : 30 * 60 * 1000));
+const DEFAULT_BUILD_SESSION_TTL_MINUTES = Math.max(1, Math.min(1440,
+    Number.isFinite(sessionTtlInput) ? Math.trunc(sessionTtlInput) : 30));
+const MAX_BUILD_SESSION_HISTORY = Math.max(100, Math.min(10000,
+    Number.isFinite(sessionHistoryInput) ? Math.trunc(sessionHistoryInput) : 2000));
+
 const DANGEROUS_PREFIXES = [
     'SERVICE_STOP',
     'BACKUP_RESTORE|',
@@ -110,5 +120,6 @@ module.exports = {
     VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT,
     HA_ENABLED, HA_INSTANCE_ID, HA_PRIORITY, HA_PEER_URL, HA_SHARED_SECRET, HA_POLL_MS, HA_FAILOVER_TIMEOUT_MS,
     QR_AUTH_TTL_MS, QR_AUTH_MAX_IMAGE_BYTES, QR_AUTH_MAX_REQUESTS, QR_AUTH_DEFAULT_DAYS, QR_APPROVAL_SECRET,
+    BUILD_WAIT_TTL_MS, DEFAULT_BUILD_SESSION_TTL_MINUTES, MAX_BUILD_SESSION_HISTORY,
     DANGEROUS_PREFIXES
 };

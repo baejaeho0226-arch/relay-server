@@ -36,6 +36,7 @@ function DisconnectConnection(connection) {
     if(connection.type==='server'){
         if(connection.serverId&&servers.get(connection.serverId)===connection)servers.delete(connection.serverId);
         if(connection.serverId){
+            require('../services/buildGate').RevokeForServer(connection.serverId,'SERVER_OFFLINE');
             if(connection.buildGateCapable)for(const client of clients.values()){
                 if(client.serverId!==connection.serverId)continue;
                 client.buildCompleted=false;
@@ -44,6 +45,7 @@ function DisconnectConnection(connection) {
             FailPendingRequestsForServer(connection.serverId,'SERVER_OFFLINE');LogEvent('SERVER_OFFLINE',connection.serverId);try{require('../services/emergencyFailover').MarkServerOffline(connection.serverId);}catch(_){}
         }
     }else if(connection.type==='client'){
+        if(connection.clientId) require('../services/buildGate').RevokeForClient(connection.clientId,'CLIENT_OFFLINE');
         if(connection.clientId) state.clientPasswordChallenges.delete(connection.clientId);
         if(connection.clientId&&clients.get(connection.clientId)===connection)clients.delete(connection.clientId);
         if(connection.clientId&&connection.serverId){const s=GetOnlineServer(connection.serverId);if(s)s.clients.delete(connection.clientId);}

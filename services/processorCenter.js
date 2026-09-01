@@ -6,6 +6,11 @@ const { NormalizeID, Now, SafeField, SendLine } = require('../core/utils');
 const INT64_MIN = -(1n << 63n);
 const INT64_MAX = (1n << 63n) - 1n;
 const MAX_BLOCKED = 100;
+const TYPE_ROUTES = Object.freeze({
+    TYPE1: 'TYPE1/DEFAULT',
+    TYPE2: 'TYPE2/DEFAULT',
+    TYPE3: 'TYPE3/DEFAULT'
+});
 
 function NormalizeInt64(value, optional = true) {
     const text = String(value === undefined || value === null ? '' : value).trim();
@@ -120,7 +125,7 @@ function Record(processor, result, processingMs, reason = '') {
 }
 
 function Stats() {
-    const names = new Set([state.numberProcessingPolicy.processor, ...state.processorStats.keys()]);
+    const names = new Set([...Object.values(TYPE_ROUTES), ...state.processorStats.keys()]);
     return Array.from(names).filter(Boolean).sort().map(name => {
         const x = state.processorStats.get(name) || { processor: name, requests: 0, success: 0, error: 0, totalProcessingMs: 0, maxMs: 0, lastAt: 0, lastError: '' };
         return { ...x, avgMs: x.requests ? Number((x.totalProcessingMs / x.requests).toFixed(2)) : 0, successRate: x.requests ? Number((x.success / x.requests * 100).toFixed(2)) : 100 };
@@ -141,7 +146,12 @@ function ResetStats() {
 }
 
 function Overview() {
-    return { policy: { ...state.numberProcessingPolicy, blockedValues: [...state.numberProcessingPolicy.blockedValues] }, stats: Stats(), servers: ServerStatus() };
+    return {
+        policy: { ...state.numberProcessingPolicy, blockedValues: [...state.numberProcessingPolicy.blockedValues] },
+        routes: Object.entries(TYPE_ROUTES).map(([accessType, processor]) => ({ accessType, processor })),
+        stats: Stats(),
+        servers: ServerStatus()
+    };
 }
 
-module.exports = { NormalizeInt64, NormalizePolicy, ImportPersisted, BuildConfigLine, PushToServer, PushAll, SetPolicy, HandleAck, Record, Stats, ServerStatus, ResetStats, Overview };
+module.exports = { TYPE_ROUTES, NormalizeInt64, NormalizePolicy, ImportPersisted, BuildConfigLine, PushToServer, PushAll, SetPolicy, HandleAck, Record, Stats, ServerStatus, ResetStats, Overview };

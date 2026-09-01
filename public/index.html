@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <title>RELAY // Operations Console</title>
-  <link rel="stylesheet" href="/admin.css?v=3.4.0">
+  <link rel="stylesheet" href="/admin.css?v=3.5.0">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -72,6 +72,7 @@
             <button data-view="servers">Servers</button>
             <button data-view="clients">Clients</button>
             <button data-view="clientpasswords" data-admin-only class="pin-nav">Client PIN 관리</button>
+            <button data-view="buildsessions" data-admin-only>Build Sessions</button>
             <button data-view="licenses">QR Licenses</button>
             <button data-view="enrollment" data-admin-only>Device Enrollment</button>
             <button data-view="protocol">Protocol / Security</button>
@@ -104,7 +105,7 @@
         </details>
       </nav>
       <div class="sidebar-footer">
-        <div><span class="muted">Version</span><strong id="web-version-label">WEB v3.4.0</strong></div>
+        <div><span class="muted">Version</span><strong id="web-version-label">WEB v3.5.0</strong></div>
         <div><span class="muted">Role</span><strong id="role-label">-</strong></div>
         <button id="logout-btn" class="ghost">로그아웃</button>
       </div>
@@ -143,6 +144,10 @@
     </div>
   </div>
 
-  <script src="/admin.js?v=3.4.0" defer></script>
+  <script src="/admin.js?v=3.5.0" defer></script>
+  <script src="/admin-pages-monitoring.js?v=3.5.0" defer></script>
+  <script src="/admin-pages-access.js?v=3.5.0" defer></script>
+  <script src="/admin-pages-operations.js?v=3.5.0" defer></script>
+  <script src="/admin-actions.js?v=3.5.0" defer></script>
 </body>
 </html>

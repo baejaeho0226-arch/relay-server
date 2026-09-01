@@ -47,6 +47,7 @@ function AttachClient(connection, saved) {
     connection.passwordVerified = false;
     connection.accessType = '';
     connection.buildCompleted = false;
+    connection.buildSessionId = '';
     connection.lastServerAuthState = '';
     connection.deviceAuthVerified = false;
     connection.lastSeen = Now();
@@ -156,7 +157,9 @@ function HandleClientSend(connection, line) {
     const saved = GetSavedClientByID(clientId);
     const server = saved ? GetOnlineServer(saved.serverId) : null;
     if (!saved) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND'); return; }
-    const payload = `NUMBER|${requestId}|${clientId}|${number}`;
+    const buildSession = require('../services/buildGate').ActiveSessionForClient(clientId);
+    const payloadAccessType = buildSession ? buildSession.accessType : require('../services/clientPassword').NormalizeAccessType(connection.accessType);
+    const payload = `NUMBER|${requestId}|${clientId}|${payloadAccessType}|${number}`;
     const recovery = require('../services/requestRecovery');
     const recordAccepted = () => {
         active.license.lastSeenAt = Now();
@@ -170,6 +173,7 @@ function HandleClientSend(connection, line) {
     };
     let unavailableReason = '';
     if (!server) unavailableReason = 'SERVER_OFFLINE';
+    else if (!buildSession || buildSession.serverId !== saved.serverId || buildSession.expiresAt <= Now()) unavailableReason = 'SERVER_BUILD_REQUIRED';
     else if (server.buildGateCapable && (!(server.buildClients instanceof Set) || !server.buildClients.has(clientId))) unavailableReason = 'SERVER_BUILD_REQUIRED';
     else if (deviceAuth.Enforced('SERVER',saved.serverId) && !deviceAuth.Verified('SERVER',saved.serverId)) {
         unavailableReason = 'SERVER_AUTH_REQUIRED';
@@ -180,7 +184,7 @@ function HandleClientSend(connection, line) {
             SendLine(connection.socket, 'ERROR|SERVER_BUILD_REQUIRED');
             return;
         }
-        const queued = recovery.EnqueueRequest({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, unavailableReason);
+        const queued = recovery.EnqueueRequest({ clientId, serverId: saved.serverId, requestId, number, accessType: payloadAccessType, payload, source: 'CLIENT', notifyClient: true }, unavailableReason);
         if (!queued.ok) {
             recovery.AddDeadLetter({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, unavailableReason, { detail: queued.reason });
             SendLine(connection.socket, `ERROR|${unavailableReason}`);
@@ -191,7 +195,7 @@ function HandleClientSend(connection, line) {
         return;
     }
     if (!SendLine(server.socket, payload)) {
-        const queued = recovery.EnqueueRequest({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, 'SERVER_SEND_FAILED');
+        const queued = recovery.EnqueueRequest({ clientId, serverId: saved.serverId, requestId, number, accessType: payloadAccessType, payload, source: 'CLIENT', notifyClient: true }, 'SERVER_SEND_FAILED');
         if (queued.ok) { recordAccepted(); SendLine(connection.socket, `QUEUED|OK|${requestId}|${queued.position}`); return; }
         recovery.AddDeadLetter({ clientId, serverId: saved.serverId, requestId, number, payload, source: 'CLIENT', notifyClient: true }, 'SERVER_SEND_FAILED', { detail: queued.reason });
         SendLine(connection.socket, 'ERROR|SERVER_SEND_FAILED');
@@ -254,7 +258,19 @@ function HandleClientBuild(connection, line) {
     }
     const buildGate = require('../services/buildGate');
     const queued = buildGate.Queue(connection, requestId);
-    if (!queued.ok) { SendLine(connection.socket, `ERROR|${queued.reason}`); return; }
+    if (!queued.ok) {
+        if (queued.reason === 'BUILD_SESSION_ACTIVE') {
+            const session = buildGate.PublicSession(buildGate.ActiveSessionForClient(clientId));
+            if (session) {
+                connection.buildCompleted = true;
+                connection.buildSessionId = session.sessionId;
+                SendLine(connection.socket, `BUILD_OK|${requestId}|${session.sessionId}|${session.expiresAt}|${session.accessType}`);
+                return;
+            }
+        }
+        SendLine(connection.socket, `ERROR|${queued.reason}`);
+        return;
+    }
     buildGate.TryDispatchClient(clientId);
 }
 

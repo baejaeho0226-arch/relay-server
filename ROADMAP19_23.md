@@ -1,6 +1,6 @@
 # Operations Roadmap 19–23
 
-Web Admin `3.4.0` · Node Relay `6.4.0` · ApkWinSock `2.6.0` · Protocol `2`
+Web Admin `3.5.0` · Node Relay `6.7.0` · ApkWinSock `2.9.0` · Protocol `2`
 
 ## 19 — SQLite primary
 
@@ -38,12 +38,12 @@ and replication endpoints require timestamped HMAC-SHA256 authentication.
 Set `RELAY_BACKUP_HOST` and `RELAY_BACKUP_PORT` in both Delphi config units.
 The clients rotate endpoints after connection failure or a Standby response.
 
-## 21–23 — ApkWinSock operator UI
+## 21–23 — ApkWinSock minimal source UI
 
-`ApkWinSock.pas` constructs its FMX surface entirely in source using the Web
-Admin dark/green visual language. The license and send states are separate
-cards. After authorization, free-form number input is hidden and unreachable;
-only mutually exclusive fixed values `1` and `2` can be sent.
+`ApkWinSock.pas` constructs the FMX surface entirely in source. The final
+operator choice is intentionally minimal: full-screen QR, centered PIN keypad,
+one centered Build button, then one Ready checkbox. License text entry,
+free-form number input, status dashboard, and server details are absent.
 
 ## Source-only update staging
 

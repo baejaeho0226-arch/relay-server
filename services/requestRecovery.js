@@ -56,7 +56,15 @@ function NewRequestId(prefix = 'REPLAY') {
 function NumberFrom(input) {
     if (input.number !== undefined && /^-?\d+$/.test(String(input.number))) return String(input.number);
     const parts = String(input.payload || '').split('|');
-    return parts.length >= 4 && /^-?\d+$/.test(parts[3]) ? parts[3] : '';
+    const candidate = parts.length ? parts[parts.length - 1] : '';
+    return /^-?\d+$/.test(candidate) ? candidate : '';
+}
+
+function BuildSessionReady(clientId, serverId) {
+    const session = require('./buildGate').ActiveSessionForClient(clientId);
+    if (!session) return { ok: false, reason: 'BUILD_REQUIRED' };
+    if (NormalizeID(session.serverId) !== NormalizeID(serverId)) return { ok: false, reason: 'SERVER_BINDING_MISMATCH' };
+    return { ok: true, session };
 }
 
 function QueueCount(clientId) {
@@ -122,7 +130,7 @@ function EnqueueRequest(input, reason = 'SERVER_OFFLINE') {
         clientId,
         requestId,
         number,
-        payload: `NUMBER|${requestId}|${clientId}|${number}`,
+        payload: `NUMBER|${requestId}|${clientId}|${require('./clientPassword').NormalizeAccessType(input.accessType)}|${number}`,
         serverId: NormalizeID(input.serverId || ''),
         createdAt: Number(input.originCreatedAt || input.createdAt) || now,
         queuedAt: now,
@@ -238,9 +246,11 @@ function DispatchRequest(input, options = {}) {
     if (!LicenseReady(clientId)) return { ok: false, reason: 'LICENSE_REQUIRED' };
     const serverId = NormalizeID(saved.serverId);
     const ready = ServerReady(serverId);
+    const build = ready.ok ? BuildSessionReady(clientId, serverId) : { ok: false, reason: ready.reason };
     const common = {
         clientId, requestId, serverId, number,
-        payload: `NUMBER|${requestId}|${clientId}|${number}`,
+        accessType: build.ok ? build.session.accessType : require('./clientPassword').NormalizeAccessType(input.accessType),
+        payload: build.ok ? `NUMBER|${requestId}|${clientId}|${build.session.accessType}|${number}` : '',
         source: SafeField(input.source || options.source || 'ADMIN_REPLAY'),
         replayOf: SafeField(input.replayOf || ''),
         notifyClient: input.notifyClient === true,
@@ -249,6 +259,10 @@ function DispatchRequest(input, options = {}) {
     if (!ready.ok) {
         if (options.allowQueue && CanQueue(clientId)) return EnqueueRequest(common, ready.reason);
         return { ok: false, reason: ready.reason };
+    }
+    if (!build.ok) {
+        if (options.allowQueue && CanQueue(clientId)) return EnqueueRequest(common, build.reason);
+        return { ok: false, reason: build.reason };
     }
     if (!SendLine(ready.server.socket, common.payload)) {
         if (options.allowQueue && CanQueue(clientId)) return EnqueueRequest(common, 'SERVER_SEND_FAILED');
@@ -351,11 +365,14 @@ function ProcessOfflineQueue() {
         if (!saved) { FailQueueItem(item.queueId, 'CLIENT_NOT_FOUND'); failed++; changed = true; continue; }
         const ready = ServerReady(saved.serverId);
         if (!ready.ok) continue;
+        const build = BuildSessionReady(item.clientId, saved.serverId);
+        if (!build.ok) continue;
         if (now - Number(item.lastAttemptAt || 0) < 1000) continue;
         item.lastAttemptAt = now;
         item.attempts++;
         item.serverId = NormalizeID(saved.serverId);
-        item.payload = `NUMBER|${item.requestId}|${item.clientId}|${item.number}`;
+        item.accessType = build.session.accessType;
+        item.payload = `NUMBER|${item.requestId}|${item.clientId}|${item.accessType}|${item.number}`;
         if (!SendLine(ready.server.socket, item.payload)) {
             changed = true;
             if (item.attempts >= state.offlineQueuePolicy.maxDeliveryAttempts) {
@@ -468,10 +485,11 @@ function ImportPersisted(data) {
             const clientId = NormalizeID(value.clientId);
             const requestId = String(value.requestId || '').trim().slice(0, 64);
             const number = NumberFrom(value);
+            const accessType = require('./clientPassword').NormalizeAccessType(value.accessType);
             if (!/^QUEUE-[A-Z0-9-]+$/.test(queueId) || !clientId || !GetSavedClientByID(clientId) || !requestId || !number) continue;
             state.offlineQueue.set(queueId, {
-                queueId, clientId, requestId, number,
-                payload: `NUMBER|${requestId}|${clientId}|${number}`,
+                queueId, clientId, requestId, number, accessType,
+                payload: `NUMBER|${requestId}|${clientId}|${accessType}|${number}`,
                 serverId: NormalizeID(value.serverId || ''),
                 createdAt: Number(value.createdAt) || Now(), queuedAt: Number(value.queuedAt) || Now(),
                 expiresAt: Number(value.expiresAt) || (Now() + state.offlineQueuePolicy.ttlSeconds * 1000),

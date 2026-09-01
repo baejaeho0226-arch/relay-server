@@ -18,7 +18,10 @@ const nodes = [];
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 function staticSourceChecks() {
-    const apk = fs.readFileSync(path.join(PRODUCT_ROOT, 'ApkWinSock_Android64', 'ApkWinSock.pas'), 'utf8');
+    const apkDir = path.join(PRODUCT_ROOT, 'ApkWinSock_Android64');
+    const apk = fs.readdirSync(apkDir)
+        .filter(name => name === 'ApkWinSock.pas' || /^ApkWinSock\..+\.inc$/i.test(name))
+        .sort().map(name => fs.readFileSync(path.join(apkDir, name), 'utf8')).join('\n');
     const send = apk.slice(apk.indexOf('procedure TForm1.SendButtonClick'), apk.indexOf('\nend;', apk.indexOf('procedure TForm1.SendButtonClick')) + 5);
     assert.ok(apk.includes('procedure TForm1.BuildWebStyleUI'));
     assert.ok(apk.includes('FQrImage: TImage'));

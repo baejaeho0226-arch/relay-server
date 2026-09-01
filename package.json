@@ -1,7 +1,7 @@
 {
   "name": "pure-tcp-relay",
-  "version": "6.6.0",
-  "description": "Pure TCP Relay with signed QR approval, PIN proof, authenticated Build gate, SQLite storage and active/standby HA",
+  "version": "6.7.0",
+  "description": "Pure TCP Relay with signed QR approval, PIN proof, leased Build sessions, fixed device pairing, typed processors, SQLite storage and active/standby HA",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,6 +10,7 @@
     "test:roadmap18": "node scripts/test-roadmap15-18.js",
     "test:roadmap23": "node scripts/test-roadmap19-23.js",
     "test:qrauth": "node scripts/test-qr-auth.js",
+    "test:buildsessions": "node scripts/test-build-sessions.js",
     "loadtest": "node tools/load-simulator.js"
   },
   "engines": {

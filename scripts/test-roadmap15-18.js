@@ -2,6 +2,7 @@
 
 const assert = require('assert');
 const childProcess = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
@@ -15,6 +16,8 @@ const WEB_PORT = TCP_PORT + 1000;
 const SECRET = 'roadmap18-test-secret';
 let relay = null;
 let relayOutput = '';
+const deviceSecrets = new Map();
+const testPassword = '2580';
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -114,13 +117,43 @@ async function api(session, method, url, body) {
     return data;
 }
 
+function hmac(key, data) {
+    return crypto.createHmac('sha256', String(key)).update(String(data), 'utf8').digest('hex').toUpperCase();
+}
+
+async function authenticateDevice(socket, type, id, key) {
+    let line = await socket.waitFor(x => x.startsWith('DEVICE_SECRET|') || x.startsWith('AUTH_CHALLENGE|'));
+    if (line.startsWith('DEVICE_SECRET|')) {
+        deviceSecrets.set(key, line.split('|')[1]);
+        socket.send('DEVICE_SECRET_ACK');
+        line = await socket.waitFor(x => x.startsWith('AUTH_CHALLENGE|'));
+    }
+    const secret = deviceSecrets.get(key);
+    assert.ok(secret, `Missing ${type} test secret`);
+    const challenge = line.split('|');
+    socket.send(`DEVICE_AUTH|${challenge[1]}|${hmac(secret, `${type}|${id}|${challenge[1]}|${challenge[2]}|${challenge[3]}`)}`);
+    await socket.waitFor(x => x.startsWith(`DEVICE_AUTH_OK|${challenge[1]}`));
+}
+
+async function completePassword(socket, clientId) {
+    const line = await socket.waitFor(x => x.startsWith('PASSWORD_CHALLENGE|'));
+    const parts = line.split('|');
+    let verifier = hmac(parts[3], testPassword);
+    for (let i = 1; i < Number(parts[4]); i++) verifier = hmac(parts[3], verifier);
+    const proof = hmac(verifier, `${parts[1]}|${clientId}|${parts[2]}|${parts[5]}`);
+    if (parts[1] === 'SETUP') socket.send(`PASSWORD_SETUP|${parts[2]}|${verifier}|${proof}`);
+    else socket.send(`PASSWORD_VERIFY|${parts[2]}|${proof}`);
+    await socket.waitFor(x => x.startsWith('PASSWORD_OK|'));
+}
+
 async function registerServer() {
     const socket = await connectSocket();
     socket.send('REGISTER|2|2.1.0|ROADMAP18-SERVER');
     const registered = await socket.waitFor(x => x.startsWith('REGISTERED|'));
     const id = registered.split('|')[1];
-    socket.send('CAPABILITIES|CONFIG,PROCESS_RESULT,PROCESSOR_POLICY');
+    socket.send('CAPABILITIES|CONFIG,PROCESS_RESULT,PROCESSOR_POLICY,DEVICE_HMAC,BUILD_GATE,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING,TYPE_PROCESSOR_ROUTING');
     await socket.waitFor(x => x.startsWith('PROCESSOR_CONFIG|'));
+    await authenticateDevice(socket, 'SERVER', id, 'ROADMAP18-SERVER');
     return { socket, id };
 }
 
@@ -129,9 +162,21 @@ async function connectClient(licenseKey) {
     socket.send('CONNECT|2|2.1.0|ROADMAP18-CLIENT');
     const connected = await socket.waitFor(x => x.startsWith('CONNECTED|'));
     const id = connected.split('|')[1];
+    socket.send('CAPABILITIES|DEVICE_HMAC,PASSWORD_KEYPAD,BUILD_GATE,BUILD_SESSION_LEASE');
+    await authenticateDevice(socket, 'CLIENT', id, 'ROADMAP18-CLIENT');
     socket.send(`LICENSE_AUTH|${licenseKey}|${id}`);
     await socket.waitFor(x => x.startsWith('LICENSE_OK|'));
     return { socket, id };
+}
+
+async function authorizeBuild(server, client, requestId = 'BUILD-ROADMAP18') {
+    client.socket.send(`BUILD|${requestId}|${client.id}`);
+    await client.socket.waitFor(x => x.startsWith(`BUILD_WAITING|${requestId}|`));
+    const build = await server.socket.waitFor(x => x.startsWith(`BUILD|${requestId}|${client.id}|BLS-`));
+    const parts = build.split('|');
+    assert.equal(parts.length, 7);
+    server.socket.send(`ACK|${requestId}|${client.id}|OK|0|BUILD_SESSION|SESSION=${parts[3]}`);
+    await client.socket.waitFor(x => x.startsWith(`BUILD_OK|${requestId}|${parts[3]}|`));
 }
 
 async function testPushManagerWithMock() {
@@ -169,7 +214,10 @@ async function testPushManagerWithMock() {
 
 async function run() {
     await testPushManagerWithMock();
-    const android = fs.readFileSync(path.join(PRODUCT_ROOT, 'ApkWinSock_Android64', 'ApkWinSock.pas'), 'utf8');
+    const androidDir = path.join(PRODUCT_ROOT, 'ApkWinSock_Android64');
+    const android = fs.readdirSync(androidDir)
+        .filter(name => name === 'ApkWinSock.pas' || /^ApkWinSock\..+\.inc$/i.test(name))
+        .sort().map(name => fs.readFileSync(path.join(androidDir, name), 'utf8')).join('\n');
     const constructorText = android.slice(android.indexOf('constructor TForm1.Create'), android.indexOf('destructor TForm1.Destroy'));
     assert.ok(constructorText.includes('FStartupTimer.Enabled := True'));
     assert.ok(!constructorText.includes('TApkRelayRuntime.Create'));
@@ -196,15 +244,16 @@ async function run() {
 
     const license = await api(session, 'POST', '/api/licenses', { days: 30, memo: 'roadmap18-test' });
     const client = await connectClient(license.key);
+    await authorizeBuild(server, client);
     client.socket.send(`SEND|PROCESS-OK-1|${client.id}|41`);
     await client.socket.waitFor(x => x === 'SENT|OK|PROCESS-OK-1');
-    await server.socket.waitFor(x => x === `NUMBER|PROCESS-OK-1|${client.id}|41`);
+    await server.socket.waitFor(x => x === `NUMBER|PROCESS-OK-1|${client.id}|TYPE1|41`);
     server.socket.send(`ACK|PROCESS-OK-1|${client.id}|OK|7|DEFAULT|NUMBER_ACCEPTED`);
     await client.socket.waitFor(x => x.startsWith('ACK|OK|PROCESS-OK-1'));
 
     client.socket.send(`SEND|PROCESS-BLOCK-1|${client.id}|42`);
     await client.socket.waitFor(x => x === 'SENT|OK|PROCESS-BLOCK-1');
-    await server.socket.waitFor(x => x === `NUMBER|PROCESS-BLOCK-1|${client.id}|42`);
+    await server.socket.waitFor(x => x === `NUMBER|PROCESS-BLOCK-1|${client.id}|TYPE1|42`);
     server.socket.send(`ACK|PROCESS-BLOCK-1|${client.id}|ERROR|NUMBER_BLOCKED|2|DEFAULT|POLICY_BLOCKED_VALUE`);
     await client.socket.waitFor(x => x.startsWith('ACK|ERROR|PROCESS-BLOCK-1|NUMBER_BLOCKED'));
 
