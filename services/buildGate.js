@@ -99,6 +99,16 @@ function BindingForClient(clientId) {
     };
 }
 
+function BindingForServer(serverId) {
+    serverId = NormalizeID(serverId);
+    if (!serverId) return null;
+    for (const [clientId, binding] of state.clientBuildBindings) {
+        if (NormalizeID(binding && binding.serverId) === serverId)
+            return BindingForClient(clientId);
+    }
+    return null;
+}
+
 function Queue(connection, requestId) {
     const clientId = NormalizeID(connection && connection.clientId);
     requestId = String(requestId || '').trim();
@@ -111,6 +121,9 @@ function Queue(connection, requestId) {
     const serverId = NormalizeID(saved.serverId);
     const binding = BindingForClient(clientId);
     if (binding && binding.serverId !== serverId) return { ok: false, reason: 'SERVER_BINDING_MISMATCH' };
+    const serverOwner = BindingForServer(serverId);
+    if (serverOwner && serverOwner.clientId !== clientId)
+        return { ok: false, reason: 'SERVER_ALREADY_PAIRED' };
 
     const now = Now();
     const sessionId = SessionId();
@@ -194,6 +207,13 @@ function TryDispatchClient(clientId) {
         Save();
         return { delivered: false, waiting: false, reason: 'SERVER_BINDING_MISMATCH' };
     }
+    const serverOwner = BindingForServer(serverId);
+    if (serverOwner && serverOwner.clientId !== clientId) {
+        MarkFailed(clientId, grant, 'SERVER_ALREADY_PAIRED');
+        SendLine(client.socket, `BUILD_FAILED|${grant.requestId}|SERVER_ALREADY_PAIRED`);
+        Save();
+        return { delivered: false, waiting: false, reason: 'SERVER_ALREADY_PAIRED' };
+    }
     if (!serverId) return { delivered: false, waiting: true, reason: 'SERVER_UNASSIGNED' };
     const server = OnlineServer(serverId);
     if (!server) return { delivered: false, waiting: true, reason: 'SERVER_OFFLINE' };
@@ -257,6 +277,12 @@ function Complete(clientId, requestId) {
     clientId = NormalizeID(clientId);
     const grant = state.pendingBuildGrants.get(clientId);
     if (!grant || grant.requestId !== String(requestId || '').trim()) return { ok: false, reason: 'BUILD_GRANT_NOT_FOUND' };
+    const serverOwner = BindingForServer(grant.serverId);
+    if (serverOwner && serverOwner.clientId !== clientId) {
+        MarkFailed(clientId, grant, 'SERVER_ALREADY_PAIRED');
+        Save();
+        return { ok: false, reason: 'SERVER_ALREADY_PAIRED' };
+    }
     state.pendingBuildGrants.delete(clientId);
     const now = Now();
     const session = state.buildSessions.get(grant.sessionId);
@@ -394,6 +420,9 @@ function Rebind(clientId, serverId, actor = 'WEB_ADMIN') {
     const ids = require('../identity/identityManager');
     if (!ids.ClientExists(clientId)) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
     if (!ids.ServerExists(serverId)) return { ok: false, reason: 'SERVER_NOT_FOUND' };
+    const serverOwner = BindingForServer(serverId);
+    if (serverOwner && serverOwner.clientId !== clientId)
+        return { ok: false, reason: 'SERVER_ALREADY_PAIRED' };
     const saved = SavedClient(clientId);
     if (NormalizeID(saved.serverId) !== serverId) {
         const moved = ids.ClientMove(clientId, serverId);
@@ -481,10 +510,15 @@ function ImportPersisted(data) {
     };
 
     if (data && data.clientBuildBindings && typeof data.clientBuildBindings === 'object') {
-        for (const [rawClientId, raw] of Object.entries(data.clientBuildBindings)) {
+        const importedBindings = Object.entries(data.clientBuildBindings)
+            .sort((a, b) => (Number(a[1] && a[1].boundAt) || 0) -
+                (Number(b[1] && b[1].boundAt) || 0) || String(a[0]).localeCompare(String(b[0])));
+        const occupiedServers = new Set();
+        for (const [rawClientId, raw] of importedBindings) {
             const clientId = NormalizeID(rawClientId);
             const serverId = NormalizeID(raw && raw.serverId);
-            if (!clientId || !serverId) continue;
+            if (!clientId || !serverId || occupiedServers.has(serverId)) continue;
+            occupiedServers.add(serverId);
             state.clientBuildBindings.set(clientId, {
                 serverId,
                 boundAt: Number(raw.boundAt) || 0,
@@ -570,6 +604,7 @@ module.exports = {
     PublicSession,
     ActiveSessionForClient,
     BindingForClient,
+    BindingForServer,
     Queue,
     TryDispatchClient,
     TryDispatchServer,

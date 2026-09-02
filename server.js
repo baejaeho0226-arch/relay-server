@@ -56,6 +56,7 @@ const { servers, clients } = state;
 EnsureDirs();
 LoadRecentAudit();
 LoadDatabase();
+if (require('./services/userDashboard').EnsureGroupGuids()) SaveDatabase();
 require('./services/haCoordinator').Start();
 ScanLicenseExpiryAlerts();
 

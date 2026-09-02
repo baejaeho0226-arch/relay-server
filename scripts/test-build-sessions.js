@@ -97,8 +97,28 @@ async function run() {
     assert.strictEqual(completed.session.status, 'AUTHORIZED');
     assert.strictEqual(completed.session.accessType, 'TYPE3');
     assert.strictEqual(buildGate.BindingForClient(clientId).serverId, serverId);
+    assert.strictEqual(buildGate.BindingForServer(serverId).clientId, clientId);
     assert.strictEqual(buildGate.ActiveSessionForClient(clientId).sessionId, parts[3]);
     assert.strictEqual(buildGate.Queue(client, 'BUILD-DUPLICATE-ACTIVE').reason, 'BUILD_SESSION_ACTIVE');
+
+    const secondClientId = '0011223344556677';
+    const secondSaved = {
+        id: secondClientId, serverId, createdAt: Date.now() + 1,
+        lastSeenAt: 0, lastAuthAt: 0, lastIP: '', authCount: 0,
+        sendCount: 0, reconnectCount: 0
+    };
+    state.clientIdentities.set('ANDROID-SECOND-PAIR-TEST', secondSaved);
+    const secondClient = {
+        clientId: secondClientId, serverId, connected: true,
+        accessType: 'TYPE1', passwordVerified: true,
+        socket: { destroyed: false, write() { return true; } }
+    };
+    assert.strictEqual(buildGate.Queue(secondClient, 'BUILD-SECOND-PAIR').reason,
+        'SERVER_ALREADY_PAIRED');
+    assert.strictEqual(buildGate.Rebind(secondClientId, serverId, 'TEST').reason,
+        'SERVER_ALREADY_PAIRED');
+    assert.strictEqual(require('../identity/identityManager').RepairOneToOneAssignments(), 1);
+    assert.strictEqual(secondSaved.serverId, '');
 
     const saved = state.clientIdentities.get('ANDROID-BUILD-SESSION-TEST');
     const emergency = require('../services/emergencyFailover');
@@ -215,6 +235,7 @@ async function run() {
     console.log('- Signed expiring Build lease and TYPE routing: PASS');
     console.log('- Replay/active-session rejection: PASS');
     console.log('- Fixed APK to WinSockServer binding: PASS');
+    console.log('- Absolute one APK to one WinSockServer pairing: PASS');
     console.log('- Signed immediate revoke and persisted history: PASS');
     console.log('- Offline Queue waits for Build and uses session TYPE: PASS');
     console.log('- Web policy, rebind and revoke controls: PASS');

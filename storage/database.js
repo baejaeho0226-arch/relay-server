@@ -19,7 +19,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 127,
+        version: 128,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -66,6 +66,7 @@ function BuildDatabaseObject() {
         pendingBuildGrants: Object.fromEntries(state.pendingBuildGrants),
         buildSessions: Object.fromEntries(state.buildSessions),
         clientBuildBindings: Object.fromEntries(state.clientBuildBindings),
+        accessGroupGuids: Object.fromEntries(state.accessGroupGuids),
         buildSessionPolicy: state.buildSessionPolicy,
         licenseRevision: Number(state.licenseRevision) || 0,
         servers: Object.fromEntries(serverIdentities),
@@ -198,7 +199,7 @@ function ImportDatabaseObject(data) {
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
     state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
-    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear(); state.clientPasswordProfiles.clear(); state.clientPasswordChallenges.clear(); state.pendingBuildGrants.clear(); state.buildSessions.clear(); state.clientBuildBindings.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear(); state.clientPasswordProfiles.clear(); state.clientPasswordChallenges.clear(); state.pendingBuildGrants.clear(); state.buildSessions.clear(); state.clientBuildBindings.clear(); state.accessGroupGuids.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -302,6 +303,7 @@ function ImportDatabaseObject(data) {
     require('../services/dailyHealth').ImportPersisted(data);
     require('../services/qrApproval').ImportPersisted(data);
     require('../services/buildGate').ImportPersisted(data);
+    require('../services/userDashboard').ImportPersisted(data);
     if (data.clientPasswordProfiles && typeof data.clientPasswordProfiles === 'object') {
         for (const [rawClientId, raw] of Object.entries(data.clientPasswordProfiles)) {
             const clientId = NormalizeID(rawClientId);

@@ -112,7 +112,10 @@ async function run() {
         ['PASSWORD_SETUP', setup[2], verifier, setupProof, '6', 'EXTRA']), false);
     assert.strictEqual(passwordService.HandleSetup(passwordConnection, ['PASSWORD_SETUP', setup[2], verifier, setupProof, '6']), true);
     assert.strictEqual(passwordConnection.passwordVerified, true);
-    assert.ok(passwordWrites.some(line => line.startsWith('PASSWORD_OK|TYPE2')));
+    assert.ok(passwordWrites.some(line =>
+        /^PASSWORD_OK\|TYPE2\|\{[0-9A-F-]{36}\}\r?\n?$/.test(line)));
+    assert.match(require('../services/userDashboard').GroupGuid('TYPE2'),
+        /^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$/);
     const profile = state.clientPasswordProfiles.get(clientId);
     assert.ok(profile && profile.verifier === verifier);
     assert.strictEqual(profile.pinDigits, 6);
@@ -378,7 +381,7 @@ async function run() {
     assert.ok(apk.includes('FTitleBar: TRectangle'));
     assert.ok(apk.includes('FTitleShadow: TShadowEffect'));
     assert.ok(apk.includes("FTitleLabel.Text := 'QR'"));
-    for (const title of ['QR', '로그인', '비밀번호 설정', '대기', '오프라인', '완료']) {
+    for (const title of ['QR', '로그인', '비밀번호 설정', '대기', '오프라인', '대시보드']) {
         assert.ok(apk.includes(`SetScreenTitle('${title}')`));
     }
     assert.ok(apk.includes("FOfflineLabel.Text := '인터넷을 연결해주세요.'"));
@@ -389,6 +392,13 @@ async function run() {
     assert.ok(apk.includes('FPasswordCells[I].XRadius := 9'));
     assert.ok(apk.includes('FPasswordCells[I].Stroke.Kind := TBrushKind.None'));
     assert.ok(apk.includes('FPasswordCellShadows: array[0..5] of TShadowEffect'));
+    assert.ok(apk.includes('FDashboardHeroCard: TRectangle'));
+    assert.ok(apk.includes('FDashboardGroupCard: TRectangle'));
+    assert.ok(apk.includes('FDashboardStatusCard: TRectangle'));
+    assert.ok(apk.includes("FDashboardGuidCaption.Text := '그룹 GUID'"));
+    assert.ok(apk.includes('procedure TForm1.ShowInitialAuthPage'));
+    assert.ok(apk.includes("FPasswordMode := 'RESTORE_WAIT'"));
+    assert.ok(!apk.includes("'--:--'"));
     assert.ok(!apk.includes('Stroke.Thickness := 2'));
     assert.ok(apk.includes("'관리자 승인이 허가 되었습니다.'"));
     assert.ok(apk.includes("FFinalCheckBox.Text := 'Ready'"));

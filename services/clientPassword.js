@@ -99,7 +99,8 @@ function NotifyAuthorized(connection, accessType) {
     connection.passwordVerified = true;
     connection.accessType = NormalizeAccessType(accessType);
     state.clientPasswordChallenges.delete(connection.clientId);
-    SendLine(connection.socket, `PASSWORD_OK|${connection.accessType}`);
+    const groupGuid = require('./userDashboard').GroupGuid(connection.accessType);
+    SendLine(connection.socket, `PASSWORD_OK|${connection.accessType}|${groupGuid}`);
     require('../relay/notifications').NotifyServerAuthorized(connection.clientId, connection.serverId, active.license.expiresAt, 'QR_PASSWORD');
     require('./buildGate').TryDispatchClient(connection.clientId);
     return true;

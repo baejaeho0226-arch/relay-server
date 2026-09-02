@@ -42,7 +42,10 @@ const SERVER_KICK_BLOCK_MS = 60 * 1000;
 const CLIENT_KICK_BLOCK_MS = 60 * 1000;
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 30);
-const MAX_CLIENTS_PER_SERVER = Math.max(1, Number(process.env.MAX_CLIENTS_PER_SERVER || 100));
+// Product invariant: one APK is paired with exactly one WinSockServer.
+// This is intentionally not environment-overridable; increasing it would
+// silently reconnect several waiting APKs to the first PC that comes online.
+const MAX_CLIENTS_PER_SERVER = 1;
 
 const REQUEST_HISTORY_TIMEOUT_MS = 10 * 60 * 1000;
 const ACK_RETRY_MS = 3000;

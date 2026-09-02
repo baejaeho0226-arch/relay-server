@@ -104,6 +104,54 @@ function GetServerClientCount(serverId) {
     return count;
 }
 
+function RepairOneToOneAssignments() {
+    const groups = new Map();
+    for (const saved of clientIdentities.values()) {
+        const serverId = NormalizeID(saved && saved.serverId);
+        if (!serverId || !saved || !saved.id) continue;
+        if (!groups.has(serverId)) groups.set(serverId, []);
+        groups.get(serverId).push(saved);
+    }
+
+    let changed = 0;
+    for (const [serverId, rows] of groups) {
+        if (rows.length <= MAX_CLIENTS_PER_SERVER) continue;
+        rows.sort((a, b) => {
+            // A completed fixed Build binding is authoritative.  For legacy
+            // rows without one, keep the oldest deterministic assignment.
+            let aFixed = false, bFixed = false;
+            try {
+                const gate = require('../services/buildGate');
+                const ab = gate.BindingForClient(a.id);
+                const bb = gate.BindingForClient(b.id);
+                aFixed = !!ab && ab.serverId === serverId;
+                bFixed = !!bb && bb.serverId === serverId;
+            } catch (_) {}
+            if (aFixed !== bFixed) return aFixed ? -1 : 1;
+            return (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0) ||
+                String(a.id).localeCompare(String(b.id));
+        });
+
+        for (const saved of rows.slice(MAX_CLIENTS_PER_SERVER)) {
+            saved.serverId = '';
+            changed++;
+            try { require('../services/buildGate').RevokeForClient(saved.id, 'ONE_TO_ONE_REPAIR'); } catch (_) {}
+            const live = GetOnlineClient(saved.id);
+            if (live) {
+                const previous = GetOnlineServer(live.serverId);
+                if (previous && previous.clients instanceof Set) previous.clients.delete(saved.id);
+                live.serverId = '';
+                live.buildCompleted = false;
+                live.buildSessionId = '';
+                SendLine(live.socket, 'SERVER_UNASSIGNED|ONE_TO_ONE_REPAIR');
+            }
+            LogEvent('CLIENT_ONE_TO_ONE_REPAIR', `${saved.id} released from ${serverId}`);
+        }
+    }
+    if (changed) SaveDatabase();
+    return changed;
+}
+
 function FindAvailableServer() {
     const list = [];
     for (const server of servers.values()) {
@@ -111,7 +159,8 @@ function FindAvailableServer() {
         if (disabledServers.has(server.serverId) || drainingServers.has(server.serverId)) continue;
         if (GetKickUntil(kickedServers, server.serverId) > Now()) continue;
         try { const da=require('../services/deviceAuth'); if(da.Enforced('SERVER',server.serverId)&&!da.Verified('SERVER',server.serverId)) continue; } catch (_) {}
-        if (server.clients.size >= MAX_CLIENTS_PER_SERVER) continue;
+        if (server.clients.size >= MAX_CLIENTS_PER_SERVER ||
+            GetServerClientCount(server.serverId) >= MAX_CLIENTS_PER_SERVER) continue;
         list.push(server);
     }
     list.sort((a, b) => a.clients.size - b.clients.size);
@@ -192,6 +241,7 @@ module.exports = {
     ClientHealth,
     TrackIP,
     GetServerClientCount,
+    RepairOneToOneAssignments,
     FindAvailableServer,
     FindAssignableServerId,
     CreateClientIdentity,

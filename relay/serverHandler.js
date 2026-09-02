@@ -26,6 +26,7 @@ function SaveDatabase(...args) { return require('../storage/database').SaveDatab
 function SendLine(...args) { return require('../core/utils').SendLine(...args); }
 function TrackIP(...args) { return require('../identity/identityManager').TrackIP(...args); }
 function ValidateProtocolAndVersion(...args) { return require('../services/versionPolicy').ValidateProtocolAndVersion(...args); }
+function RepairOneToOneAssignments(...args) { return require('../identity/identityManager').RepairOneToOneAssignments(...args); }
 
 function BindUnassignedClients(serverId) {
     if (!serverId || disabledServers.has(serverId) || drainingServers.has(serverId)) return 0;
@@ -108,6 +109,10 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     SendLine(connection.socket, `REGISTERED|${serverId}|${protocolVersion}|${appVersion}`);
     LogEvent('SERVER_ONLINE', `${serverId} v${appVersion}`);
 
+    // Repair legacy many-to-one rows before assigning a waiting APK.  With
+    // MAX_CLIENTS_PER_SERVER fixed at one, this server can claim one client
+    // only; the rest remain unassigned until their own PC registers.
+    RepairOneToOneAssignments();
     BindUnassignedClients(serverId);
 
     for (const client of clients.values()) {

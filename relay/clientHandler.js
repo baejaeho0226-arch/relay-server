@@ -28,6 +28,7 @@ function SaveDatabase(...args) { return require('../storage/database').SaveDatab
 function SendLine(...args) { return require('../core/utils').SendLine(...args); }
 function TrackIP(...args) { return require('../identity/identityManager').TrackIP(...args); }
 function ValidateProtocolAndVersion(...args) { return require('../services/versionPolicy').ValidateProtocolAndVersion(...args); }
+function RepairOneToOneAssignments(...args) { return require('../identity/identityManager').RepairOneToOneAssignments(...args); }
 
 function AttachClient(connection, saved) {
     const old = GetOnlineClient(saved.id);
@@ -107,6 +108,7 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
         require('../services/deviceEnrollment').MarkBound('CLIENT', deviceKey, saved.id);
         SaveDatabase();
     }
+    RepairOneToOneAssignments();
     AttachClient(connection, saved);
 }
 
@@ -333,6 +335,13 @@ function HandleClientLine(connection, line) {
         const requestedClient = parts.length >= 2 ? NormalizeID(parts[1]) : '';
         if (requestedClient && requestedClient !== connection.clientId) { SendLine(connection.socket, 'QR_AUTH_ERROR|CLIENT_NOT_OWNER'); return; }
         require('../services/qrApproval').Resume(connection);
+        return;
+    }
+
+    if (line.startsWith('USER_DASHBOARD|')) {
+        // USER_DASHBOARD is Relay -> APK only.  Rejecting an inbound copy
+        // prevents a client from spoofing group metadata into server state.
+        SendLine(connection.socket, 'ERROR|DIRECTION_NOT_ALLOWED');
         return;
     }
 
