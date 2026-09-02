@@ -34,6 +34,13 @@ function CleanupTransient() {
 function DisconnectConnection(connection) {
     if(connection.disconnected)return;connection.disconnected=true;
     if(connection.type==='server'){
+        const currentServer=connection.serverId?servers.get(connection.serverId):null;
+        // A reconnect replaces the map entry before the old socket's close
+        // callback necessarily runs. Ignore that stale callback completely.
+        if(connection.serverId&&(connection.superseded||(currentServer&&currentServer!==connection))){
+            LogEvent('SERVER_STALE_CONNECTION_CLOSED',connection.serverId);
+            return;
+        }
         if(connection.serverId&&servers.get(connection.serverId)===connection)servers.delete(connection.serverId);
         if(connection.serverId){
             require('../services/buildGate').RevokeForServer(connection.serverId,'SERVER_OFFLINE');
@@ -45,6 +52,11 @@ function DisconnectConnection(connection) {
             FailPendingRequestsForServer(connection.serverId,'SERVER_OFFLINE');LogEvent('SERVER_OFFLINE',connection.serverId);try{require('../services/emergencyFailover').MarkServerOffline(connection.serverId);}catch(_){}
         }
     }else if(connection.type==='client'){
+        const currentClient=connection.clientId?clients.get(connection.clientId):null;
+        if(connection.clientId&&(connection.superseded||(currentClient&&currentClient!==connection))){
+            LogEvent('CLIENT_STALE_CONNECTION_CLOSED',connection.clientId);
+            return;
+        }
         if(connection.clientId) require('../services/buildGate').RevokeForClient(connection.clientId,'CLIENT_OFFLINE');
         if(connection.clientId) state.clientPasswordChallenges.delete(connection.clientId);
         if(connection.clientId&&clients.get(connection.clientId)===connection)clients.delete(connection.clientId);

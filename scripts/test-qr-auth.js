@@ -100,14 +100,22 @@ async function run() {
     const setupLine = passwordWrites.find(line => line.startsWith('PASSWORD_CHALLENGE|SETUP|'));
     assert.ok(setupLine, 'First QR approval must issue a password setup challenge');
     const setup = setupLine.trim().split('|');
-    const testPassword = '2580';
+    const testPassword = '258036';
     const verifier = passwordService.DeriveVerifier(testPassword, setup[3], Number(setup[4]));
     const setupProof = passwordService.Proof(verifier, 'SETUP', clientId, setup[2], setup[5]);
-    assert.strictEqual(passwordService.HandleSetup(passwordConnection, ['PASSWORD_SETUP', setup[2], verifier, setupProof]), true);
+    const rejectedSetupStart = passwordWrites.length;
+    assert.strictEqual(passwordService.HandleSetup(passwordConnection,
+        ['PASSWORD_SETUP', setup[2], verifier, setupProof, '4']), false);
+    assert.ok(passwordWrites.slice(rejectedSetupStart)
+        .some(line => line.trim() === 'PASSWORD_ERROR|PIN6_REQUIRED'));
+    assert.strictEqual(passwordService.HandleSetup(passwordConnection,
+        ['PASSWORD_SETUP', setup[2], verifier, setupProof, '6', 'EXTRA']), false);
+    assert.strictEqual(passwordService.HandleSetup(passwordConnection, ['PASSWORD_SETUP', setup[2], verifier, setupProof, '6']), true);
     assert.strictEqual(passwordConnection.passwordVerified, true);
     assert.ok(passwordWrites.some(line => line.startsWith('PASSWORD_OK|TYPE2')));
     const profile = state.clientPasswordProfiles.get(clientId);
     assert.ok(profile && profile.verifier === verifier);
+    assert.strictEqual(profile.pinDigits, 6);
     assert.strictEqual(Object.values(profile).includes(testPassword), false);
 
     passwordConnection.passwordVerified = false;
@@ -117,11 +125,14 @@ async function run() {
     const login = loginLine.trim().split('|');
     const loginVerifier = passwordService.DeriveVerifier(testPassword, login[3], Number(login[4]));
     const loginProof = passwordService.Proof(loginVerifier, 'LOGIN', clientId, login[2], login[5]);
-    assert.strictEqual(passwordService.HandleVerify(passwordConnection, ['PASSWORD_VERIFY', login[2], loginProof]), true);
+    assert.strictEqual(passwordService.HandleVerify(passwordConnection, ['PASSWORD_VERIFY', login[2], loginProof, '6']), true);
     assert.strictEqual(passwordConnection.passwordVerified, true);
 
     const resetWriteStart = passwordWrites.length;
-    const resetPin = '97531';
+    const resetPin = '975310';
+    assert.strictEqual(passwordService.ResetPassword(clientId, '12345', 'TEST_ADMIN').ok, false);
+    assert.strictEqual(passwordService.ResetPassword(clientId, '1234567', 'TEST_ADMIN').ok, false);
+    assert.strictEqual(passwordService.ResetPassword(clientId, '12A456', 'TEST_ADMIN').ok, false);
     const resetResult = passwordService.ResetPassword(clientId, resetPin, 'TEST_ADMIN');
     assert.strictEqual(resetResult.ok, true);
     assert.strictEqual(resetResult.status.registered, true);
@@ -133,7 +144,7 @@ async function run() {
     const resetLogin = resetLoginLine.trim().split('|');
     const resetVerifier = passwordService.DeriveVerifier(resetPin, resetLogin[3], Number(resetLogin[4]));
     const resetProof = passwordService.Proof(resetVerifier, 'LOGIN', clientId, resetLogin[2], resetLogin[5]);
-    assert.strictEqual(passwordService.HandleVerify(passwordConnection, ['PASSWORD_VERIFY', resetLogin[2], resetProof]), true);
+    assert.strictEqual(passwordService.HandleVerify(passwordConnection, ['PASSWORD_VERIFY', resetLogin[2], resetProof, '6']), true);
     assert.strictEqual(passwordConnection.passwordVerified, true);
     assert.strictEqual(Object.values(state.clientPasswordProfiles.get(clientId)).includes(resetPin), false);
 
@@ -196,10 +207,38 @@ async function run() {
     assert.ok(passwordWrites.some(line => line.startsWith(`BUILD_OK|${buildRequestId}|${signedBuild[3]}|`) && line.trim().endsWith('|TYPE2')));
     assert.strictEqual(state.pendingBuildGrants.has(clientId), false);
     assert.strictEqual(state.clientBuildBindings.get(clientId).serverId, buildServerId);
+
+    // A reconnect can replace a transport before the old socket emits close.
+    // Those stale callbacks must not revoke the newly authorized Build lease.
+    const lifecycle = require('../core/lifecycle');
+    const staleClient = {
+        type: 'client', clientId, serverId: buildServerId,
+        disconnected: false, superseded: true
+    };
+    lifecycle.DisconnectConnection(staleClient);
+    assert.strictEqual(staleClient.disconnected, true);
+    assert.strictEqual(state.clients.get(clientId), passwordConnection);
+    assert.strictEqual(state.buildSessions.get(signedBuild[3]).status, 'AUTHORIZED');
+    assert.strictEqual(buildServer.buildClients.has(clientId), true);
+
+    const staleServer = {
+        type: 'server', serverId: buildServerId,
+        disconnected: false, superseded: false
+    };
+    lifecycle.DisconnectConnection(staleServer);
+    assert.strictEqual(staleServer.disconnected, true);
+    assert.strictEqual(state.servers.get(buildServerId), buildServer);
+    assert.strictEqual(state.buildSessions.get(signedBuild[3]).status, 'AUTHORIZED');
+
     const revoked = require('../services/buildGate').Revoke(signedBuild[3], 'TEST_REVOKE', 'TEST');
     assert.strictEqual(revoked.ok, true);
     assert.ok(passwordWrites.some(line => line.startsWith(`BUILD_REVOKED|${signedBuild[3]}|TEST_REVOKE`)));
     assert.ok(buildServerWrites.some(line => line.startsWith(`BUILD_REVOKE|${clientId}|${signedBuild[3]}|TEST_REVOKE|`)));
+    passwordConnection.disconnected = false;
+    passwordConnection.superseded = false;
+    lifecycle.DisconnectConnection(passwordConnection);
+    assert.strictEqual(state.clients.has(clientId), false);
+    assert.strictEqual(buildServer.clients.has(clientId), false);
     state.servers.delete(buildServerId);
 
     assert.throws(() => service.InspectPayload(payload), /QR_REQUEST_APPROVED/);
@@ -327,7 +366,9 @@ async function run() {
     assert.ok(apk.includes('FFinalCheckBox: TCheckBox'));
     assert.ok(apk.includes('procedure TForm1.TryAutomaticBuild'));
     assert.ok(apk.includes("FBuildWaitLabel.Text := 'WinSockServer.exe를 실행해주세요.'"));
-    assert.ok(apk.includes('FPasswordCells: array[0..7] of TRectangle'));
+    assert.ok(apk.includes('FPasswordCells: array[0..5] of TRectangle'));
+    assert.ok(apk.includes('PASSWORD_LENGTH = 6'));
+    assert.ok(apk.includes('PasswordCellWidth, PasswordCellWidth'));
     assert.strictEqual((apk.match(/AndroidToast\(/g) || []).length, 1);
     assert.ok(apk.includes("AndroidToast('로그인이 되었습니다.')"));
     assert.ok(apk.includes("'관리자 승인이 허가 되었습니다.'"));
@@ -356,6 +397,8 @@ async function run() {
     assert.ok(!`${apk}\n${deepLink}`.includes('relaylicense://'));
     assert.ok(protocol.includes('QR_DEVICE_APPROVAL'));
     assert.ok(protocol.includes('PASSWORD_KEYPAD'));
+    assert.ok(protocol.includes('PIN6_ONLY'));
+    assert.ok(passwordCrypto.includes("'|PIN6'"));
     assert.ok(protocol.includes('TYPE_ROUTING'));
     assert.ok(protocol.includes('BUILD_GATE'));
     assert.ok(protocol.includes('BUILD_SESSION_LEASE'));
@@ -400,11 +443,15 @@ async function run() {
     assert.ok(clientHandler.includes('FindAssignableServerId'));
     assert.ok(!clientHandler.includes('!GetOnlineServer(saved.serverId)'));
     assert.ok(!`${admin}\n${webApi}`.includes('relaylicense://auth?key='));
+    const lifecycleSource = fs.readFileSync(path.join(__dirname, '..', 'core', 'lifecycle.js'), 'utf8');
+    assert.ok(lifecycleSource.includes('SERVER_STALE_CONNECTION_CLOSED'));
+    assert.ok(lifecycleSource.includes('CLIENT_STALE_CONNECTION_CLOSED'));
 
     console.log('QR AUTH END-TO-END PASS');
     console.log('- Signed one-time QR image decode: PASS');
     console.log('- Admin approval and server-side license binding: PASS');
     console.log('- Password setup/login proof and no plaintext storage: PASS');
+    console.log('- Exact six-digit PIN enforcement and square PIN cells: PASS');
     console.log('- Web Admin PIN reset, one-time reveal and forced APK re-login: PASS');
     console.log('- Type1/Type2/Type3 approval routing: PASS');
     console.log('- Replay and signature tamper rejection: PASS');
@@ -422,6 +469,7 @@ async function run() {
     console.log('- Grouped Web Admin navigation: PASS');
     console.log('- Live list scroll preservation and complete console clear: PASS');
     console.log('- APK minimal centered automatic Build waiting UI: PASS');
+    console.log('- Replaced-socket stale close race protection: PASS');
 }
 
 run().finally(() => {

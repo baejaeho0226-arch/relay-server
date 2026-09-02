@@ -78,6 +78,9 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
 
     const old = GetOnlineServer(serverId);
     if (old && old !== connection) {
+        // Mark before destroy: its asynchronous close event belongs to the old
+        // transport and must not take the replacement server offline.
+        old.superseded = true;
         SendLine(old.socket, 'ERROR|REPLACED');
         old.socket.destroy();
     }

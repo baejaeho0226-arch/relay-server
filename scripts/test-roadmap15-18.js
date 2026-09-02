@@ -17,7 +17,7 @@ const SECRET = 'roadmap18-test-secret';
 let relay = null;
 let relayOutput = '';
 const deviceSecrets = new Map();
-const testPassword = '2580';
+const testPassword = '258036';
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -140,9 +140,9 @@ async function completePassword(socket, clientId) {
     const parts = line.split('|');
     let verifier = hmac(parts[3], testPassword);
     for (let i = 1; i < Number(parts[4]); i++) verifier = hmac(parts[3], verifier);
-    const proof = hmac(verifier, `${parts[1]}|${clientId}|${parts[2]}|${parts[5]}`);
-    if (parts[1] === 'SETUP') socket.send(`PASSWORD_SETUP|${parts[2]}|${verifier}|${proof}`);
-    else socket.send(`PASSWORD_VERIFY|${parts[2]}|${proof}`);
+    const proof = hmac(verifier, `${parts[1]}|${clientId}|${parts[2]}|${parts[5]}|PIN6`);
+    if (parts[1] === 'SETUP') socket.send(`PASSWORD_SETUP|${parts[2]}|${verifier}|${proof}|6`);
+    else socket.send(`PASSWORD_VERIFY|${parts[2]}|${proof}|6`);
     await socket.waitFor(x => x.startsWith('PASSWORD_OK|'));
 }
 

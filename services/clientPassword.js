@@ -5,6 +5,7 @@ const state = require('../core/state');
 const { NormalizeID, Now, SendLine } = require('../core/utils');
 
 const PASSWORD_ITERATIONS = 4096;
+const PIN_DIGITS = 6;
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 5;
 const LOCK_MS = 5 * 60 * 1000;
@@ -27,7 +28,11 @@ function EqualHex(a, b) {
 }
 
 function Proof(verifier, mode, clientId, nonce, accessType) {
-    return HmacHex(verifier, `${mode}|${clientId}|${nonce}|${NormalizeAccessType(accessType)}`);
+    return HmacHex(verifier, `${mode}|${clientId}|${nonce}|${NormalizeAccessType(accessType)}|PIN${PIN_DIGITS}`);
+}
+
+function IsCurrentProfile(profile) {
+    return !!profile && Number(profile.pinDigits) === PIN_DIGITS;
 }
 
 function DeriveVerifier(password, salt, iterations = PASSWORD_ITERATIONS) {
@@ -45,13 +50,15 @@ function Begin(connection, requestedType = '') {
     if (!connection || !connection.connected || !connection.clientId || !connection.licenseAuthorized) return { ok: false, reason: 'LICENSE_REQUIRED' };
     const clientId = NormalizeID(connection.clientId);
     if (!clientId) return { ok: false, reason: 'CLIENT_NOT_CONNECTED' };
-    const profile = state.clientPasswordProfiles.get(clientId) || null;
+    const storedProfile = state.clientPasswordProfiles.get(clientId) || null;
+    const profile = IsCurrentProfile(storedProfile) ? storedProfile : null;
     const now = Now();
     if (profile && Number(profile.lockUntil || 0) > now) {
         SendLine(connection.socket, `PASSWORD_LOCKED|${profile.lockUntil}`);
         return { ok: false, reason: 'PASSWORD_LOCKED', lockUntil: profile.lockUntil };
     }
-    const accessType = NormalizeAccessType(requestedType || (profile && profile.accessType) || connection.accessType);
+    const accessType = NormalizeAccessType(requestedType ||
+        (storedProfile && storedProfile.accessType) || connection.accessType);
     const challenge = {
         clientId,
         mode: profile ? 'LOGIN' : 'SETUP',
@@ -116,13 +123,22 @@ function RegisterFailure(connection, profile, reason = 'INVALID_PASSWORD') {
 }
 
 function HandleSetup(connection, parts) {
+    if (!Array.isArray(parts) || parts.length !== 5) {
+        if (connection && connection.socket) SendLine(connection.socket, 'PASSWORD_ERROR|FORMAT_INVALID');
+        return false;
+    }
     const nonce = String(parts[1] || '').toUpperCase();
     const verifier = String(parts[2] || '').toUpperCase();
     const suppliedProof = String(parts[3] || '').toUpperCase();
+    const suppliedDigits = Number(parts[4]);
     const current = CurrentChallenge(connection, 'SETUP', nonce);
     if (!current.ok) {
         SendLine(connection.socket, `PASSWORD_ERROR|${current.reason}`);
         if (current.reason === 'CHALLENGE_EXPIRED') Begin(connection, connection.accessType);
+        return false;
+    }
+    if (suppliedDigits !== PIN_DIGITS) {
+        SendLine(connection.socket, 'PASSWORD_ERROR|PIN6_REQUIRED');
         return false;
     }
     if (!/^[0-9A-F]{64}$/.test(verifier) || !/^[0-9A-F]{64}$/.test(suppliedProof)) {
@@ -139,6 +155,7 @@ function HandleSetup(connection, parts) {
         salt: current.challenge.salt,
         iterations: current.challenge.iterations,
         verifier,
+        pinDigits: PIN_DIGITS,
         accessType: current.challenge.accessType,
         createdAt: now,
         updatedAt: now,
@@ -151,8 +168,13 @@ function HandleSetup(connection, parts) {
 }
 
 function HandleVerify(connection, parts) {
+    if (!Array.isArray(parts) || parts.length !== 4) {
+        if (connection && connection.socket) SendLine(connection.socket, 'PASSWORD_ERROR|FORMAT_INVALID');
+        return false;
+    }
     const nonce = String(parts[1] || '').toUpperCase();
     const suppliedProof = String(parts[2] || '').toUpperCase();
+    const suppliedDigits = Number(parts[3]);
     const current = CurrentChallenge(connection, 'LOGIN', nonce);
     if (!current.ok) {
         SendLine(connection.socket, `PASSWORD_ERROR|${current.reason}`);
@@ -160,9 +182,13 @@ function HandleVerify(connection, parts) {
         return false;
     }
     const profile = state.clientPasswordProfiles.get(current.clientId);
-    if (!profile) {
+    if (!IsCurrentProfile(profile)) {
         state.clientPasswordChallenges.delete(current.clientId);
         return Begin(connection, current.challenge.accessType).ok;
+    }
+    if (suppliedDigits !== PIN_DIGITS) {
+        SendLine(connection.socket, 'PASSWORD_ERROR|PIN6_REQUIRED');
+        return false;
     }
     if (Number(profile.lockUntil || 0) > Now()) {
         SendLine(connection.socket, `PASSWORD_LOCKED|${profile.lockUntil}`);
@@ -196,7 +222,7 @@ function SetAccessType(clientId, accessType) {
 function PublicStatus(clientId) {
     clientId = NormalizeID(clientId);
     const profile = clientId ? state.clientPasswordProfiles.get(clientId) : null;
-    if (!profile) {
+    if (!IsCurrentProfile(profile)) {
         return {
             registered: false,
             masked: '-',
@@ -207,7 +233,8 @@ function PublicStatus(clientId) {
             lockUntil: 0,
             locked: false,
             resetAt: 0,
-            resetBy: ''
+            resetBy: '',
+            migrationRequired: !!profile
         };
     }
     const lockUntil = Math.max(0, Number(profile.lockUntil) || 0);
@@ -221,7 +248,8 @@ function PublicStatus(clientId) {
         lockUntil,
         locked: lockUntil > Now(),
         resetAt: Number(profile.resetAt) || 0,
-        resetBy: String(profile.resetBy || '')
+        resetBy: String(profile.resetBy || ''),
+        migrationRequired: false
     };
 }
 
@@ -229,7 +257,7 @@ function ResetPassword(clientId, password, actor = 'WEB_ADMIN') {
     clientId = NormalizeID(clientId);
     const pin = String(password || '').trim();
     if (!clientId) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
-    if (!/^\d{4,8}$/.test(pin)) return { ok: false, reason: 'PASSWORD_FORMAT' };
+    if (!/^\d{6}$/.test(pin)) return { ok: false, reason: 'PASSWORD_FORMAT' };
 
     const previous = state.clientPasswordProfiles.get(clientId) || null;
     const connection = state.clients.get(clientId) || null;
@@ -246,6 +274,7 @@ function ResetPassword(clientId, password, actor = 'WEB_ADMIN') {
         salt,
         iterations: PASSWORD_ITERATIONS,
         verifier: DeriveVerifier(pin, salt, PASSWORD_ITERATIONS),
+        pinDigits: PIN_DIGITS,
         accessType,
         createdAt: previous ? (Number(previous.createdAt) || now) : now,
         updatedAt: now,
@@ -269,6 +298,7 @@ function ResetPassword(clientId, password, actor = 'WEB_ADMIN') {
 
 module.exports = {
     PASSWORD_ITERATIONS,
+    PIN_DIGITS,
     NormalizeAccessType,
     DeriveVerifier,
     Proof,

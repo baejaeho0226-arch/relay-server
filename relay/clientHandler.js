@@ -32,6 +32,9 @@ function ValidateProtocolAndVersion(...args) { return require('../services/versi
 function AttachClient(connection, saved) {
     const old = GetOnlineClient(saved.id);
     if (old && old !== connection) {
+        // The late close event from the replaced socket must never revoke the
+        // newly established client's password/build session.
+        old.superseded = true;
         const oldServer = GetOnlineServer(old.serverId);
         if (oldServer) oldServer.clients.delete(saved.id);
         SendLine(old.socket, 'ERROR|REPLACED');

@@ -550,15 +550,15 @@ async function clientAction(action, id) {
         message: `${id}\n기존 비밀번호는 단방향 검증값으로만 저장되어 원문 조회가 불가능합니다. 새 PIN을 입력하면 즉시 교체되며, 온라인 APK는 다시 로그인해야 합니다.`,
         html: `<div class="password-status"><span>현재 상태</span>${badge(client.password?.locked ? 'LOCKED' : (client.password?.registered ? 'SET' : 'NONE'))}<span>마지막 변경</span><strong>${esc(fmtTime(client.password?.updatedAt))}</strong></div>`,
         fields: [
-          { name: 'password', label: '새 PIN (4~8자리 숫자)', type: 'password', placeholder: '새 PIN', maxLength: 8 },
-          { name: 'confirmPassword', label: '새 PIN 재확인', type: 'password', placeholder: '같은 PIN 입력', maxLength: 8 }
+          { name: 'password', label: '새 PIN (6자리 숫자)', type: 'password', placeholder: '6자리 PIN', maxLength: 6 },
+          { name: 'confirmPassword', label: '새 PIN 재확인', type: 'password', placeholder: '같은 6자리 PIN', maxLength: 6 }
         ],
         confirmLabel: '재설정'
       });
       if (!v) return;
       v.password = String(v.password || '').trim();
       v.confirmPassword = String(v.confirmPassword || '').trim();
-      if (!/^\d{4,8}$/.test(v.password)) { toast('PIN은 4~8자리 숫자만 사용할 수 있습니다.', true); continue; }
+      if (!/^\d{6}$/.test(v.password)) { toast('PIN은 정확히 6자리 숫자만 사용할 수 있습니다.', true); continue; }
       if (v.password !== v.confirmPassword) { toast('PIN 재확인이 일치하지 않습니다.', true); continue; }
       break;
     }

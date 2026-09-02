@@ -314,6 +314,7 @@ function ImportDatabaseObject(data) {
                 salt,
                 iterations,
                 verifier,
+                pinDigits: Number(raw.pinDigits) === 6 ? 6 : 0,
                 accessType: require('../services/clientPassword').NormalizeAccessType(raw.accessType),
                 createdAt: Number(raw.createdAt) || Now(),
                 updatedAt: Number(raw.updatedAt) || 0,
