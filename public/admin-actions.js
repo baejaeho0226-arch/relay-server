@@ -99,7 +99,7 @@ content.addEventListener('click', async event => {
         message: `${qrScanResult.request.clientId}\n승인 시 서버가 전용 라이선스를 자동 생성하고 기기에 고정합니다.`,
         fields: [
           { name: 'days', label: '사용 기간(일)', type: 'number', value: String(qrScanResult.defaultDays || 30) },
-          { name: 'accessType', label: 'APK 전용 페이지', type: 'select', value: 'TYPE1', options: ['TYPE1', 'TYPE2', 'TYPE3'] },
+          { name: 'accessType', label: 'APK 전용 콘텐츠', type: 'select', value: 'TYPE1', options: [{ value: 'TYPE1', label: 'TalesRunner' }, { value: 'TYPE2', label: 'R2Beat' }, { value: 'TYPE3', label: 'Lostsaga' }] },
           { name: 'memo', label: '메모', value: `QR 승인 ${qrScanResult.request.clientId}` },
           { name: 'tags', label: '태그', value: 'QR', placeholder: 'QR, CUSTOMER-A' }
         ],
@@ -512,7 +512,7 @@ async function serverAction(action, id) {
   if (action === 'detail') {
     const { server } = await api(`/api/servers/${encodedId}`);
     const clients = server.clientsList.map(c => `<tr><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.licenseStatus)}</td></tr>`).join('') || '<tr><td colspan="3">Client 없음</td></tr>';
-    await openModal({ title: `Server ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(server.alias || '-')}</div><div>Note</div><div>${esc(server.note || '-')}</div><div>Device Key</div><div class="code">${esc(server.deviceKey)}</div><div>Status</div><div>${badge(server.status)}</div><div>Health</div><div>${badge(server.health)}</div><div>Accept Clients</div><div>${server.canAcceptClients ? badge('ONLINE') : badge('OFFLINE')}</div><div>Live / Saved Clients</div><div>${server.clients} / ${server.savedClients}</div><div>RTT</div><div>${server.rttMs >= 0 ? `${server.rttMs} ms` : '-'}</div><div>Kick Until</div><div>${esc(fmtTime(server.kickedUntil))}</div><div>IP</div><div>${esc(server.lastIP || '-')}</div><div>Protocol / Version</div><div>${server.protocolVersion || '-'} / ${esc(server.appVersion || '-')}</div><div>Reconnect</div><div>${server.reconnectCount}</div><div>Last Seen</div><div>${esc(fmtTime(server.lastSeen))}</div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>License</th></tr></thead><tbody>${clients}</tbody></table></div>`, confirmLabel: '닫기' });
+    await openModal({ title: `Server ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(server.alias || '-')}</div><div>Note</div><div>${esc(server.note || '-')}</div><div>Device Key</div><div class="code">${esc(server.deviceKey)}</div><div>Status</div><div>${badge(server.status)}</div><div>Health</div><div>${badge(server.health)}</div><div>Accept Clients</div><div>${badge(server.acceptState || (server.canAcceptClients ? 'READY' : 'OFFLINE'))}</div><div>Live / Saved Clients</div><div>${server.clients} / ${server.savedClients}</div><div>RTT</div><div>${server.rttMs >= 0 ? `${server.rttMs} ms` : '-'}</div><div>Kick Until</div><div>${esc(fmtTime(server.kickedUntil))}</div><div>IP</div><div>${esc(server.lastIP || '-')}</div><div>Protocol / Version</div><div>${server.protocolVersion || '-'} / ${esc(server.appVersion || '-')}</div><div>Reconnect</div><div>${server.reconnectCount}</div><div>Last Seen</div><div>${esc(fmtTime(server.lastSeen))}</div></div><div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>License</th></tr></thead><tbody>${clients}</tbody></table></div>`, confirmLabel: '닫기' });
     return;
   }
 

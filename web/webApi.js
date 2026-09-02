@@ -227,6 +227,12 @@ function BuildServers() {
         const liveClients = live ? live.clients.size : 0;
         const savedClients = GetServerClientCount(serverId);
         const canAcceptClients = !!live && !state.disabledServers.has(serverId) && !state.drainingServers.has(serverId) && kickedUntil <= Now() && liveClients < MAX_CLIENTS_PER_SERVER && savedClients < MAX_CLIENTS_PER_SERVER;
+        let acceptState = 'READY';
+        if (!live) acceptState = 'OFFLINE';
+        else if (state.disabledServers.has(serverId)) acceptState = 'DISABLED';
+        else if (state.drainingServers.has(serverId)) acceptState = 'DRAINING';
+        else if (kickedUntil > Now()) acceptState = 'KICKED';
+        else if (liveClients >= MAX_CLIENTS_PER_SERVER || savedClients >= MAX_CLIENTS_PER_SERVER) acceptState = 'FULL';
 
         const ack = state.runtimeStats.serverAckStats.get(serverId) || { ok: 0, error: 0, timeout: 0 };
         const ackTotal = ack.ok + ack.error + ack.timeout;
@@ -244,6 +250,7 @@ function BuildServers() {
             clients: liveClients,
             savedClients,
             canAcceptClients,
+            acceptState,
             lastIP: live ? live.lastIP : '',
             lastSeen: live ? live.lastSeen : 0,
             kickedUntil,
@@ -1377,5 +1384,6 @@ module.exports = {
     Json,
     ApiError,
     ReadJsonBody,
-    HandleApiRequest
+    HandleApiRequest,
+    BuildServers
 };

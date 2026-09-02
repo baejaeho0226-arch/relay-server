@@ -66,6 +66,14 @@ async function run() {
     lifecycle.DisconnectConnection(serverA1);
     assert.strictEqual(state.servers.get(serverIdA), serverA2);
 
+    // #Accept describes remaining one-to-one capacity, not socket online
+    // status. An online server without a binding is READY.
+    const { BuildServers } = require('../web/webApi');
+    let serverRows = BuildServers();
+    assert.strictEqual(serverRows.find(x => x.id === serverIdA).status, 'ONLINE');
+    assert.strictEqual(serverRows.find(x => x.id === serverIdA).acceptState, 'READY');
+    assert.strictEqual(serverRows.find(x => x.id === serverIdA).canAcceptClients, true);
+
     const clientKeyA = `ANDROID2-${'C'.repeat(16)}-${'3'.repeat(16)}`;
     const clientKeyB = `ANDROID2-${'D'.repeat(16)}-${'4'.repeat(16)}`;
     const clientIdA = '1111222233330001';
@@ -89,6 +97,12 @@ async function run() {
     assert.strictEqual(clientB1.serverId, serverIdB);
     assert.strictEqual(serverA2.clients.has(clientIdA), true);
     assert.strictEqual(serverB1.clients.has(clientIdB), true);
+
+    // At the configured 1/1 capacity an online server is FULL, never OFFLINE.
+    serverRows = BuildServers();
+    assert.strictEqual(serverRows.find(x => x.id === serverIdA).status, 'ONLINE');
+    assert.strictEqual(serverRows.find(x => x.id === serverIdA).acceptState, 'FULL');
+    assert.strictEqual(serverRows.find(x => x.id === serverIdA).canAcceptClients, false);
 
     const clientA2 = Connection('client', 'client-a-reconnect');
     clientHandler.HandleClientConnect(clientA2, clientKeyA, 2, '2.9.0');
@@ -182,6 +196,7 @@ async function run() {
 
     console.log('DEVICE REGISTRY / HISTORY PASS');
     console.log('- Two PCs and two APKs keep independent fixed pairs: PASS');
+    console.log('- Server #Accept READY/FULL stays separate from ONLINE/OFFLINE: PASS');
     console.log('- Reconnect replaces transport without changing IDs: PASS');
     console.log('- Explicit Delete purges bindings and permits new enrollment: PASS');
     console.log('- Orphan pairing repair preserves registered fixed pairs: PASS');

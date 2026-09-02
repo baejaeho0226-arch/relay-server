@@ -138,11 +138,29 @@ function fmtBytes(value) {
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function accessTypeName(value) {
+  const type = String(value || 'TYPE1').trim().toUpperCase();
+  if (type === 'TYPE2') return 'R2Beat';
+  if (type === 'TYPE3') return 'Lostsaga';
+  return 'TalesRunner';
+}
+
+function accessTypeBadge(value) {
+  return `<span class="badge good">${esc(accessTypeName(value))}</span>`;
+}
+
+function processorDisplayName(value) {
+  return String(value || '')
+    .replace(/^TYPE1(?=\/|$)/i, 'TalesRunner')
+    .replace(/^TYPE2(?=\/|$)/i, 'R2Beat')
+    .replace(/^TYPE3(?=\/|$)/i, 'Lostsaga');
+}
+
 function badge(value) {
   const text = String(value || 'UNKNOWN').toUpperCase();
   let cls = text.toLowerCase();
-  if (['GOOD', 'ONLINE', 'BOUND', 'AVAILABLE', 'ACTIVE', 'APPROVED', 'AUTHORIZED', 'SET', 'MATCHED'].includes(text)) cls = 'good';
-  else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED', 'FLAPPING', 'WARNING', 'STANDBY', 'CANDIDATE', 'PENDING'].includes(text)) cls = 'warn';
+  if (['GOOD', 'ONLINE', 'BOUND', 'AVAILABLE', 'ACTIVE', 'APPROVED', 'AUTHORIZED', 'SET', 'MATCHED', 'READY'].includes(text)) cls = 'good';
+  else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED', 'FLAPPING', 'WARNING', 'STANDBY', 'CANDIDATE', 'PENDING', 'FULL'].includes(text)) cls = 'warn';
   else if (['OFFLINE', 'DISABLED', 'EXPIRED', 'SUSPENDED', 'CRITICAL', 'REJECTED', 'SUPERSEDED', 'LOCKED', 'REVOKED', 'FAILED', 'MISMATCH'].includes(text)) cls = 'bad';
   else if (text === 'NONE') cls = 'none';
   return `<span class="badge ${esc(cls)}">${esc(text)}</span>`;
