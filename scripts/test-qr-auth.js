@@ -371,16 +371,24 @@ async function run() {
     assert.ok(apk.includes('FPasswordCells: array[0..5] of TRectangle'));
     assert.ok(apk.includes('PASSWORD_LENGTH = 6'));
     assert.ok(apk.includes('PasswordCellWidth, PasswordCellWidth'));
-    assert.strictEqual((apk.match(/AndroidToast\(/g) || []).length, 0);
-    assert.ok(apk.includes("ShowIconlessToast('로그인이 되었습니다.')"));
-    assert.ok(apk.includes('FToastBubble: TRectangle'));
+    assert.strictEqual((apk.match(/AndroidToast\(/g) || []).length, 1);
+    assert.ok(apk.includes("AndroidToast('로그인이 되었습니다.')"));
+    assert.ok(!apk.includes('ShowIconlessToast'));
+    assert.ok(!apk.includes('FToastBubble'));
     assert.ok(apk.includes('FTitleBar: TRectangle'));
     assert.ok(apk.includes('FTitleShadow: TShadowEffect'));
-    assert.ok(apk.includes("FTitleLabel.Text := 'ApkWinSock'"));
+    assert.ok(apk.includes("FTitleLabel.Text := 'QR'"));
+    for (const title of ['QR', '로그인', '비밀번호 설정', '대기', '오프라인', '완료']) {
+        assert.ok(apk.includes(`SetScreenTitle('${title}')`));
+    }
     assert.ok(apk.includes("FOfflineLabel.Text := '인터넷을 연결해주세요.'"));
     assert.ok(apk.includes('procedure TForm1.ConnectivityTimerTimer'));
-    assert.ok(apk.includes('FRuntime.ReconnectAttempt > 0'));
+    assert.ok(apk.includes('if not IsNetworkConnected then'));
+    assert.ok(!apk.includes('FRuntime.ReconnectAttempt > 0'));
+    assert.ok(apk.includes('FQrPanel.Visible := True'));
     assert.ok(apk.includes('FPasswordCells[I].XRadius := 9'));
+    assert.ok(apk.includes('FPasswordCells[I].Stroke.Kind := TBrushKind.None'));
+    assert.ok(apk.includes('FPasswordCellShadows: array[0..5] of TShadowEffect'));
     assert.ok(!apk.includes('Stroke.Thickness := 2'));
     assert.ok(apk.includes("'관리자 승인이 허가 되었습니다.'"));
     assert.ok(apk.includes("FFinalCheckBox.Text := 'Ready'"));
@@ -397,7 +405,8 @@ async function run() {
     assert.ok(qrRenderer.includes('Image.Bitmap.BitmapScale := 1'));
     assert.ok(qrRenderer.includes('QUIET_ZONE_MODULES = 8'));
     assert.ok(apk.includes("ALine.StartsWith('SERVER_ASSIGNED|')"));
-    assert.ok(apk.includes("Format('QR 남은 시간"));
+    assert.ok(apk.includes("Format('%2.2d:%2.2d'"));
+    assert.ok(!apk.includes('QR 남은 시간'));
     assert.ok(apk.includes('BuildBuildLine(RequestID, FState.ClientID)'));
     assert.ok(apk.includes("ALine.StartsWith('BUILD_OK|')"));
     assert.ok(apk.includes("ALine.StartsWith('BUILD_WAITING|')"));

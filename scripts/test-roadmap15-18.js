@@ -224,7 +224,7 @@ async function run() {
     assert.ok(!constructorText.includes('TApkDeviceSecurity.Create'));
     assert.ok(!constructorText.includes('GetClientDeviceKey'));
     assert.ok(!constructorText.includes('RequestPermission'));
-    assert.ok(android.includes("FStartupTimer.Interval := 100"));
+    assert.ok(android.includes("FStartupTimer.Interval := 16"));
 
     const winProcessor = fs.readFileSync(path.join(PRODUCT_ROOT, 'WinSockServer_Win64', 'NumberProcessor.pas'), 'utf8');
     assert.ok(winProcessor.includes('NUMBER_BELOW_MIN'));
