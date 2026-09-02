@@ -158,7 +158,9 @@ function FindAvailableServer() {
         if (!server.registered || !server.socket || server.socket.destroyed) continue;
         if (disabledServers.has(server.serverId) || drainingServers.has(server.serverId)) continue;
         if (GetKickUntil(kickedServers, server.serverId) > Now()) continue;
-        try { const da=require('../services/deviceAuth'); if(da.Enforced('SERVER',server.serverId)&&!da.Verified('SERVER',server.serverId)) continue; } catch (_) {}
+        // Pairing reserves a slot only; it never grants business access.
+        // Do not leave a phone unassigned merely because the server HMAC
+        // challenge is still in flight. Build Gate remains authoritative.
         if (server.clients.size >= MAX_CLIENTS_PER_SERVER ||
             GetServerClientCount(server.serverId) >= MAX_CLIENTS_PER_SERVER) continue;
         list.push(server);
@@ -169,19 +171,9 @@ function FindAvailableServer() {
 
 function FindAssignableServerId() {
     const online = FindAvailableServer();
-    if (online) return online.serverId;
-
-    const candidates = [];
-    for (const serverId of new Set(serverIdentities.values())) {
-        if (!serverId) continue;
-        if (disabledServers.has(serverId) || drainingServers.has(serverId)) continue;
-        if (GetKickUntil(kickedServers, serverId) > Now()) continue;
-        const count = GetServerClientCount(serverId);
-        if (count >= MAX_CLIENTS_PER_SERVER) continue;
-        candidates.push({ serverId, count });
-    }
-    candidates.sort((a, b) => a.count - b.count || a.serverId.localeCompare(b.serverId));
-    return candidates.length ? candidates[0].serverId : '';
+    // Never reserve an APK against a stale offline server identity.  If no PC
+    // is online, the APK stays unassigned and the next live PC claims it.
+    return online ? online.serverId : '';
 }
 
 function CreateClientIdentity(deviceKey, serverId) {

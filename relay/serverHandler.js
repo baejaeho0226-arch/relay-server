@@ -28,14 +28,51 @@ function TrackIP(...args) { return require('../identity/identityManager').TrackI
 function ValidateProtocolAndVersion(...args) { return require('../services/versionPolicy').ValidateProtocolAndVersion(...args); }
 function RepairOneToOneAssignments(...args) { return require('../identity/identityManager').RepairOneToOneAssignments(...args); }
 
+function LegacyServerDeviceKey(deviceKey) {
+    const match = /^WIN2-([0-9A-F]{32})-[0-9A-F]{16}$/i.exec(String(deviceKey || '').trim());
+    return match ? `WIN-${match[1].toUpperCase()}` : '';
+}
+
+function MigrateLegacyServerIdentity(deviceKey) {
+    const legacyKey = LegacyServerDeviceKey(deviceKey);
+    if (!legacyKey) return '';
+    const legacyId = serverIdentities.get(legacyKey);
+    if (!legacyId) return '';
+    serverIdentities.delete(legacyKey);
+    serverIdentities.set(deviceKey, legacyId);
+    const oldEnrollmentKey = `SERVER:${legacyKey}`;
+    const newEnrollmentKey = `SERVER:${deviceKey}`;
+    if (state.deviceEnrollments.has(oldEnrollmentKey) && !state.deviceEnrollments.has(newEnrollmentKey)) {
+        const record = state.deviceEnrollments.get(oldEnrollmentKey);
+        state.deviceEnrollments.delete(oldEnrollmentKey);
+        record.deviceKey = deviceKey;
+        state.deviceEnrollments.set(newEnrollmentKey, record);
+    }
+    SaveDatabase();
+    LogEvent('SERVER_LOCAL_ID_MIGRATED', `${legacyId} ${legacyKey} -> ${deviceKey}`);
+    return legacyId;
+}
+
 function BindUnassignedClients(serverId) {
     if (!serverId || disabledServers.has(serverId) || drainingServers.has(serverId)) return 0;
     if (GetKickUntil(kickedServers, serverId) > Now()) return 0;
+    const targetServer = GetOnlineServer(serverId);
+    if (!targetServer) return 0;
 
     let assignedCount = GetServerClientCount(serverId);
     let changed = 0;
-    for (const [deviceKey, saved] of clientIdentities) {
-        if (!saved || saved.serverId || assignedCount >= MAX_CLIENTS_PER_SERVER) continue;
+    // A stale offline client record must never consume a newly connected PC.
+    // Only phones that are currently online are eligible, oldest wait first.
+    const waiting = Array.from(clientIdentities.entries())
+        .filter(([, saved]) => {
+            if (!saved || saved.serverId) return false;
+            const live = GetOnlineClient(saved.id);
+            return !!live && live.connected && live.socket && !live.socket.destroyed;
+        })
+        .sort((a, b) => (Number(a[1].lastSeenAt) || 0) - (Number(b[1].lastSeenAt) || 0) ||
+            String(a[1].id).localeCompare(String(b[1].id)));
+    for (const [deviceKey, saved] of waiting) {
+        if (assignedCount >= MAX_CLIENTS_PER_SERVER) break;
         saved.serverId = serverId;
         assignedCount++;
         changed++;
@@ -43,6 +80,7 @@ function BindUnassignedClients(serverId) {
         const live = GetOnlineClient(saved.id);
         if (live) {
             live.serverId = serverId;
+            targetServer.clients.add(saved.id);
             SendLine(live.socket, `SERVER_ASSIGNED|${serverId}`);
         }
         LogEvent('CLIENT_FIRST_BIND', `${saved.id} -> ${serverId} (${deviceKey})`);
@@ -57,6 +95,7 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     if (!ValidateProtocolAndVersion(connection, 'server', protocolVersion, appVersion)) return false;
 
     let serverId = serverIdentities.get(deviceKey);
+    if (!serverId) serverId = MigrateLegacyServerIdentity(deviceKey);
     if (!serverId) {
         const enrollment = require('../services/deviceEnrollment').Request('SERVER', deviceKey, { ip: SafeIP(connection.socket), appVersion, protocolVersion });
         if (!enrollment.allowed) {
@@ -174,6 +213,8 @@ function HandleServerLine(connection, line) {
 
 module.exports = {
     BindUnassignedClients,
+    LegacyServerDeviceKey,
+    MigrateLegacyServerIdentity,
     RegisterServer,
     HandleServerLine
 };

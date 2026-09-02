@@ -27,8 +27,9 @@ function staticSourceChecks() {
     assert.ok(apk.includes('FQrImage: TImage'));
     assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
     assert.ok(apk.includes('BuildBuildLine(RequestID, FState.ClientID)'));
-    assert.ok(apk.includes('FFinalCheckBox: TCheckBox'));
-    assert.equal((apk.match(/TCheckBox/g) || []).length, 2);
+    assert.ok(apk.includes('FDashboardTabs: array[0..3] of TRectangle'));
+    assert.ok(!apk.includes('FFinalCheckBox'));
+    assert.equal((apk.match(/TCheckBox/g) || []).length, 0);
     assert.ok(!apk.includes('FLicenseEdit'));
     assert.ok(!send.includes('NumberText'));
     assert.ok(!apk.includes('{$R *.fmx}'));
@@ -176,7 +177,7 @@ async function run() {
     console.log('- SQLite primary + JSON auto-migration/recovery mirror: PASS');
     console.log('- Relay A/B replication + promotion + revision-safe failback: PASS');
     console.log('- Win64/Android primary-backup endpoint source: PASS');
-    console.log('- APK source-built QR/PIN/automatic-Build/final-checkbox UI: PASS');
+    console.log('- APK source-built QR/PIN/background-Build/terminal-dashboard UI: PASS');
     console.log('- ShellExecute/cmd/Winapi.Windows removal: PASS');
 }
 

@@ -127,6 +127,66 @@ async function run() {
         type: 'server', connected: true, registered: true, serverId: secondServerId,
         deviceAuthVerified: true, clients: new Set()
     });
+    state.clients.set(secondClientId, secondClient);
+    assert.strictEqual(require('../relay/serverHandler').BindUnassignedClients(secondServerId), 1);
+    assert.strictEqual(secondSaved.serverId, secondServerId);
+    assert.strictEqual(state.servers.get(secondServerId).clients.has(secondClientId), true);
+
+    // A third PC must claim the third live phone, not a stale offline row that
+    // happens to appear first in persisted insertion order.
+    const staleClientId = 'DEAD000000000001';
+    state.clientIdentities.set('ANDROID-STALE-OFFLINE', {
+        id: staleClientId, serverId: '', createdAt: Date.now() - 10000,
+        lastSeenAt: Date.now() - 10000, lastAuthAt: 0, lastIP: '',
+        authCount: 0, sendCount: 0, reconnectCount: 0
+    });
+    const thirdClientId = 'CCDDEEFF00112233';
+    const thirdServerId = '3344556677889900';
+    const thirdSaved = {
+        id: thirdClientId, serverId: '', createdAt: Date.now(),
+        lastSeenAt: Date.now(), lastAuthAt: 0, lastIP: '', authCount: 0,
+        sendCount: 0, reconnectCount: 0
+    };
+    const thirdClient = {
+        clientId: thirdClientId, serverId: '', connected: true,
+        socket: { destroyed: false, write() { return true; } }
+    };
+    state.clientIdentities.set('ANDROID-THIRD-LIVE', thirdSaved);
+    state.clients.set(thirdClientId, thirdClient);
+    state.serverIdentities.set('SERVER-THIRD-LIVE', thirdServerId);
+    state.servers.set(thirdServerId, {
+        socket: { destroyed: false, write() { return true; } },
+        type: 'server', connected: true, registered: true,
+        serverId: thirdServerId, deviceAuthVerified: false, clients: new Set()
+    });
+    assert.strictEqual(require('../relay/serverHandler').BindUnassignedClients(thirdServerId), 1);
+    assert.strictEqual(thirdSaved.serverId, thirdServerId);
+    assert.strictEqual(state.clientIdentities.get('ANDROID-STALE-OFFLINE').serverId, '');
+
+    // First WIN2 registration migrates the old server identity. A second PC
+    // with the same synced legacy base no longer collides with it.
+    const legacyBase = 'A'.repeat(32);
+    const legacyServerId = 'ABCDEFABCDEFABCD';
+    state.serverIdentities.set(`WIN-${legacyBase}`, legacyServerId);
+    const migrated = require('../relay/serverHandler').MigrateLegacyServerIdentity(
+        `WIN2-${legacyBase}-${'1'.repeat(16)}`);
+    assert.strictEqual(migrated, legacyServerId);
+    assert.strictEqual(require('../relay/serverHandler').MigrateLegacyServerIdentity(
+        `WIN2-${legacyBase}-${'2'.repeat(16)}`), '');
+
+    const legacyAndroidId = 'B'.repeat(16);
+    const legacyClientId = '1234123412341234';
+    state.clientIdentities.set(`ANDROID-${legacyAndroidId}`, {
+        id: legacyClientId, serverId: '', createdAt: Date.now(),
+        lastSeenAt: 0, lastAuthAt: 0, lastIP: '', authCount: 0,
+        sendCount: 0, reconnectCount: 0
+    });
+    const migratedClient = require('../relay/clientHandler').MigrateLegacyClientIdentity(
+        `ANDROID2-${legacyAndroidId}-${'3'.repeat(16)}`);
+    assert.strictEqual(migratedClient.id, legacyClientId);
+    assert.strictEqual(require('../relay/clientHandler').MigrateLegacyClientIdentity(
+        `ANDROID2-${legacyAndroidId}-${'4'.repeat(16)}`), null);
+
     state.serviceEnabled = true;
     state.maintenanceMode = false;
     emergency.SetPolicy({ enabled: true, offlineGraceSeconds: 0, returnGraceSeconds: 0 });
@@ -236,6 +296,9 @@ async function run() {
     console.log('- Replay/active-session rejection: PASS');
     console.log('- Fixed APK to WinSockServer binding: PASS');
     console.log('- Absolute one APK to one WinSockServer pairing: PASS');
+    console.log('- Three live PCs/phones pair independently; stale offline rows skipped: PASS');
+    console.log('- Synced legacy Windows device ID collision migration: PASS');
+    console.log('- Cloned legacy Android ID collision migration: PASS');
     console.log('- Signed immediate revoke and persisted history: PASS');
     console.log('- Offline Queue waits for Build and uses session TYPE: PASS');
     console.log('- Web policy, rebind and revoke controls: PASS');

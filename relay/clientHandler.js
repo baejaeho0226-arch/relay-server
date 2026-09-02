@@ -30,6 +30,31 @@ function TrackIP(...args) { return require('../identity/identityManager').TrackI
 function ValidateProtocolAndVersion(...args) { return require('../services/versionPolicy').ValidateProtocolAndVersion(...args); }
 function RepairOneToOneAssignments(...args) { return require('../identity/identityManager').RepairOneToOneAssignments(...args); }
 
+function LegacyClientDeviceKey(deviceKey) {
+    const match = /^ANDROID2-([0-9A-F]{8,32})-[0-9A-F]{16}$/i.exec(String(deviceKey || '').trim());
+    return match ? `ANDROID-${match[1].toUpperCase()}` : '';
+}
+
+function MigrateLegacyClientIdentity(deviceKey) {
+    const legacyKey = LegacyClientDeviceKey(deviceKey);
+    if (!legacyKey) return null;
+    const saved = clientIdentities.get(legacyKey);
+    if (!saved) return null;
+    clientIdentities.delete(legacyKey);
+    clientIdentities.set(deviceKey, saved);
+    const oldEnrollmentKey = `CLIENT:${legacyKey}`;
+    const newEnrollmentKey = `CLIENT:${deviceKey}`;
+    if (state.deviceEnrollments.has(oldEnrollmentKey) && !state.deviceEnrollments.has(newEnrollmentKey)) {
+        const record = state.deviceEnrollments.get(oldEnrollmentKey);
+        state.deviceEnrollments.delete(oldEnrollmentKey);
+        record.deviceKey = deviceKey;
+        state.deviceEnrollments.set(newEnrollmentKey, record);
+    }
+    SaveDatabase();
+    LogEvent('CLIENT_LOCAL_ID_MIGRATED', `${saved.id} ${legacyKey} -> ${deviceKey}`);
+    return saved;
+}
+
 function AttachClient(connection, saved) {
     const old = GetOnlineClient(saved.id);
     if (old && old !== connection) {
@@ -86,6 +111,7 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
     if (!deviceKey) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return; }
 
     let saved = clientIdentities.get(deviceKey);
+    if (!saved) saved = MigrateLegacyClientIdentity(deviceKey);
     if (saved) {
         if (disabledClients.has(saved.id)) { SendLine(connection.socket, 'ERROR|CLIENT_DISABLED'); return; }
         const kickedUntil = GetKickUntil(kickedClients, saved.id);
@@ -109,6 +135,16 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
         SaveDatabase();
     }
     RepairOneToOneAssignments();
+    // Existing rows released by one-to-one repair and phones that came online
+    // before any PC must claim an actually online empty server here.
+    if (!saved.serverId) {
+        const availableServerId = FindAssignableServerId();
+        if (availableServerId) {
+            saved.serverId = availableServerId;
+            SaveDatabase();
+            LogEvent('CLIENT_LIVE_ONE_TO_ONE_BIND', `${saved.id} -> ${availableServerId}`);
+        }
+    }
     AttachClient(connection, saved);
 }
 
@@ -370,6 +406,8 @@ function HandleClientLine(connection, line) {
 }
 
 module.exports = {
+    LegacyClientDeviceKey,
+    MigrateLegacyClientIdentity,
     AttachClient,
     HandleClientConnect,
     IsRateLimited,

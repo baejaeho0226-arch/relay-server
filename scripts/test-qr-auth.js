@@ -323,6 +323,11 @@ async function run() {
     // their first fixed binding without interrupting the QR session.
     const lateServerId = '1122334455667788';
     state.serverIdentities.set('SERVER-LATE-START', lateServerId);
+    state.servers.set(lateServerId, {
+        serverId: lateServerId, registered: true, connected: true,
+        socket: { destroyed: false, write() { return true; } },
+        clients: new Set(), deviceAuthVerified: false
+    });
     const assigned = require('../relay/serverHandler').BindUnassignedClients(lateServerId);
     assert.strictEqual(assigned, 1);
     assert.strictEqual(serverlessConnection.serverId, lateServerId);
@@ -366,9 +371,11 @@ async function run() {
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_OK|')"));
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_RESET|')"));
     assert.ok(!apk.includes('FSendButton'));
-    assert.ok(apk.includes('FFinalCheckBox: TCheckBox'));
+    assert.ok(apk.includes('FDashboardTabs: array[0..3] of TRectangle'));
+    assert.ok(!apk.includes('FFinalCheckBox'));
     assert.ok(apk.includes('procedure TForm1.TryAutomaticBuild'));
-    assert.ok(apk.includes('FBuildWaitLabel.Text := FDisplayGuid'));
+    assert.ok(!apk.includes('FBuildWaitPanel'));
+    assert.ok(!apk.includes('ShowBuildWaitingPage'));
     assert.ok(apk.includes('GUIDToString(DisplayGuidValue)'));
     assert.ok(!apk.includes('WinSockServer.exe를 실행해주세요.'));
     assert.ok(apk.includes('FPasswordCells: array[0..5] of TRectangle'));
@@ -380,13 +387,13 @@ async function run() {
     assert.ok(!apk.includes('FToastBubble'));
     assert.ok(apk.includes('FTitleBar: TRectangle'));
     assert.ok(apk.includes('FTitleShadow: TShadowEffect'));
-    assert.ok(apk.includes("FTitleLabel.Text := 'QR'"));
-    for (const title of ['QR', '로그인', '비밀번호 설정', '대기', '오프라인', '대시보드']) {
+    assert.ok(apk.includes("FTitleLabel.Text := ''"));
+    for (const title of ['QR', '로그인', '비밀번호 설정', '오프라인', '대시보드']) {
         assert.ok(apk.includes(`SetScreenTitle('${title}')`));
     }
     assert.ok(apk.includes("FOfflineLabel.Text := '인터넷을 연결해주세요.'"));
     assert.ok(apk.includes('procedure TForm1.ConnectivityTimerTimer'));
-    assert.ok(apk.includes('if not IsNetworkConnected then'));
+    assert.ok(apk.includes('if not NetworkConnected then'));
     assert.ok(!apk.includes('FRuntime.ReconnectAttempt > 0'));
     assert.ok(apk.includes('FQrPanel.Visible := True'));
     assert.ok(apk.includes('FPasswordCells[I].XRadius := 9'));
@@ -395,13 +402,15 @@ async function run() {
     assert.ok(apk.includes('FDashboardHeroCard: TRectangle'));
     assert.ok(apk.includes('FDashboardGroupCard: TRectangle'));
     assert.ok(apk.includes('FDashboardStatusCard: TRectangle'));
-    assert.ok(apk.includes("FDashboardGuidCaption.Text := '그룹 GUID'"));
+    assert.ok(apk.includes("FDashboardGuidCaption.Text := 'GUID'"));
+    assert.ok(!apk.includes("FDashboardGuidCaption.Text := '그룹 GUID'"));
     assert.ok(apk.includes('procedure TForm1.ShowInitialAuthPage'));
     assert.ok(apk.includes("FPasswordMode := 'RESTORE_WAIT'"));
     assert.ok(!apk.includes("'--:--'"));
     assert.ok(!apk.includes('Stroke.Thickness := 2'));
     assert.ok(apk.includes("'관리자 승인이 허가 되었습니다.'"));
-    assert.ok(apk.includes("FFinalCheckBox.Text := 'Ready'"));
+    assert.ok(apk.includes('FTransportOffline := True'));
+    assert.ok(apk.includes('FConnectivityTimer.Interval := 250'));
     assert.ok(!apk.includes('FUserStatusText'));
     assert.ok(!apk.includes('COLOR_DASH_BG'));
     assert.ok(apk.includes("ReportUiState('AUTHORIZED', FState.AccessType)"));
@@ -486,7 +495,7 @@ async function run() {
     console.log('- Type1/Type2/Type3 approval routing: PASS');
     console.log('- Replay and signature tamper rejection: PASS');
     console.log('- Oversized image dimension rejection: PASS');
-    console.log('- APK QR/PIN/automatic-Build/final-checkbox flow: PASS');
+    console.log('- APK QR/PIN/background-Build/terminal-dashboard flow: PASS');
     console.log('- Authenticated WinSockServer Build gate and dynamic server ACK: PASS');
     console.log('- Build-first persistent wait and delayed WinSockServer connection: PASS');
     console.log('- APK responsive QR frame and expiry countdown: PASS');
@@ -498,7 +507,7 @@ async function run() {
     console.log('- WinSockServer QR authorization source: PASS');
     console.log('- Grouped Web Admin navigation: PASS');
     console.log('- Live list scroll preservation and complete console clear: PASS');
-    console.log('- APK minimal centered automatic Build waiting UI: PASS');
+    console.log('- APK terminal dashboard with background automatic Build: PASS');
     console.log('- Replaced-socket stale close race protection: PASS');
 }
 
