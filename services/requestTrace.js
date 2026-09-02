@@ -111,6 +111,26 @@ function SearchTraces(query) {
     return out.sort((a, b) => Number(b.createdAt) - Number(a.createdAt)).slice(0, 200);
 }
 
+function ClearHistory() {
+    const activeKeys = new Set(state.pendingRequests.keys());
+    for (const item of state.offlineQueue.values())
+        activeKeys.add(TraceKey(item.clientId, item.requestId));
+    let removedTraces = 0;
+    let removedRequestIds = 0;
+    for (const [key, trace] of Array.from(state.requestTraces.entries())) {
+        const active = activeKeys.has(key) || (trace && ['PENDING', 'QUEUED'].includes(String(trace.status || '').toUpperCase()));
+        if (active) continue;
+        state.requestTraces.delete(key);
+        removedTraces++;
+    }
+    for (const key of Array.from(state.requestHistory.keys())) {
+        if (activeKeys.has(key)) continue;
+        state.requestHistory.delete(key);
+        removedRequestIds++;
+    }
+    return { removedTraces, removedRequestIds, retainedActive: activeKeys.size };
+}
+
 module.exports = {
     TraceKey,
     TrimTraces,
@@ -120,5 +140,6 @@ module.exports = {
     LinkDeadLetter,
     RetryTrace,
     CompleteTrace,
-    SearchTraces
+    SearchTraces,
+    ClearHistory
 };

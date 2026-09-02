@@ -51,4 +51,11 @@ function Rollback(id, actor = 'admin') {
     return { ok: true, source: { id: item.id, revision: item.revision, at: item.at }, currentRevision: cfg.revision, history: created };
 }
 
-module.exports = { MAX_HISTORY, Snapshot, Record, EnsureBaseline, List, Get, Rollback };
+function ClearHistory(actor = 'admin') {
+    const removed = state.configHistory.length;
+    state.configHistory.length = 0;
+    const baseline = Record('BASELINE', actor, 'Current configuration baseline after history clean');
+    return { removed, baseline: { ...baseline, snapshot: undefined } };
+}
+
+module.exports = { MAX_HISTORY, Snapshot, Record, EnsureBaseline, List, Get, Rollback, ClearHistory };

@@ -321,6 +321,17 @@ function Cleanup(save = true) {
     return changed;
 }
 
+function ClearHistory() {
+    let removed = 0;
+    for (const [requestId, record] of Array.from(state.qrAuthRequests.entries())) {
+        if (record && record.status === 'PENDING') continue;
+        state.qrAuthRequests.delete(requestId);
+        removed++;
+    }
+    if (removed) require('../storage/database').SaveDatabase();
+    return { removed, retainedPending: state.qrAuthRequests.size };
+}
+
 function ImportPersisted(data) {
     if (!data || typeof data.qrAuthRequests !== 'object' || !data.qrAuthRequests) return;
     for (const [rawId, raw] of Object.entries(data.qrAuthRequests)) {
@@ -368,6 +379,7 @@ module.exports = {
     List,
     Summary,
     Cleanup,
+    ClearHistory,
     ImportPersisted,
     PublicRecord
 };

@@ -55,6 +55,8 @@ const processorCenter = require('../services/processorCenter');
 const pushManager = require('../services/pushManager');
 const dailyHealth = require('../services/dailyHealth');
 const clientPassword = require('../services/clientPassword');
+const deviceRegistry = require('../services/deviceRegistry');
+const historyCleanup = require('../services/historyCleanup');
 
 const {
     BACKUP_DIR, DATA_DIR, CURRENT_PROTOCOL_VERSION,
@@ -440,6 +442,21 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
+    if (method === 'POST' && pathname === '/api/pairing/repair') {
+        if (!RequireAdmin(res, session)) return;
+        const repair = deviceRegistry.RepairPairing();
+        Json(res, 200, { ok: true, repair });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/history/clean') {
+        if (!RequireAdmin(res, session)) return;
+        const result = historyCleanup.Clean(body.scope, `WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
+        if (!result.ok) { ApiError(res, 400, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
+
     if (await buildQrRoutes.Handle({
         method, pathname, body, res, session,
         BuildServers, RequireAdmin, Json, ApiError
@@ -452,6 +469,13 @@ async function HandleApiRequest(req, res, session) {
     }
 
     let match = pathname.match(/^\/api\/servers\/([^/]+)$/);
+    if (method === 'DELETE' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const result = deviceRegistry.DeleteServer(DecodePart(match[1]));
+        if (!result.ok) { ApiError(res, 404, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
     if (method === 'GET' && match) {
         if (!RequireOperation(res, session, 'SERVER_TREE')) return;
         const item = BuildServerDetail(DecodePart(match[1]));
@@ -534,6 +558,13 @@ async function HandleApiRequest(req, res, session) {
     }
 
     match = pathname.match(/^\/api\/clients\/([^/]+)$/);
+    if (method === 'DELETE' && match) {
+        if (!RequireAdmin(res, session)) return;
+        const result = deviceRegistry.DeleteClient(DecodePart(match[1]));
+        if (!result.ok) { ApiError(res, 404, result.reason); return; }
+        Json(res, 200, result);
+        return;
+    }
     if (method === 'GET' && match) {
         if (!RequireOperation(res, session, 'CLIENT_DETAIL')) return;
         const item = BuildClientDetail(DecodePart(match[1]));

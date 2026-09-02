@@ -29,6 +29,7 @@ function SendLine(...args) { return require('../core/utils').SendLine(...args); 
 function TrackIP(...args) { return require('../identity/identityManager').TrackIP(...args); }
 function ValidateProtocolAndVersion(...args) { return require('../services/versionPolicy').ValidateProtocolAndVersion(...args); }
 function RepairOneToOneAssignments(...args) { return require('../identity/identityManager').RepairOneToOneAssignments(...args); }
+function RepairOrphanAssignments(...args) { return require('../identity/identityManager').RepairOrphanAssignments(...args); }
 
 function LegacyClientDeviceKey(deviceKey) {
     const match = /^ANDROID2-([0-9A-F]{8,32})-[0-9A-F]{16}$/i.exec(String(deviceKey || '').trim());
@@ -134,6 +135,7 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
         require('../services/deviceEnrollment').MarkBound('CLIENT', deviceKey, saved.id);
         SaveDatabase();
     }
+    RepairOrphanAssignments();
     RepairOneToOneAssignments();
     // Existing rows released by one-to-one repair and phones that came online
     // before any PC must claim an actually online empty server here.
@@ -353,6 +355,13 @@ function HandleClientLine(connection, line) {
             deviceKey = parts[1].trim();
         }
         HandleClientConnect(connection, deviceKey, protocolVersion, appVersion);
+        return;
+    }
+
+    if (line === 'LINK_PING' || line.startsWith('LINK_PING|')) {
+        if (!connection.clientId) { SendLine(connection.socket, 'ERROR|CONNECT_REQUIRED'); return; }
+        const token = String(line.split('|')[1] || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+        SendLine(connection.socket, token ? `LINK_PONG|${token}` : 'LINK_PONG');
         return;
     }
 

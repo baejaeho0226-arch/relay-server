@@ -110,6 +110,8 @@ async function run() {
         body: JSON.stringify({ role: 'admin', password: adminSecret })
     });
     assert.strictEqual(login.status, 200);
+    const loginData = await login.json();
+    assert.ok(loginData.csrf);
     const cookie = String(login.headers.get('set-cookie') || '').split(';')[0];
     assert.ok(cookie);
 
@@ -127,6 +129,25 @@ async function run() {
         assert.strictEqual(data.ok, true, `${endpoint}: ok=false body=${text}`);
     }
 
+    for (const request of [
+        { method: 'POST', endpoint: '/api/pairing/repair', body: {}, status: 200 },
+        { method: 'POST', endpoint: '/api/history/clean', body: { scope: 'ALL' }, status: 200 },
+        { method: 'DELETE', endpoint: '/api/servers/0000000000000000', status: 404, error: 'SERVER_NOT_FOUND' },
+        { method: 'DELETE', endpoint: '/api/clients/0000000000000000', status: 404, error: 'CLIENT_NOT_FOUND' }
+    ]) {
+        const response = await fetch(`http://127.0.0.1:${webPort}${request.endpoint}`, {
+            method: request.method,
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json', Cookie: cookie, 'X-CSRF-Token': loginData.csrf },
+            body: request.body ? JSON.stringify(request.body) : undefined
+        });
+        const text = await response.text();
+        const data = JSON.parse(text);
+        assert.strictEqual(response.status, request.status, `${request.method} ${request.endpoint}: ${text}`);
+        assert.notStrictEqual(data.error, 'INTERNAL_ERROR');
+        if (request.error) assert.strictEqual(data.error, request.error);
+        else assert.strictEqual(data.ok, true);
+    }
+
     const adminSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.js'), 'utf8');
     const cssSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.css'), 'utf8');
     assert.ok(adminSource.includes('class="api-error"'));
@@ -136,6 +157,7 @@ async function run() {
     console.log(`WEB API EMPTY-STATE PASS: ${endpoints.length} authenticated GET endpoints`);
     console.log('- No HTTP 500 / INTERNAL_ERROR / empty JSON response: PASS');
     console.log('- Serialization fallback and dedicated error panel: PASS');
+    console.log('- Pair repair, history clean and device delete HTTP routes: PASS');
 }
 
 run().finally(async () => {

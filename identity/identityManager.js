@@ -104,6 +104,42 @@ function GetServerClientCount(serverId) {
     return count;
 }
 
+function RepairOrphanAssignments() {
+    const validServers = new Set(Array.from(serverIdentities.values()).map(NormalizeID).filter(Boolean));
+    const validClients = new Set(Array.from(clientIdentities.values()).map(saved => NormalizeID(saved && saved.id)).filter(Boolean));
+    let changed = 0;
+
+    for (const saved of clientIdentities.values()) {
+        if (!saved || !saved.id) continue;
+        const serverId = NormalizeID(saved.serverId);
+        if (serverId && !validServers.has(serverId)) {
+            saved.serverId = '';
+            const live = GetOnlineClient(saved.id);
+            if (live) {
+                live.serverId = '';
+                live.buildCompleted = false;
+                live.buildSessionId = '';
+                SendLine(live.socket, 'SERVER_UNASSIGNED|ORPHAN_SERVER');
+            }
+            try { require('../services/buildGate').RevokeForClient(saved.id, 'ORPHAN_SERVER'); } catch (_) {}
+            state.clientBuildBindings.delete(saved.id);
+            changed++;
+            LogEvent('CLIENT_ORPHAN_BINDING_REPAIRED', `${saved.id} released from ${serverId}`);
+        }
+    }
+
+    for (const [clientId, binding] of Array.from(state.clientBuildBindings.entries())) {
+        const serverId = NormalizeID(binding && binding.serverId);
+        if (!validClients.has(NormalizeID(clientId)) || !validServers.has(serverId)) {
+            state.clientBuildBindings.delete(clientId);
+            changed++;
+        }
+    }
+
+    if (changed) SaveDatabase();
+    return changed;
+}
+
 function RepairOneToOneAssignments() {
     const groups = new Map();
     for (const saved of clientIdentities.values()) {
@@ -233,6 +269,7 @@ module.exports = {
     ClientHealth,
     TrackIP,
     GetServerClientCount,
+    RepairOrphanAssignments,
     RepairOneToOneAssignments,
     FindAvailableServer,
     FindAssignableServerId,

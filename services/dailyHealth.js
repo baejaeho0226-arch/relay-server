@@ -125,4 +125,11 @@ function Overview(limit) {
     return { timezone: config.DAILY_REPORT_TIMEZONE, current, reports: List(limit) };
 }
 
-module.exports = { DateKey, NewAccumulator, ImportPersisted, BuildReport, EnsureCurrent, Record, GenerateCurrent, List, Overview };
+function ClearHistory() {
+    const removed = state.dailyHealthReports.size;
+    state.dailyHealthReports.clear();
+    require('../storage/database').SaveDatabase();
+    return { removed, retainedCurrent: Boolean(state.dailyHealthAccumulator) };
+}
+
+module.exports = { DateKey, NewAccumulator, ImportPersisted, BuildReport, EnsureCurrent, Record, GenerateCurrent, List, Overview, ClearHistory };

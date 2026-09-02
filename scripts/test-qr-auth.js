@@ -372,6 +372,8 @@ async function run() {
     assert.ok(apk.includes("ALine.StartsWith('PASSWORD_RESET|')"));
     assert.ok(!apk.includes('FSendButton'));
     assert.ok(apk.includes('FDashboardTabs: array[0..3] of TRectangle'));
+    assert.ok(apk.includes('FDashboardTabsCard.Parent := FMainPanel'));
+    assert.ok(apk.includes('procedure TForm1.ShowMainPage'));
     assert.ok(!apk.includes('FFinalCheckBox'));
     assert.ok(apk.includes('procedure TForm1.TryAutomaticBuild'));
     assert.ok(!apk.includes('FBuildWaitPanel'));
@@ -495,7 +497,7 @@ async function run() {
     console.log('- Type1/Type2/Type3 approval routing: PASS');
     console.log('- Replay and signature tamper rejection: PASS');
     console.log('- Oversized image dimension rejection: PASS');
-    console.log('- APK QR/PIN/background-Build/terminal-dashboard flow: PASS');
+    console.log('- APK QR/PIN/dashboard/background-Build/main flow: PASS');
     console.log('- Authenticated WinSockServer Build gate and dynamic server ACK: PASS');
     console.log('- Build-first persistent wait and delayed WinSockServer connection: PASS');
     console.log('- APK responsive QR frame and expiry countdown: PASS');
@@ -507,7 +509,7 @@ async function run() {
     console.log('- WinSockServer QR authorization source: PASS');
     console.log('- Grouped Web Admin navigation: PASS');
     console.log('- Live list scroll preservation and complete console clear: PASS');
-    console.log('- APK terminal dashboard with background automatic Build: PASS');
+    console.log('- APK dashboard then separate tabbed main page: PASS');
     console.log('- Replaced-socket stale close race protection: PASS');
 }
 

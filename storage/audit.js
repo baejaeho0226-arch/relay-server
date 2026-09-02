@@ -68,9 +68,23 @@ function AuditSearch(query, type, sinceMs) {
     }).slice(-MAX_SEARCH_RESULTS);
 }
 
+function ClearAudit() {
+    const removedMemory = events.length;
+    events.length = 0;
+    let removedFiles = 0;
+    try {
+        for (const file of fs.readdirSync(AUDIT_DIR)) {
+            if (!/^audit-\d{4}-\d{2}-\d{2}\.jsonl$/.test(file)) continue;
+            try { fs.unlinkSync(path.join(AUDIT_DIR, file)); removedFiles++; } catch (_) {}
+        }
+    } catch (_) {}
+    return { removedMemory, removedFiles };
+}
+
 module.exports = {
     AuditFileForTime,
     LogEvent,
     LoadRecentAudit,
-    AuditSearch
+    AuditSearch,
+    ClearAudit
 };

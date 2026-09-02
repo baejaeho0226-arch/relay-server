@@ -525,6 +525,17 @@ function ImportPersisted(data) {
     RebuildQueueRuntime();
 }
 
+function ClearResolvedHistory() {
+    let removed = 0;
+    for (const [id, item] of Array.from(state.deadLetters.entries())) {
+        if (item && item.status === 'ACTIVE') continue;
+        state.deadLetters.delete(id);
+        removed++;
+    }
+    if (removed) require('../storage/database').SaveDatabase();
+    return { removed, retainedActive: Array.from(state.deadLetters.values()).filter(x => x.status === 'ACTIVE').length };
+}
+
 module.exports = {
     DefaultPolicy,
     NormalizePolicy,
@@ -545,5 +556,6 @@ module.exports = {
     ListDeadLetters,
     BuildStatus,
     RebuildQueueRuntime,
+    ClearResolvedHistory,
     ImportPersisted
 };

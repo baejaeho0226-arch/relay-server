@@ -481,6 +481,48 @@ function TrimHistory() {
     }
 }
 
+function ClearHistory() {
+    let removed = 0;
+    for (const [sessionId, session] of Array.from(state.buildSessions.entries())) {
+        if (session && (session.status === 'PENDING' || session.status === 'AUTHORIZED')) continue;
+        state.buildSessions.delete(sessionId);
+        removed++;
+    }
+    if (removed) Save();
+    return { removed, retainedActive: state.buildSessions.size };
+}
+
+function PurgeClient(clientId) {
+    clientId = NormalizeID(clientId);
+    RevokeForClient(clientId, 'CLIENT_DELETED');
+    state.pendingBuildGrants.delete(clientId);
+    state.clientBuildBindings.delete(clientId);
+    let removedSessions = 0;
+    for (const [sessionId, session] of Array.from(state.buildSessions.entries())) {
+        if (session && session.clientId === clientId) {
+            state.buildSessions.delete(sessionId);
+            removedSessions++;
+        }
+    }
+    return removedSessions;
+}
+
+function PurgeServer(serverId) {
+    serverId = NormalizeID(serverId);
+    RevokeForServer(serverId, 'SERVER_DELETED');
+    const clients = [];
+    for (const [clientId, binding] of Array.from(state.clientBuildBindings.entries())) {
+        if (NormalizeID(binding && binding.serverId) === serverId) {
+            state.clientBuildBindings.delete(clientId);
+            clients.push(clientId);
+        }
+    }
+    for (const grant of state.pendingBuildGrants.values()) {
+        if (NormalizeID(grant && grant.serverId) === serverId) grant.serverId = '';
+    }
+    return clients;
+}
+
 function Cleanup() {
     const now = Now();
     let changed = false;
@@ -619,6 +661,9 @@ module.exports = {
     List,
     Bindings,
     Summary,
+    ClearHistory,
+    PurgeClient,
+    PurgeServer,
     Cleanup,
     ImportPersisted
 };

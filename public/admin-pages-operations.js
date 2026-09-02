@@ -97,7 +97,7 @@ async function renderConfigHistory() {
   if (!roleIsAdmin()) throw new Error('FORBIDDEN');
   const { current, history } = await api('/api/control/config-history?limit=100');
   const rows = (history || []).map(h => `<tr><td>${esc(fmtTime(h.at))}</td><td class="code">${esc(h.id)}</td><td>${esc(h.action)}</td><td>${esc(h.actor)}</td><td>${h.revision}</td><td>${esc(h.detail || '-')}</td><td>${h.action === 'ROLLBACK' ? '-' : `<button data-config-rollback="${esc(h.id)}">ROLLBACK</button>`}</td></tr>`).join('');
-  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">CURRENT REVISION</div><div class="stat-value">${current.revision}</div><div class="stat-sub">Runtime Config</div></div><div class="card"><div class="stat-label">HISTORY</div><div class="stat-value">${history.length}</div><div class="stat-sub">Max 100 snapshots</div></div></div><div class="section-card"><div class="section-head"><h3>Configuration Timeline</h3><span class="small-note">Rollback creates a NEW revision so connected devices always apply it.</span></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Time</th><th>ID</th><th>Action</th><th>Actor</th><th>Rev</th><th>Detail</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="empty">History 없음</td></tr>'}</tbody></table></div></div></div>`;
+  content.innerHTML = `<div class="cards"><div class="card"><div class="stat-label">CURRENT REVISION</div><div class="stat-value">${current.revision}</div><div class="stat-sub">Runtime Config</div></div><div class="card"><div class="stat-label">HISTORY</div><div class="stat-value">${history.length}</div><div class="stat-sub">Max 100 snapshots</div></div></div><div class="section-card"><div class="section-head"><h3>Configuration Timeline</h3><div class="actions"><span class="small-note">현재 설정은 새 Baseline으로 보존</span><button class="danger" data-history-clean="CONFIG">CLEAN HISTORY</button></div></div><div class="section-body"><div class="table-wrap"><table><thead><tr><th>Time</th><th>ID</th><th>Action</th><th>Actor</th><th>Rev</th><th>Detail</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="empty">History 없음</td></tr>'}</tbody></table></div></div></div>`;
 }
 
 async function renderEnrollment() {
@@ -172,7 +172,7 @@ async function renderProtocolSecurity() {
 async function renderAudit() {
   const { events } = await api(`/api/audit?query=${encodeURIComponent(auditQuery)}&type=${encodeURIComponent(auditType)}`);
   const types = [...new Set(events.map(x => x.type))].sort();
-  content.innerHTML = `<div class="toolbar"><input id="audit-search" placeholder="이벤트 검색" value="${esc(auditQuery)}"><select id="audit-type"><option value="ALL">ALL</option>${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select><button id="audit-search-btn">검색</button></div>
+  content.innerHTML = `<div class="toolbar"><input id="audit-search" placeholder="이벤트 검색" value="${esc(auditQuery)}"><select id="audit-type"><option value="ALL">ALL</option>${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select><button id="audit-search-btn">검색</button>${roleIsAdmin()?'<button class="danger" data-history-clean="AUDIT">CLEAN AUDIT</button>':''}</div>
   <div class="table-wrap"><table><thead><tr><th>Time</th><th>Type</th><th>Detail</th></tr></thead><tbody>${events.map(e => `<tr><td>${esc(fmtTime(e.time))}</td><td class="code">${esc(e.type)}</td><td>${esc(e.detail)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Audit 없음</td></tr>'}</tbody></table></div>`;
   const typeEl = document.getElementById('audit-type');
   if ([...typeEl.options].some(o => o.value === auditType)) typeEl.value = auditType;
@@ -262,4 +262,3 @@ async function renderSystem() {
     <div class="section-card"><div class="section-head"><h3>Notice</h3></div><div class="section-body"><p class="muted">현재 온라인 Client 전체에 공지를 전송합니다.</p>${roleCanOperate() ? '<button id="notice-all-btn">전체 공지 보내기</button>' : ''}</div></div>
   </div>`;
 }
-

@@ -52,6 +52,24 @@ content.addEventListener('click', async event => {
   try {
     const openViewBtn = event.target.closest('[data-open-view]');
     if (openViewBtn) { switchView(openViewBtn.dataset.openView); await renderCurrent(); return; }
+    if (event.target.id === 'pairing-repair-btn') {
+      const v = await openModal({ title: '1:1 Matching Repair', message: '존재하지 않는 SERVER 바인딩과 중복 배정을 정리하고, 현재 ONLINE 상태인 빈 PC와 대기 APK를 다시 1:1로 연결합니다. OFFLINE이지만 등록이 남아 있는 정상 고정 쌍은 임의로 이동하지 않습니다.', confirmLabel: 'REPAIR' });
+      if (!v) return;
+      const r = await api('/api/pairing/repair', { method: 'POST', body: {} });
+      toast(`1:1 복구 완료 · orphan ${r.repair.orphaned} · duplicate ${r.repair.duplicate} · assigned ${r.repair.assigned}`);
+      await renderCurrent();
+      return;
+    }
+    const historyClean = event.target.closest('[data-history-clean]');
+    if (historyClean) {
+      const scope = historyClean.dataset.historyClean;
+      const v = await openModal({ title: 'History Clean', message: `${scope} 종료 이력을 정리합니다. 진행 중인 요청, 활성 Build 세션, 대기 QR 및 ACTIVE DLQ는 보존됩니다.`, danger: true, confirmLabel: 'CLEAN' });
+      if (!v) return;
+      await api('/api/history/clean', { method: 'POST', body: { scope } });
+      toast(`${scope} CLEAN 완료`);
+      await renderCurrent();
+      return;
+    }
     if (event.target.id === 'qr-auth-scan-btn') {
       const file = qrSelectedFile;
       if (!file) throw new Error('QR 사진을 먼저 선택하세요.');
@@ -516,6 +534,15 @@ async function serverAction(action, id) {
     toast('Server Note 저장'); await renderServers(); return;
   }
 
+  if (action === 'delete') {
+    const v = await openModal({ title: 'Server Delete', message: `${id}\nSERVER-ID, HMAC, 고정 Build 바인딩과 종속 설정을 삭제합니다. 연결된 APK는 미배정 상태로 복구됩니다. 같은 EXE가 다시 접속하면 신규 Server 등록으로 처리됩니다.`, danger: true, confirmLabel: 'DELETE' });
+    if (!v) return;
+    const r = await api(`/api/servers/${encodedId}`, { method: 'DELETE', body: {} });
+    toast(`Server 삭제 · released ${r.releasedClients} · reassigned ${r.reassignedClients}`);
+    await renderServers();
+    return;
+  }
+
   let body = {};
   if (action === 'kick') {
     const v = await openModal({ title: 'Server Kick', message: `${id} 연결을 끊고 60초 동안 재등록을 차단합니다.`, confirmLabel: 'Kick' });
@@ -593,6 +620,15 @@ async function clientAction(action, id) {
     if (!v) return;
     await api(`/api/clients/${encodedId}/notice`, { method: 'POST', body: v });
     toast('공지 전송 완료');
+    return;
+  }
+
+  if (action === 'delete') {
+    const v = await openModal({ title: 'Client Delete', message: `${id}\nCLIENT-ID와 QR, PIN, License 결합, Build 바인딩 및 종속 데이터를 삭제합니다. APK 재접속 시 신규 QR 승인부터 다시 진행됩니다.`, danger: true, confirmLabel: 'DELETE' });
+    if (!v) return;
+    await api(`/api/clients/${encodedId}`, { method: 'DELETE', body: {} });
+    toast(`Client 삭제: ${id}`);
+    await renderClients();
     return;
   }
 

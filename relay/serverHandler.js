@@ -27,6 +27,7 @@ function SendLine(...args) { return require('../core/utils').SendLine(...args); 
 function TrackIP(...args) { return require('../identity/identityManager').TrackIP(...args); }
 function ValidateProtocolAndVersion(...args) { return require('../services/versionPolicy').ValidateProtocolAndVersion(...args); }
 function RepairOneToOneAssignments(...args) { return require('../identity/identityManager').RepairOneToOneAssignments(...args); }
+function RepairOrphanAssignments(...args) { return require('../identity/identityManager').RepairOrphanAssignments(...args); }
 
 function LegacyServerDeviceKey(deviceKey) {
     const match = /^WIN2-([0-9A-F]{32})-[0-9A-F]{16}$/i.exec(String(deviceKey || '').trim());
@@ -151,6 +152,7 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     // Repair legacy many-to-one rows before assigning a waiting APK.  With
     // MAX_CLIENTS_PER_SERVER fixed at one, this server can claim one client
     // only; the rest remain unassigned until their own PC registers.
+    RepairOrphanAssignments();
     RepairOneToOneAssignments();
     BindUnassignedClients(serverId);
 
