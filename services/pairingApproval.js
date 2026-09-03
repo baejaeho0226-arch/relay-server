@@ -86,7 +86,11 @@ function BindForApproval(clientId, serverId, actor = 'admin') {
         const occupiedBy = Occupant(serverId, clientId);
         if (occupiedBy) return { ok: false, reason: 'SERVER_ALREADY_PAIRED' };
         const oldServerId = NormalizeID(check.saved.serverId);
+        const oldRequiresPairingApproval = Boolean(check.saved.requiresPairingApproval);
+        const oldPairingApprovedAt = Number(check.saved.pairingApprovedAt) || 0;
+        const oldPairingApprovedBy = String(check.saved.pairingApprovedBy || '');
         check.saved.serverId = serverId;
+        check.saved.requiresPairingApproval = false;
         check.saved.pairingApprovedAt = now;
         check.saved.pairingApprovedBy = claim.actor;
 
@@ -100,8 +104,9 @@ function BindForApproval(clientId, serverId, actor = 'admin') {
         }
         if (!require('../storage/database').SaveDatabase()) {
             check.saved.serverId = oldServerId;
-            delete check.saved.pairingApprovedAt;
-            delete check.saved.pairingApprovedBy;
+            check.saved.requiresPairingApproval = oldRequiresPairingApproval;
+            check.saved.pairingApprovedAt = oldPairingApprovedAt;
+            check.saved.pairingApprovedBy = oldPairingApprovedBy;
             if (live) {
                 live.serverId = oldServerId;
                 if (target && target.clients instanceof Set) target.clients.delete(clientId);

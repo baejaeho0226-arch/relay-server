@@ -135,19 +135,43 @@ async function run() {
     assert.strictEqual(state.licenses.get('DELETE-CLIENT-LICENSE').boundClient, '');
     assert.strictEqual(serverA2.clients.has(clientIdA), false);
 
-    // An explicit Delete is the only operation that intentionally creates a
-    // new ID on the next appearance of the same physical installation.
-    const clientANew = Connection('client', 'client-a-after-delete');
+    // DELETE is durable revocation. An already-running APK must not reconnect
+    // as a stream of newly minted CLIENT-IDs.
+    const clientBlocked = Connection('client', 'client-a-after-delete');
+    clientHandler.HandleClientConnect(clientBlocked, clientKeyA, 2, '2.9.0');
+    assert.strictEqual(clientBlocked.clientId, '');
+    assert.strictEqual(clientBlocked.administrativelyDeleted, true);
+    assert.strictEqual(state.clientIdentities.has(clientKeyA), false);
+    assert.ok(clientBlocked.socket.writes.some(x => x.includes('ERROR|DEVICE_DELETED|ADMIN_RESTORE_REQUIRED')));
+
+    const deletion = require('../services/deviceDeletion');
+    assert.strictEqual(deletion.List('CLIENT').length, 1);
+    assert.strictEqual(deletion.Restore(deletedClient.tombstoneId, 'TEST').ok, true);
+    const clientANew = Connection('client', 'client-a-after-restore');
     clientHandler.HandleClientConnect(clientANew, clientKeyA, 2, '2.9.0');
     assert.ok(clientANew.clientId);
     assert.notStrictEqual(clientANew.clientId, clientIdA);
+    // Re-enrollment may reserve an empty 1:1 slot for legacy compatibility,
+    // but signed QR approval is still required to commit authorization.
     assert.strictEqual(clientANew.serverId, serverIdA);
+    assert.strictEqual(require('../services/pairingApproval').BindForApproval(clientANew.clientId, serverIdA, 'TEST').ok, true);
 
     const deletedServer = registry.DeleteServer(serverIdB);
     assert.strictEqual(deletedServer.ok, true);
     assert.strictEqual(state.serverIdentities.has(serverKeyB), false);
     assert.strictEqual(state.clientIdentities.get(clientKeyB).serverId, '');
     assert.strictEqual(serverB1.socket.destroyed, true);
+    const serverBBlocked = Connection('server', 'server-b-after-delete');
+    assert.strictEqual(serverHandler.RegisterServer(serverBBlocked, serverKeyB, 2, '2.6.0'), false);
+    assert.strictEqual(serverBBlocked.serverId, '');
+    assert.ok(serverBBlocked.socket.writes.some(x => x.includes('ERROR|DEVICE_DELETED|ADMIN_RESTORE_REQUIRED')));
+    const deletionSnapshot = require('../storage/database').BuildDatabaseObject();
+    assert.ok(Object.values(deletionSnapshot.deletedDevices).some(x => x.tombstoneId === deletedServer.tombstoneId));
+    const sqlite = require('../storage/sqliteDatabase');
+    sqlite.SaveSnapshot(deletionSnapshot);
+    const sqliteReloaded = sqlite.LoadSnapshot();
+    assert.ok(Object.values(sqliteReloaded.data.deletedDevices).some(x => x.tombstoneId === deletedServer.tombstoneId));
+    sqlite.Close();
 
     // Finished history is removable without destroying work that can still
     // affect a live request or authorization.
@@ -203,12 +227,14 @@ async function run() {
     assert.ok(webApi.includes("method === 'DELETE'"));
     assert.ok(webApi.includes("pathname === '/api/history/clean'"));
     assert.ok(webApi.includes("pathname === '/api/pairing/repair'"));
+    assert.ok(webApi.includes("pathname === '/api/deleted-devices'"));
+    assert.ok(adminSource.includes('data-deleted-device-restore'));
 
     console.log('DEVICE REGISTRY / HISTORY PASS');
     console.log('- Two PCs and two APKs keep independent fixed pairs: PASS');
     console.log('- Server #Accept READY/FULL stays separate from ONLINE/OFFLINE: PASS');
     console.log('- Reconnect replaces transport without changing IDs: PASS');
-    console.log('- Explicit Delete purges bindings and permits new enrollment: PASS');
+    console.log('- DELETE blocks automatic re-enrollment until explicit RESTORE: PASS');
     console.log('- Orphan pairing repair preserves registered fixed pairs: PASS');
     console.log('- History CLEAN preserves active work: PASS');
     console.log('- Web Delete / Repair / CLEAN controls: PASS');

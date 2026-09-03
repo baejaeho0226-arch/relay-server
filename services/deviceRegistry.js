@@ -65,7 +65,7 @@ function AssignWaitingOnlineClients() {
     const identity = Identity();
     let assigned = 0;
     const waiting = Array.from(state.clientIdentities.values())
-        .filter(saved => saved && !saved.serverId && identity.GetOnlineClient(saved.id))
+        .filter(saved => saved && !saved.serverId && !saved.requiresPairingApproval && identity.GetOnlineClient(saved.id))
         .sort((a, b) => (Number(a.lastSeenAt) || 0) - (Number(b.lastSeenAt) || 0) || String(a.id).localeCompare(String(b.id)));
     for (const saved of waiting) {
         const server = identity.FindAvailableServer();
@@ -92,15 +92,21 @@ function RepairPairing() {
     const duplicate = identity.RepairOneToOneAssignments();
     const assigned = AssignWaitingOnlineClients();
     if (assigned) Save();
-    return { orphaned, duplicate, assigned };
+    return { orphaned, duplicate, assigned, policy: 'ONE_TO_ONE_RESERVATION_QR_FINAL' };
 }
 
-function DeleteServer(serverId) {
+function DeleteServer(serverId, actor = 'WEB_ADMIN') {
     const identity = Identity();
     const id = NormalizeID(serverId);
     if (!identity.ServerExists(id)) return { ok: false, reason: 'SERVER_NOT_FOUND' };
     const deviceKey = identity.FindServerDeviceKey(id);
     const live = identity.GetOnlineServer(id);
+    const tombstone = require('./deviceDeletion').Add('SERVER', deviceKey, id, actor);
+    if (!tombstone) return { ok: false, reason: 'DELETE_TOMBSTONE_FAILED' };
+    if (live) {
+        live.administrativelyDeleted = true;
+        live.superseded = true;
+    }
     require('../services/buildGate').PurgeServer(id);
     try { require('../relay/ackManager').FailPendingRequestsForServer(id, 'SERVER_DELETED'); } catch (_) {}
 
@@ -117,6 +123,9 @@ function DeleteServer(serverId) {
         if (!saved || NormalizeID(saved.serverId) !== id) continue;
         require('../services/buildGate').PurgeClient(saved.id);
         saved.serverId = '';
+        saved.requiresPairingApproval = true;
+        saved.pairingApprovedAt = 0;
+        saved.pairingApprovedBy = '';
         state.clientServerBindings.delete(saved.id);
         state.clientFailoverRecords.delete(saved.id);
         const client = identity.GetOnlineClient(saved.id);
@@ -137,19 +146,24 @@ function DeleteServer(serverId) {
         SendLine(live.socket, 'ERROR|SERVER_DELETED');
         try { live.socket.destroy(); } catch (_) {}
     }
-    const assigned = AssignWaitingOnlineClients();
     Save();
-    Log('SERVER_DELETE', `${id} released=${releasedClients} reassigned=${assigned}`);
-    return { ok: true, id, deviceKey, releasedClients, reassignedClients: assigned };
+    Log('SERVER_DELETE', `${id} released=${releasedClients} tombstone=${tombstone.tombstoneId}`);
+    return { ok: true, id, deviceRef: tombstone.deviceRef, tombstoneId: tombstone.tombstoneId, releasedClients, reassignedClients: 0 };
 }
 
-function DeleteClient(clientId) {
+function DeleteClient(clientId, actor = 'WEB_ADMIN') {
     const identity = Identity();
     const id = NormalizeID(clientId);
     if (!identity.ClientExists(id)) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
     const deviceKey = identity.FindClientDeviceKey(id);
     const saved = identity.GetSavedClientByID(id);
     const live = identity.GetOnlineClient(id);
+    const tombstone = require('./deviceDeletion').Add('CLIENT', deviceKey, id, actor);
+    if (!tombstone) return { ok: false, reason: 'DELETE_TOMBSTONE_FAILED' };
+    if (live) {
+        live.administrativelyDeleted = true;
+        live.superseded = true;
+    }
     const server = saved ? identity.GetOnlineServer(saved.serverId) : null;
     if (server) server.clients.delete(id);
     require('../services/buildGate').PurgeClient(id);
@@ -177,8 +191,8 @@ function DeleteClient(clientId) {
         try { live.socket.destroy(); } catch (_) {}
     }
     Save();
-    Log('CLIENT_DELETE', `${id} device=${deviceKey}`);
-    return { ok: true, id, deviceKey };
+    Log('CLIENT_DELETE', `${id} device=${tombstone.deviceRef} tombstone=${tombstone.tombstoneId}`);
+    return { ok: true, id, deviceRef: tombstone.deviceRef, tombstoneId: tombstone.tombstoneId };
 }
 
 module.exports = { RepairPairing, DeleteServer, DeleteClient, AssignWaitingOnlineClients };

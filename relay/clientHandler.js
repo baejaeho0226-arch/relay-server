@@ -110,6 +110,7 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
 
     deviceKey = String(deviceKey || '').trim();
     if (!deviceKey) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return; }
+    if (require('../services/deviceDeletion').RejectConnection(connection, 'CLIENT', deviceKey)) return;
 
     let saved = clientIdentities.get(deviceKey);
     if (!saved) saved = MigrateLegacyClientIdentity(deviceKey);
@@ -128,18 +129,16 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
             LogEvent(enrollment.rejected ? 'CLIENT_ENROLLMENT_REJECTED' : 'CLIENT_ENROLLMENT_PENDING', `${deviceKey} ${requestId}`);
             return;
         }
-        // QR enrollment belongs to Relay, not to a live WinSockServer session.
-        // Prefer a usable persisted binding, but allow a first device to remain
-        // unassigned until the first WinSockServer registers.
+        // Reserve at most one currently empty PC so legacy license clients
+        // remain compatible. Signed QR approval still commits (and may change)
+        // the final business binding before Build authorization.
         saved = CreateClientIdentity(deviceKey, FindAssignableServerId());
         require('../services/deviceEnrollment').MarkBound('CLIENT', deviceKey, saved.id);
         SaveDatabase();
     }
     RepairOrphanAssignments();
     RepairOneToOneAssignments();
-    // Existing rows released by one-to-one repair and phones that came online
-    // before any PC must claim an actually online empty server here.
-    if (!saved.serverId) {
+    if (!saved.serverId && !saved.requiresPairingApproval) {
         const availableServerId = FindAssignableServerId();
         if (availableServerId) {
             saved.serverId = availableServerId;

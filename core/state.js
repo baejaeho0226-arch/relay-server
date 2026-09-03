@@ -63,6 +63,11 @@ module.exports = {
     configHistory: [],
     enrollmentPolicy: { enabled: false, updatedAt: 0 },
     deviceEnrollments: new Map(),
+    // Administrative DELETE is a revocation, not a request to mint another
+    // identity on the next automatic reconnect.  Entries are keyed by a
+    // one-way fingerprint of the installation device key and persist until an
+    // administrator explicitly restores the installation.
+    deletedDevices: new Map(),
     deviceSecretRotations: new Map(),
     deviceSecretMeta: new Map(),
     deviceNetworkProfiles: new Map(),

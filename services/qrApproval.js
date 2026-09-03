@@ -39,7 +39,7 @@ function PublicRecord(record) {
         licenseRef: record.licenseRef || (record.licenseKey ? `QR-${String(record.licenseKey).slice(-8)}` : ''),
         serverId: NormalizeID(record.serverId),
         accessType: require('./clientPassword').NormalizeAccessType(record.accessType),
-        lastIP: record.lastIP || '',
+        lastIP: require('./networkSecurity').DisplayIP('CLIENT', record.clientId, record.lastIP || ''),
         scanCount: Number(record.scanCount || 0)
     };
 }
@@ -155,7 +155,13 @@ function Resume(connection) {
     const gate = RequireQrSecurity(connection);
     if (!gate.ok) return gate;
     const bound = GetBoundLicenseEntry(connection.clientId);
-    if (bound && !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
+    const saved = require('../identity/identityManager').GetSavedClientByID(connection.clientId);
+    const pairedServerId = NormalizeID(saved && saved.serverId);
+    // A surviving license does not authorize a new or deleted PC binding.
+    // The administrator must explicitly select the replacement target in a
+    // fresh signed QR transaction.
+    if (bound && saved && !saved.requiresPairingApproval && pairedServerId && require('../identity/identityManager').ServerExists(pairedServerId) &&
+        !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
         return { ok: AuthorizeBoundClientByQr(connection, 'RESUME'), resumed: true };
     }
     return Issue(connection);

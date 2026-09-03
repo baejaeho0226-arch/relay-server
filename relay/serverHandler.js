@@ -66,7 +66,7 @@ function BindUnassignedClients(serverId) {
     // Only phones that are currently online are eligible, oldest wait first.
     const waiting = Array.from(clientIdentities.entries())
         .filter(([, saved]) => {
-            if (!saved || saved.serverId) return false;
+            if (!saved || saved.serverId || saved.requiresPairingApproval) return false;
             const live = GetOnlineClient(saved.id);
             return !!live && live.connected && live.socket && !live.socket.destroyed;
         })
@@ -99,6 +99,7 @@ function BindUnassignedClients(serverId) {
 function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     deviceKey = String(deviceKey || '').trim();
     if (!deviceKey) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return false; }
+    if (require('../services/deviceDeletion').RejectConnection(connection, 'SERVER', deviceKey)) return false;
     if (!ValidateProtocolAndVersion(connection, 'server', protocolVersion, appVersion)) return false;
 
     let serverId = serverIdentities.get(deviceKey);
@@ -155,9 +156,8 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     SendLine(connection.socket, `REGISTERED|${serverId}|${protocolVersion}|${appVersion}`);
     LogEvent('SERVER_ONLINE', `${serverId} v${appVersion}`);
 
-    // Repair legacy many-to-one rows before assigning a waiting APK.  With
-    // MAX_CLIENTS_PER_SERVER fixed at one, this server can claim one client
-    // only; the rest remain unassigned until their own PC registers.
+    // Repair invalid legacy rows, then offer this empty PC to an online APK
+    // that is not waiting for an explicit post-delete QR re-pair.
     RepairOrphanAssignments();
     RepairOneToOneAssignments();
     BindUnassignedClients(serverId);

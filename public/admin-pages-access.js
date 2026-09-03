@@ -103,8 +103,14 @@ async function renderReports() {
   <div class="section-card"><div class="section-head"><h3>Daily History</h3><div class="actions"><span class="small-note">RETENTION ${daily.reports.length} / 365</span>${roleIsAdmin()?'<button class="danger" data-history-clean="DAILY_REPORTS">CLEAN HISTORY</button>':''}</div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Servers</th><th>Clients</th><th>Connections</th><th>SEND</th><th>ACK Success</th><th>Error</th><th>Timeout</th><th>Flapping</th><th>Licenses ≤7d</th><th>Backup</th><th>DB</th><th>Generated</th></tr></thead><tbody>${daily.reports.map(r=>`<tr><td class="code">${esc(r.date)}</td><td>${r.servers.online}/${r.servers.total}</td><td>${r.clients.online}/${r.clients.total}</td><td>${r.connections}</td><td>${r.sends}</td><td>${r.ack.successRate}%</td><td>${r.ack.error}</td><td>${r.ack.timeout}</td><td>${r.flapping}</td><td>${r.licensesExpiring7d}</td><td>${badge(r.backup.ok?'GOOD':'WARNING')}</td><td>${badge(r.database.ok?'GOOD':'CRITICAL')}</td><td>${esc(fmtTime(r.generatedAt))}</td></tr>`).join('')||'<tr><td colspan="13" class="empty">저장된 Daily Report 없음</td></tr>'}</tbody></table></div></div>`;
 }
 
+function deletedDevicePanel(rows, type) {
+  if (!roleIsAdmin() || !rows.length) return '';
+  return `<div class="section-card"><div class="section-head"><h3>DELETED ${esc(type)} LOCKS</h3><span class="small-note">자동 재접속 차단 ${rows.length}</span></div><div class="table-wrap"><table><thead><tr><th>Previous ID</th><th>Install Ref</th><th>Deleted</th><th>Blocked</th><th>Last Attempt</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td class="code">${esc(row.lastId)}</td><td class="code">${esc(row.deviceRef)}</td><td>${esc(fmtTime(row.deletedAt))}</td><td>${Number(row.blockedAttempts || 0)}</td><td>${esc(fmtTime(row.lastBlockedAt))}</td><td><button class="primary" data-deleted-device-restore="${esc(row.tombstoneId)}" data-device-type="${esc(type)}">RESTORE</button></td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
 async function renderServers() {
-  const { servers } = await api('/api/servers');
+  const [{ servers }, deletedResponse] = await Promise.all([api('/api/servers'), roleIsAdmin() ? api('/api/deleted-devices?type=SERVER') : Promise.resolve({ deletedDevices: [] })]);
+  const deletedDevices = deletedResponse.deletedDevices || [];
   const actions = server => {
     const id = esc(server.id);
     const detail = `<button data-server-action="detail" data-id="${id}">상세</button>`;
@@ -122,13 +128,14 @@ async function renderServers() {
     return `<div class="actions">${detail}${alias}${note}${kick}${drain}${enabled}<button class="danger" data-server-action="delete" data-id="${id}">DELETE</button></div>`;
   };
 
-  content.innerHTML = `<div class="toolbar">${roleIsAdmin()?'<button id="pairing-repair-btn" class="primary">1:1 MATCH REPAIR</button><button class="danger" data-history-clean="SERVER_HISTORY">CLEAN SERVER HISTORY</button>':'<button class="danger" disabled title="ADMIN 권한 필요">DELETE · ADMIN</button>'}<span class="small-note">DELETE는 장비 ID와 종속 바인딩을 제거 · CLEAN은 접속/Flapping 이력만 정리</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>SERVER-ID</th><th>Status</th><th>Health</th><th>Accept</th><th>Clients</th><th>Drain</th><th>RTT</th><th>Version</th><th>IP</th><th>Last Seen</th><th>Reconnect</th><th>Note</th><th class="sticky-actions">Action</th></tr></thead><tbody>
+  content.innerHTML = `<div class="toolbar">${roleIsAdmin()?'<button id="pairing-repair-btn" class="primary">1:1 MATCH REPAIR</button><button class="danger" data-history-clean="SERVER_HISTORY">CLEAN SERVER HISTORY</button>':'<button class="danger" disabled title="ADMIN 권한 필요">DELETE · ADMIN</button>'}<span class="small-note">DELETE는 설치를 재접속 차단 목록에 고정 · RESTORE 후에만 신규 등록 가능</span></div>${deletedDevicePanel(deletedDevices, 'SERVER')}<div class="table-wrap"><table><thead><tr><th>Alias</th><th>SERVER-ID</th><th>Status</th><th>Health</th><th>Accept</th><th>Clients</th><th>Drain</th><th>RTT</th><th>Version</th><th>Network</th><th>Last Seen</th><th>Reconnect</th><th>Note</th><th class="sticky-actions">Action</th></tr></thead><tbody>
     ${servers.map(s => `<tr><td>${esc(s.alias || '-')}</td><td class="code">${esc(s.id)}</td><td>${badge(s.status)}</td><td>${badge(s.health)}</td><td>${badge(s.acceptState || (s.canAcceptClients ? 'READY' : 'OFFLINE'))}</td><td>${s.clients} / ${s.savedClients}</td><td>${s.drain && s.drain.active ? `<div class="drain-inline"><strong>${s.drain.ready ? 'READY' : `${s.drain.progress}%`}</strong><span>${s.drain.currentClients} live</span></div>` : '-'}</td><td>${s.rttMs >= 0 ? `${s.rttMs} ms` : '-'}</td><td>${esc(s.appVersion || '-')}</td><td>${esc(s.lastIP || '-')}</td><td>${esc(fmtTime(s.lastSeen))}</td><td>${s.reconnectCount}</td><td class="note-cell" title="${esc(s.note || '')}">${esc(s.note || '-')}</td><td class="sticky-actions">${actions(s)}</td></tr>`).join('') || '<tr><td colspan="15" class="empty">Server 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
 async function renderClients() {
-  const { clients } = await api('/api/clients');
+  const [{ clients }, deletedResponse] = await Promise.all([api('/api/clients'), roleIsAdmin() ? api('/api/deleted-devices?type=CLIENT') : Promise.resolve({ deletedDevices: [] })]);
+  const deletedDevices = deletedResponse.deletedDevices || [];
   const actions = client => {
     const id = esc(client.id);
     let html = `<button data-client-action="detail" data-id="${id}">상세</button>`;
@@ -147,7 +154,7 @@ async function renderClients() {
     return `<div class="actions">${html}</div>`;
   };
 
-  content.innerHTML = `<div class="toolbar">${roleIsAdmin() ? '<button id="pairing-repair-btn" class="primary">1:1 MATCH REPAIR</button><button class="primary pin-manage-open" data-open-view="clientpasswords">CLIENT PIN 관리 열기</button><button class="danger" data-history-clean="CLIENT_HISTORY">CLEAN CLIENT HISTORY</button>' : '<button class="danger" disabled title="ADMIN 권한 필요">DELETE · ADMIN</button>'}<span class="small-note">DELETE는 QR/PIN/바인딩 포함 전체 삭제 · CLEAN은 접속/Flapping 이력만 정리</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>PIN</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th class="sticky-actions">Action</th></tr></thead><tbody>
+  content.innerHTML = `<div class="toolbar">${roleIsAdmin() ? '<button id="pairing-repair-btn" class="primary">1:1 MATCH REPAIR</button><button class="primary pin-manage-open" data-open-view="clientpasswords">CLIENT PIN 관리 열기</button><button class="danger" data-history-clean="CLIENT_HISTORY">CLEAN CLIENT HISTORY</button>' : '<button class="danger" disabled title="ADMIN 권한 필요">DELETE · ADMIN</button>'}<span class="small-note">DELETE는 설치를 재접속 차단 목록에 고정 · RESTORE 후에만 신규 QR 등록 가능</span></div>${deletedDevicePanel(deletedDevices, 'CLIENT')}<div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>PIN</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th class="sticky-actions">Action</th></tr></thead><tbody>
     ${clients.map(c => `<tr><td>${esc(c.alias || '-')}</td><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td>${badge(c.password?.locked ? 'LOCKED' : (c.password?.registered ? 'SET' : 'NONE'))}</td><td class="code">${esc(c.serverAlias || c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td class="note-cell" title="${esc(c.note || '')}">${esc(c.note || '-')}</td><td class="sticky-actions">${actions(c)}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">Client 없음</td></tr>'}
   </tbody></table></div>`;
 }
@@ -187,7 +194,8 @@ function fileAsDataUrl(file) {
 
 async function renderQrAuth() {
   if (!roleIsAdmin()) { content.innerHTML = '<div class="empty">FORBIDDEN</div>'; return; }
-  const { requests, summary, servers } = await api('/api/qr-auth');
+  const scannedClientId = qrScanResult && qrScanResult.request ? qrScanResult.request.clientId : '';
+  const { requests, summary, servers } = await api(`/api/qr-auth${scannedClientId ? `?clientId=${encodeURIComponent(scannedClientId)}` : ''}`);
   if (qrScanResult) qrScanResult.defaultDays = summary.defaultDays;
   if (qrScanResult) qrScanResult.pairingServers = Array.isArray(servers) ? servers : [];
   const scanned = qrScanResult && qrScanResult.request ? qrScanResult.request : null;
