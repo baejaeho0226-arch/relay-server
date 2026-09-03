@@ -12,6 +12,7 @@
     "test:qrauth": "node scripts/test-qr-auth.js",
     "test:buildsessions": "node scripts/test-build-sessions.js",
     "test:registry": "node scripts/test-device-registry-history.js",
+    "test:identity": "node scripts/test-multi-pair-delete-ip.js",
     "test:webapi": "node scripts/test-web-api-empty-state.js",
     "test:production": "node scripts/test-production-hardening.js",
     "loadtest": "node tools/load-simulator.js"
