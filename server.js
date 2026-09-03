@@ -19,7 +19,6 @@ process.on('unhandledRejection', reason => {
 });
 
 
-const net = require('net');
 const http = require('http');
 
 const config = require('./config/config');
@@ -54,13 +53,13 @@ const {
 const { servers, clients } = state;
 
 EnsureDirs();
-LoadRecentAudit();
 LoadDatabase();
+LoadRecentAudit();
 if (require('./services/userDashboard').EnsureGroupGuids()) SaveDatabase();
 require('./services/haCoordinator').Start();
 ScanLicenseExpiryAlerts();
 
-const relayServer = net.createServer(CreateConnection);
+const relayServer = require('./services/transportSecurity').CreateRelayServer(CreateConnection);
 
 relayServer.on('error', error =>
     console.error('SERVER ERROR:', error.message)
@@ -82,6 +81,7 @@ relayServer.listen(PORT, HOST, () => {
     console.log('Storage:', config.STORAGE_ENGINE.toUpperCase(), config.STORAGE_ENGINE === 'sqlite' ? config.SQLITE_FILE : config.DB_FILE);
     console.log('HA:', require('./services/haCoordinator').Status().role, config.HA_INSTANCE_ID);
     console.log('Device Extensions:', 'ENABLED (CAPABILITIES / DEVICE_INFO / HMAC / CONFIG / SEQUENCE)');
+    console.log('Relay Transport:', require('./services/transportSecurity').Status().actualMode);
     console.log('================================');
 });
 
@@ -120,7 +120,12 @@ setInterval(() => {
     require('./services/dailyHealth').EnsureCurrent();
     require('./services/qrApproval').Cleanup();
     require('./services/buildGate').Cleanup();
+    require('./services/pairingApproval').CleanupClaims();
+    require('./services/passkeyAuth').Cleanup();
+    require('./services/productionCenter').EvaluateAnomalies();
 }, 1000);
+
+setInterval(() => require('./services/productionCenter').RetentionApply('SCHEDULED'), 24 * 60 * 60 * 1000).unref();
 
 setInterval(() => {
     const now=Date.now(), hb=Math.max(1000,Number(state.desiredRuntimeConfig.heartbeatMs)||10000);
