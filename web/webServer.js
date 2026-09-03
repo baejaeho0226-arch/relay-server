@@ -123,7 +123,9 @@ function ServeFile(req, res, fileName) {
     const headers = {
         'Content-Type': MIME[ext] || 'application/octet-stream',
         'Content-Length': stat.size,
-        'Cache-Control': safeName === 'service-worker.js' ? 'no-cache, no-store, must-revalidate' : 'no-cache'
+        'Cache-Control': ['.html', '.js', '.css'].includes(ext)
+            ? 'no-cache, no-store, must-revalidate'
+            : 'public, max-age=3600'
     };
     if (safeName === 'service-worker.js') headers['Service-Worker-Allowed'] = '/';
     res.writeHead(200, headers);

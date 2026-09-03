@@ -265,6 +265,16 @@ th { color: #6fa985; font-weight: 800; background: #05120b; position: sticky; to
 th::before { content: "# "; color: rgba(50,255,139,.45); }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: rgba(50,255,139,.027); color: #ecfff3; }
+.table-wrap th.sticky-actions, .table-wrap td.sticky-actions {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  background: #07150e;
+  border-left: 1px solid rgba(50,255,139,.16);
+  box-shadow: -10px 0 20px rgba(0,0,0,.22);
+}
+.table-wrap th.sticky-actions { z-index: 4; background: #05120b; }
+.table-wrap tr:hover td.sticky-actions { background: #0a1c12; }
 
 .badge { display: inline-flex; align-items: center; padding: 4px 7px; border-radius: 3px; font-size: 9px; font-weight: 800; border: 1px solid var(--line); letter-spacing: .4px; }
 .badge.good, .badge.online, .badge.bound, .badge.available { color: var(--good); border-color: rgba(50,255,139,.32); background: rgba(50,255,139,.06); }

@@ -317,7 +317,18 @@ async function run() {
     clientHandlerModule.HandleClientLine(serverlessConnection, `DEVICE_AUTH|${recoveredChallenge[1]}|${recoveredHmac}`);
     assert.strictEqual(serverlessConnection.deviceAuthVerified, true);
     clientHandlerModule.HandleClientLine(serverlessConnection, `QR_AUTH_RESUME|${serverlessConnection.clientId}`);
-    assert.ok(serverlessWrites.some(line => line.startsWith('QR_AUTH_CHALLENGE|')));
+    const qrChallengeLine = serverlessWrites.find(line => line.startsWith('QR_AUTH_CHALLENGE|'));
+    assert.ok(qrChallengeLine);
+    const qrChallenge = qrChallengeLine.trim().split('|');
+    assert.strictEqual(qrChallenge.length, 6);
+    assert.ok(Number(qrChallenge[5]) > 0 && Number(qrChallenge[5]) <= 10 * 60 * 1000);
+    const qrStatusStart = serverlessWrites.length;
+    clientHandlerModule.HandleClientLine(serverlessConnection,
+        `QR_AUTH_STATUS|${qrChallenge[1]}|${serverlessConnection.clientId}`);
+    const qrPendingLine = serverlessWrites.slice(qrStatusStart)
+        .find(line => line.startsWith(`QR_AUTH_PENDING|${qrChallenge[1]}|`));
+    assert.ok(qrPendingLine);
+    assert.strictEqual(qrPendingLine.trim().split('|').length, 4);
 
     // When a WinSockServer appears later, only never-assigned clients receive
     // their first fixed binding without interrupting the QR session.
@@ -399,9 +410,13 @@ async function run() {
     assert.ok(apk.includes('if not NetworkConnected then'));
     assert.ok(!apk.includes('FRuntime.ReconnectAttempt > 0'));
     assert.ok(apk.includes('FQrPanel.Visible := True'));
-    assert.ok(apk.includes('FPasswordCells[I].XRadius := 9'));
+    assert.ok(apk.includes('FPasswordCells[I].XRadius := 11'));
     assert.ok(apk.includes('FPasswordCells[I].Stroke.Kind := TBrushKind.None'));
     assert.ok(apk.includes('FPasswordCellShadows: array[0..5] of TShadowEffect'));
+    assert.ok(apk.includes('FPasswordKeys[I].OnMouseDown := PasswordKeyMouseDown'));
+    assert.ok(apk.includes('Key.Scale.X := 0.96'));
+    assert.ok(apk.includes('FQrCountdownDeadlineTick: Int64'));
+    assert.ok(apk.includes('TStopwatch.GetTimeStamp'));
     assert.ok(apk.includes('FDashboardHeroCard: TRectangle'));
     assert.ok(apk.includes('FDashboardInfoCard: TRectangle'));
     assert.ok(!apk.includes('FDashboardGroupCard'));
@@ -512,6 +527,7 @@ async function run() {
     console.log('- Authenticated WinSockServer Build gate and dynamic server ACK: PASS');
     console.log('- Build-first persistent wait and delayed WinSockServer connection: PASS');
     console.log('- APK responsive QR frame and expiry countdown: PASS');
+    console.log('- QR relative TTL + Android monotonic countdown contract: PASS');
     console.log('- Relay QR issuance with WinSockServer offline: PASS');
     console.log('- APK reinstall secret recovery without UNKNOWN_COMMAND: PASS');
     console.log('- Late WinSockServer first-binding handoff: PASS');

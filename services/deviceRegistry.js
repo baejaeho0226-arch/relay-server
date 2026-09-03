@@ -78,6 +78,7 @@ function AssignWaitingOnlineClients() {
             live.buildSessionId = '';
             server.clients.add(saved.id);
             SendLine(live.socket, `SERVER_ASSIGNED|${server.serverId}`);
+            require('./buildGate').TryDispatchClient(saved.id);
         }
         assigned++;
         Log('CLIENT_PAIR_RECOVERED', `${saved.id} -> ${server.serverId}`);

@@ -25,6 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
+const WEB_UI_REVISION = 'fix5';
 
 let session = null;
 let currentView = 'dashboard';
@@ -231,9 +232,9 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '3.5.0'}`;
+    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '3.5.0'} · UI ${WEB_UI_REVISION}`;
   } catch (_) {
-    webVersionLabel.textContent = 'WEB v3.5.0';
+    webVersionLabel.textContent = `WEB v3.5.0 · UI ${WEB_UI_REVISION}`;
   }
 }
 

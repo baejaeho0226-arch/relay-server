@@ -162,6 +162,10 @@ async function run() {
     state.deadLetters.set('DLQ-LIVE', { deadLetterId: 'DLQ-LIVE', status: 'ACTIVE' });
     state.notifications.push({ id: '1', type: 'TEST' });
     state.configHistory.push({ id: 'CFG-OLD', at: 1, revision: 1, snapshot: {} });
+    state.runtimeStats.serverReconnectHistory.set(serverIdA, [1, 2]);
+    state.runtimeStats.clientReconnectHistory.set(clientIdB, [1, 2]);
+    state.runtimeStats.serverFlappingAlerts.set(serverIdA, 1);
+    state.runtimeStats.clientFlappingAlerts.set(clientIdB, 1);
     require('../storage/audit').LogEvent('REGISTRY_TEST', 'history clean');
 
     const cleaned = history.Clean('ALL', 'TEST');
@@ -176,6 +180,10 @@ async function run() {
     assert.strictEqual(state.deadLetters.has('DLQ-LIVE'), true);
     assert.strictEqual(state.dailyHealthReports.size, 0);
     assert.strictEqual(state.notifications.length, 0);
+    assert.strictEqual(state.runtimeStats.serverReconnectHistory.size, 0);
+    assert.strictEqual(state.runtimeStats.clientReconnectHistory.size, 0);
+    assert.strictEqual(state.runtimeStats.serverFlappingAlerts.size, 0);
+    assert.strictEqual(state.runtimeStats.clientFlappingAlerts.size, 0);
     assert.strictEqual(state.configHistory.length, 1);
     assert.strictEqual(state.configHistory[0].action, 'BASELINE');
     assert.strictEqual(state.events.length, 0);
@@ -189,6 +197,8 @@ async function run() {
     assert.ok(adminSource.includes('data-server-action="delete"'));
     assert.ok(adminSource.includes('data-client-action="delete"'));
     assert.ok(adminSource.includes('data-history-clean="ALL"'));
+    assert.ok(adminSource.includes('data-history-clean="SERVER_HISTORY"'));
+    assert.ok(adminSource.includes('data-history-clean="CLIENT_HISTORY"'));
     assert.ok(adminSource.includes('1:1 MATCH REPAIR'));
     assert.ok(webApi.includes("method === 'DELETE'"));
     assert.ok(webApi.includes("pathname === '/api/history/clean'"));

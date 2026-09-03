@@ -141,7 +141,11 @@ function Issue(connection) {
     state.qrAuthRequests.set(requestId, record);
     Cleanup(false);
     require('../storage/database').SaveDatabase();
-    SendLine(connection.socket, `QR_AUTH_CHALLENGE|${requestId}|${expiresAt}|${matrix.size}|${matrix.bits}`);
+    // Include a relative duration as well as the absolute audit timestamp.
+    // Android renders this against a monotonic clock, so an incorrect device
+    // wall clock cannot turn a 10-minute token into 10:01 or two minutes.
+    const remainingMs = Math.max(0, expiresAt - Now());
+    SendLine(connection.socket, `QR_AUTH_CHALLENGE|${requestId}|${expiresAt}|${matrix.size}|${matrix.bits}|${remainingMs}`);
     require('../storage/audit').LogEvent('QR_AUTH_ISSUED', `${requestId} -> ${connection.clientId}`);
     return { ok: true, request: PublicRecord(record) };
 }
@@ -174,7 +178,10 @@ function Status(connection, requestId) {
         const ok = AuthorizeBoundClientByQr(connection, record.requestId);
         return { ok, status: record.status };
     }
-    if (record.status === 'PENDING') SendLine(connection.socket, `QR_AUTH_PENDING|${requestId}|${record.expiresAt}`);
+    if (record.status === 'PENDING') {
+        const remainingMs = Math.max(0, Number(record.expiresAt || 0) - Now());
+        SendLine(connection.socket, `QR_AUTH_PENDING|${requestId}|${record.expiresAt}|${remainingMs}`);
+    }
     else if (record.status === 'EXPIRED' || record.status === 'SUPERSEDED') SendLine(connection.socket, `QR_AUTH_EXPIRED|${requestId}|${record.reason || record.status}`);
     else if (record.status === 'REJECTED') SendLine(connection.socket, `QR_AUTH_REJECTED|${requestId}|${record.reason || 'ADMIN_REJECTED'}`);
     return { ok: true, status: record.status };

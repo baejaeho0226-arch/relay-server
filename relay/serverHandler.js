@@ -81,8 +81,14 @@ function BindUnassignedClients(serverId) {
         const live = GetOnlineClient(saved.id);
         if (live) {
             live.serverId = serverId;
+            live.buildCompleted = false;
+            live.buildSessionId = '';
             targetServer.clients.add(saved.id);
             SendLine(live.socket, `SERVER_ASSIGNED|${serverId}`);
+            // Do not wait for the periodic Build cleanup/sweep.  If QR + PIN
+            // were completed while this PC was offline, resume the pending
+            // grant on the same event-loop turn.
+            require('../services/buildGate').TryDispatchClient(saved.id);
         }
         LogEvent('CLIENT_FIRST_BIND', `${saved.id} -> ${serverId} (${deviceKey})`);
     }

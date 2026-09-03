@@ -2,7 +2,7 @@ PURE TCP RELAY // WEB ADMIN FINAL TEST RECORD
 Web Admin Version: 3.5.0
 Relay Version: 6.7.0
 
-CURRENT PWA REVISION: 3.5.0-fix4
+CURRENT PWA REVISION: 3.5.0-fix5
 - Dashboard qrApproval/buildGate dependency restored.
 - 38 authenticated GET APIs return JSON without HTTP 500 in empty state.
 - Dedicated API error panel no longer prefixes errors with [NO_DATA].
@@ -10,6 +10,9 @@ CURRENT PWA REVISION: 3.5.0-fix4
 - Server/Client Delete, 1:1 Repair and active-preserving History CLEAN enabled.
 - Server status and #Accept capacity are separate; ONLINE 1/1 is FULL.
 - TYPE1/TYPE2/TYPE3 are displayed as TalesRunner/R2Beat/Lostsaga.
+- Sticky ADMIN DELETE actions and per-list Server/Client History CLEAN enabled.
+- HTML/JS/CSS no-store plus Service Worker updateViaCache=none enabled.
+- QR relative TTL is supplied for Android monotonic countdown rendering.
 Protocol Version: 2 + signed extensions
 APK Version: 2.9.0
 WinSockServer Version: 2.6.0

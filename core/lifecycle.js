@@ -29,6 +29,11 @@ function CleanupTransient() {
     for(const [id,until] of kickedServers) if(now>=until){kickedServers.delete(id);LogEvent('SERVER_KICK_EXPIRED',id);}
     for(const [id,until] of kickedClients) if(now>=until){kickedClients.delete(id);LogEvent('CLIENT_KICK_EXPIRED',id);}
     for(const [token,item] of confirmTokens) if(now>=item.expiresAt) confirmTokens.delete(token);
+    // Connection callbacks normally complete pairing synchronously.  This
+    // idempotent sweep closes the narrow race where Android and its PC finish
+    // registering in the same event-loop interval or one transport is being
+    // replaced.  It never moves an existing fixed binding.
+    try { require('../services/deviceRegistry').RepairPairing(); } catch (_) {}
 }
 
 function DisconnectConnection(connection) {

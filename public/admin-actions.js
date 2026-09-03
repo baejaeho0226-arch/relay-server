@@ -830,7 +830,10 @@ restoreSession();
 
 // PWA: cache only the static application shell. Authenticated API responses are network-only.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker
+    .register('/service-worker.js', { scope: '/', updateViaCache: 'none' })
+    .then(registration => registration.update())
+    .catch(() => {}));
 }
 window.addEventListener('beforeinstallprompt', event => {
   event.preventDefault();
