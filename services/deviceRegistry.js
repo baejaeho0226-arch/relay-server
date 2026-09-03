@@ -71,6 +71,7 @@ function AssignWaitingOnlineClients() {
         const server = identity.FindAvailableServer();
         if (!server) break;
         saved.serverId = server.serverId;
+        require('./pairingApproval').CompleteDeferredBinding(saved.id, server.serverId, 'PAIRING_REPAIR');
         const live = identity.GetOnlineClient(saved.id);
         if (live) {
             live.serverId = server.serverId;
@@ -126,6 +127,8 @@ function DeleteServer(serverId, actor = 'WEB_ADMIN') {
         saved.requiresPairingApproval = true;
         saved.pairingApprovedAt = 0;
         saved.pairingApprovedBy = '';
+        saved.pairingDeferredAt = 0;
+        saved.pairingBoundAt = 0;
         state.clientServerBindings.delete(saved.id);
         state.clientFailoverRecords.delete(saved.id);
         const client = identity.GetOnlineClient(saved.id);

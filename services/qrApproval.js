@@ -156,11 +156,11 @@ function Resume(connection) {
     if (!gate.ok) return gate;
     const bound = GetBoundLicenseEntry(connection.clientId);
     const saved = require('../identity/identityManager').GetSavedClientByID(connection.clientId);
-    const pairedServerId = NormalizeID(saved && saved.serverId);
     // A surviving license does not authorize a new or deleted PC binding.
-    // The administrator must explicitly select the replacement target in a
-    // fresh signed QR transaction.
-    if (bound && saved && !saved.requiresPairingApproval && pairedServerId && require('../identity/identityManager').ServerExists(pairedServerId) &&
+    // A deliberately deleted PC sets requiresPairingApproval. A normally
+    // approved serverless client may resume PIN/Build waiting before its PC is
+    // started, which is the product's Build-first flow.
+    if (bound && saved && !saved.requiresPairingApproval &&
         !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
         return { ok: AuthorizeBoundClientByQr(connection, 'RESUME'), resumed: true };
     }
@@ -229,12 +229,10 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
     if (!VerifyApprovalToken(record, approvalToken)) return { ok: false, reason: 'QR_APPROVAL_TOKEN_INVALID' };
 
-    // QR approval is also the explicit, server-authoritative 1:1 pairing
-    // transaction.  License/PIN enrollment cannot commit to an ambiguous PC.
-    let targetServerId = NormalizeID(options.serverId);
-    const existingSaved = require('../identity/identityManager').GetSavedClientByID(record.clientId);
-    if (!targetServerId && existingSaved) targetServerId = NormalizeID(existingSaved.serverId);
-    const pairing = require('./pairingApproval').BindForApproval(record.clientId, targetServerId, actor);
+    // Prefer an explicit/current PC, but do not make WinSockServer availability
+    // a prerequisite for QR approval. The Relay can hold the approved APK and
+    // Build request, then attach one empty PC when it starts later.
+    const pairing = require('./pairingApproval').ResolveForApproval(record.clientId, options.serverId, actor);
     if (!pairing.ok) return pairing;
     record.serverId = pairing.pairing.serverId;
 

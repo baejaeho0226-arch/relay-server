@@ -162,7 +162,9 @@ function ImportDatabaseObject(data) {
                 reconnectCount: Number(value.reconnectCount) || 0,
                 requiresPairingApproval: Boolean(value.requiresPairingApproval),
                 pairingApprovedAt: Math.max(0, Number(value.pairingApprovedAt) || 0),
-                pairingApprovedBy: SafeField(value.pairingApprovedBy || '').slice(0, 64)
+                pairingApprovedBy: SafeField(value.pairingApprovedBy || '').slice(0, 64),
+                pairingDeferredAt: Math.max(0, Number(value.pairingDeferredAt) || 0),
+                pairingBoundAt: Math.max(0, Number(value.pairingBoundAt) || 0)
             });
             used.add(id);
         }

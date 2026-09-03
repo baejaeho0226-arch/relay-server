@@ -106,25 +106,28 @@ content.addEventListener('click', async event => {
     if (event.target.id === 'qr-auth-approve-btn') {
       if (!qrScanResult || !qrScanResult.request || !qrScanResult.approvalToken) throw new Error('검증된 QR 요청이 없습니다.');
       const pairableServers = (qrScanResult.pairingServers || []).filter(x => x.eligible || x.current || x.occupiedBy === qrScanResult.request.clientId);
-      if (!pairableServers.length) throw new Error('승인 가능한 온라인 WinSockServer가 없습니다. PC 프로그램을 먼저 Relay에 연결하세요.');
-      const preferredServer = pairableServers.find(x => x.current || x.occupiedBy === qrScanResult.request.clientId) || pairableServers[0];
+      const preferredServer = pairableServers.find(x => x.current || x.occupiedBy === qrScanResult.request.clientId) || pairableServers[0] || null;
+      const fields = [];
+      if (preferredServer) fields.push({ name: 'serverId', label: '1:1 대상 PC', type: 'select', value: preferredServer.id, options: pairableServers.map(x => ({ value: x.id, label: `${x.alias || x.id} · ${x.id}${x.current || x.occupiedBy === qrScanResult.request.clientId ? ' · 현재 연결' : ''}` })) });
+      fields.push(
+        { name: 'days', label: '사용 기간(일)', type: 'number', value: String(qrScanResult.defaultDays || 30) },
+        { name: 'accessType', label: 'APK 전용 콘텐츠', type: 'select', value: 'TYPE1', options: [{ value: 'TYPE1', label: 'TalesRunner' }, { value: 'TYPE2', label: 'R2Beat' }, { value: 'TYPE3', label: 'Lostsaga' }] },
+        { name: 'memo', label: '메모', value: `QR 승인 ${qrScanResult.request.clientId}` },
+        { name: 'tags', label: '태그', value: 'QR', placeholder: 'QR, CUSTOMER-A' }
+      );
       const values = await openModal({
         title: 'QR 기기 승인',
-        message: `${qrScanResult.request.clientId}\n승인할 PC를 명시적으로 선택합니다. 이 선택과 라이선스가 하나의 서버 트랜잭션으로 고정됩니다.`,
-        fields: [
-          { name: 'serverId', label: '1:1 대상 PC', type: 'select', value: preferredServer.id, options: pairableServers.map(x => ({ value: x.id, label: `${x.alias || x.id} · ${x.id}${x.current || x.occupiedBy === qrScanResult.request.clientId ? ' · 현재 연결' : ''}` })) },
-          { name: 'days', label: '사용 기간(일)', type: 'number', value: String(qrScanResult.defaultDays || 30) },
-          { name: 'accessType', label: 'APK 전용 콘텐츠', type: 'select', value: 'TYPE1', options: [{ value: 'TYPE1', label: 'TalesRunner' }, { value: 'TYPE2', label: 'R2Beat' }, { value: 'TYPE3', label: 'Lostsaga' }] },
-          { name: 'memo', label: '메모', value: `QR 승인 ${qrScanResult.request.clientId}` },
-          { name: 'tags', label: '태그', value: 'QR', placeholder: 'QR, CUSTOMER-A' }
-        ],
+        message: preferredServer
+          ? `${qrScanResult.request.clientId}\n선택한 PC와 1:1로 고정합니다.`
+          : `${qrScanResult.request.clientId}\nWinSockServer가 아직 없어도 승인됩니다. PC가 연결되면 Relay가 빈 서버 한 대와 1:1로 결합합니다.`,
+        fields,
         confirmLabel: '승인'
       });
       if (!values) return;
       const result = await api('/api/qr-auth/approve', { method: 'POST', body: {
         requestId: qrScanResult.request.requestId,
         approvalToken: qrScanResult.approvalToken,
-        serverId: values.serverId,
+        serverId: values.serverId || '',
         days: Number(values.days),
         accessType: values.accessType,
         memo: values.memo,
@@ -132,7 +135,7 @@ content.addEventListener('click', async event => {
       }});
       qrScanResult = null;
       clearQrSelectedFile();
-      toast(result.delivered ? '승인 완료 · APK 즉시 인증됨' : '승인 완료 · APK 재접속 시 자동 인증');
+      toast(result.pairing?.status === 'DEFERRED' ? '승인 완료 · WinSockServer 연결 대기' : (result.delivered ? '승인 완료 · APK 즉시 인증됨' : '승인 완료 · APK 재접속 시 자동 인증'));
       await updateQrAuthBadge();
       await renderQrAuth();
       return;
