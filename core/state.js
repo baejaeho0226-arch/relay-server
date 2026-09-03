@@ -108,6 +108,27 @@ module.exports = {
         updatedBy: 'DEFAULT'
     },
 
+    // Server-authoritative production controls.  Browser and device code may
+    // request changes, but every decision and persisted record lives here.
+    production: {
+        pairingClaims: new Map(),
+        passkeyCredentials: new Map(),
+        privilegedApprovals: new Map(),
+        deploymentManifest: { revision: 1, updatedAt: 0, updatedBy: 'DEFAULT' },
+        transportPolicy: { mode: 'HMAC', requireTls: false, pinSha256: '', rotationGraceUntil: 0, updatedAt: 0, updatedBy: 'DEFAULT' },
+        updatePolicy: { autoRollback: true, startupAckSeconds: 60, failureThresholdPercent: 20, minimumSamples: 3, updatedAt: 0, updatedBy: 'DEFAULT' },
+        updateTransactions: new Map(),
+        auditChain: { anchor: '', head: '', count: 0, verifiedAt: 0, lastError: '' },
+        incidents: [],
+        sloPolicy: { availabilityTarget: 99.9, ackSuccessTarget: 99.9, p95TargetMs: 1000, windowMinutes: 60, updatedAt: 0, updatedBy: 'DEFAULT' },
+        recoveryDrills: [],
+        anomalyFindings: new Map(),
+        retentionPolicy: { auditDays: 90, incidentDays: 180, diagnosticsDays: 30, updateDays: 90, chaosDays: 30, updatedAt: 0, updatedBy: 'DEFAULT' },
+        supplyChain: { generatedAt: 0, sourceHash: '', manifestHash: '', files: [], violations: [] },
+        chaosRuns: [],
+        diagnosticsBundles: []
+    },
+
     runtimeStats: {
         startedAt: Date.now(),
         totalConnections: 0,

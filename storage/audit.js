@@ -20,13 +20,29 @@ function AuditFileForTime(ms) {
     return path.join(AUDIT_DIR, `audit-${yyyy}-${mm}-${dd}.jsonl`);
 }
 
+function EventHash(previousHash, sequence, time, type, detail) {
+    return crypto.createHash('sha256')
+        .update(`${previousHash}|${sequence}|${time}|${type}|${detail}`, 'utf8')
+        .digest('hex').toUpperCase();
+}
+
 function LogEvent(type, detail) {
-    const event = { time: Now(), type: SafeField(type), detail: SafeField(detail) };
+    const chain = state.production.auditChain;
+    const event = {
+        time: Now(), type: SafeField(type), detail: SafeField(detail),
+        sequence: Math.max(0, Number(chain.count) || 0) + 1,
+        previousHash: String(chain.head || '').toUpperCase()
+    };
+    event.hash = EventHash(event.previousHash, event.sequence, event.time, event.type, event.detail);
+    chain.head = event.hash;
+    chain.count = event.sequence;
+    chain.lastError = '';
     events.push(event);
     while (events.length > MAX_EVENT_MEMORY) events.shift();
     console.log('[EVENT]', event.type, event.detail);
     try { require('../web/webEvents').BroadcastEvent(event); } catch (_) {}
     try { require('../services/notificationCenter').CaptureEvent(event); } catch (_) {}
+    try { require('../services/incidentCenter').CaptureEvent(event); } catch (_) {}
     try {
         fs.appendFileSync(AuditFileForTime(event.time), JSON.stringify(event) + '\n', 'utf8');
     } catch (error) {
@@ -36,24 +52,66 @@ function LogEvent(type, detail) {
 
 function LoadRecentAudit() {
     try {
+        events.length = 0;
         const files = fs.readdirSync(AUDIT_DIR)
             .filter(x => /^audit-\d{4}-\d{2}-\d{2}\.jsonl$/.test(x))
-            .sort()
-            .slice(-5);
+            .sort();
         const loaded = [];
+        const chainAnchor = String(state.production.auditChain.anchor || '').toUpperCase();
+        let expectedPrevious = chainAnchor;
+        let verifiedCount = 0;
+        let lastError = '';
         for (const file of files) {
             const lines = fs.readFileSync(path.join(AUDIT_DIR, file), 'utf8').split(/\r?\n/);
             for (const line of lines) {
                 if (!line.trim()) continue;
                 try {
                     const item = JSON.parse(line);
-                    loaded.push({ time: Number(item.time) || 0, type: SafeField(item.type), detail: SafeField(item.detail) });
+                    const normalized = {
+                        time: Number(item.time) || 0, type: SafeField(item.type), detail: SafeField(item.detail),
+                        sequence: Number(item.sequence) || 0,
+                        previousHash: String(item.previousHash || '').toUpperCase(),
+                        hash: String(item.hash || '').toUpperCase()
+                    };
+                    // Legacy audit rows remain readable, but a signed chain
+                    // starts only at the first row carrying chain metadata.
+                    if (normalized.sequence && normalized.hash) {
+                        const computed = EventHash(normalized.previousHash, normalized.sequence, normalized.time, normalized.type, normalized.detail);
+                        if (normalized.previousHash !== expectedPrevious || computed !== normalized.hash) {
+                            if (!lastError) lastError = `${file}:${normalized.sequence}`;
+                        } else {
+                            expectedPrevious = normalized.hash;
+                            verifiedCount = normalized.sequence;
+                        }
+                    }
+                    loaded.push(normalized);
                 } catch (_) {}
             }
         }
         loaded.sort((a, b) => a.time - b.time);
         for (const item of loaded.slice(-MAX_EVENT_MEMORY)) events.push(item);
+        state.production.auditChain.head = expectedPrevious;
+        state.production.auditChain.anchor = chainAnchor;
+        state.production.auditChain.count = verifiedCount;
+        state.production.auditChain.verifiedAt = Now();
+        state.production.auditChain.lastError = lastError;
     } catch (_) {}
+}
+
+function VerifyAuditChain() {
+    const previousEvents = events.slice();
+    events.length = 0;
+    LoadRecentAudit();
+    const result = {
+        ok: !state.production.auditChain.lastError,
+        checkedAt: state.production.auditChain.verifiedAt,
+        count: state.production.auditChain.count,
+        head: state.production.auditChain.head,
+        error: state.production.auditChain.lastError
+    };
+    // LoadRecentAudit already restored the most recent authoritative view.
+    if (!events.length && previousEvents.length) events.push(...previousEvents.slice(-MAX_EVENT_MEMORY));
+    return result;
 }
 
 function AuditSearch(query, type, sinceMs) {
@@ -78,6 +136,7 @@ function ClearAudit() {
             try { fs.unlinkSync(path.join(AUDIT_DIR, file)); removedFiles++; } catch (_) {}
         }
     } catch (_) {}
+    state.production.auditChain = { anchor: '', head: '', count: 0, verifiedAt: Now(), lastError: '' };
     return { removedMemory, removedFiles };
 }
 
@@ -86,5 +145,6 @@ module.exports = {
     LogEvent,
     LoadRecentAudit,
     AuditSearch,
-    ClearAudit
+    ClearAudit,
+    VerifyAuditChain
 };

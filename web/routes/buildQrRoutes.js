@@ -13,7 +13,7 @@ async function Handle(context) {
 
     if (method === 'GET' && pathname === '/api/qr-auth') {
         if (!RequireAdmin(res, session)) return true;
-        Json(res, 200, { ok: true, requests: qrApproval.List(), summary: qrApproval.Summary() });
+        Json(res, 200, { ok: true, requests: qrApproval.List(), summary: qrApproval.Summary(), servers: require('../../services/pairingApproval').EligibleServers() });
         return true;
     }
 
@@ -84,7 +84,8 @@ async function Handle(context) {
             days: body.days,
             memo: body.memo,
             tags: body.tags,
-            accessType: body.accessType
+            accessType: body.accessType,
+            serverId: body.serverId
         }, session.role);
         if (!result.ok) {
             LogEvent('QR_AUTH_APPROVE_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);

@@ -187,8 +187,9 @@ function fileAsDataUrl(file) {
 
 async function renderQrAuth() {
   if (!roleIsAdmin()) { content.innerHTML = '<div class="empty">FORBIDDEN</div>'; return; }
-  const { requests, summary } = await api('/api/qr-auth');
+  const { requests, summary, servers } = await api('/api/qr-auth');
   if (qrScanResult) qrScanResult.defaultDays = summary.defaultDays;
+  if (qrScanResult) qrScanResult.pairingServers = Array.isArray(servers) ? servers : [];
   const scanned = qrScanResult && qrScanResult.request ? qrScanResult.request : null;
   const selectedFileName = qrSelectedFile ? `${qrSelectedFile.name} · ${fmtBytes(qrSelectedFile.size)}` : 'APK 화면을 촬영하거나 전달받은 사진을 올리세요.';
   const selectedPreview = qrSelectedPreviewDataUrl
@@ -197,7 +198,7 @@ async function renderQrAuth() {
   const secretWarning = summary.durableSigningSecret ? '' : '<div class="warning-box">QR_APPROVAL_SECRET가 설정되지 않아 현재 프로세스의 임시 서명키를 사용 중입니다. 운영·HA 배포 전에 모든 Relay에 같은 전용 비밀값을 설정하세요.</div>';
   const scannedCard = scanned ? `<div class="qr-approval-card">
     <div class="qr-approval-icon">✓</div>
-    <div class="qr-approval-main"><span class="small-note">SIGNED REQUEST VERIFIED</span><strong>${esc(scanned.clientId)}</strong><div class="code">${esc(scanned.requestId)}</div><div class="qr-approval-meta"><span>만료 ${esc(fmtTime(scanned.expiresAt))}</span><span>IP ${esc(scanned.lastIP || '-')}</span><span>Scan ${scanned.scanCount}</span></div></div>
+    <div class="qr-approval-main"><span class="small-note">SIGNED REQUEST VERIFIED</span><strong>${esc(scanned.clientId)}</strong><div class="code">${esc(scanned.requestId)}</div><div class="qr-approval-meta"><span>만료 ${esc(fmtTime(scanned.expiresAt))}</span><span>IP ${esc(scanned.lastIP || '-')}</span><span>Scan ${scanned.scanCount}</span><span>PC ${esc(scanned.serverId || '승인 시 선택')}</span></div></div>
     <div class="qr-approval-actions"><button id="qr-auth-approve-btn" class="primary">기기 승인</button><button id="qr-auth-clear-btn" class="ghost">지우기</button></div>
   </div>` : '<div class="qr-scan-empty">QR 사진을 선택하면 서버가 이미지, 서명, 일회용 토큰과 기기 결합을 모두 검증합니다.</div>';
   const rows = requests.map(item => `<tr><td>${badge(item.status)}</td><td class="code">${esc(item.requestId)}</td><td class="code">${esc(item.clientId)}</td><td>${accessTypeBadge(item.accessType || 'TYPE1')}</td><td>${esc(fmtTime(item.issuedAt))}</td><td>${esc(fmtTime(item.expiresAt))}</td><td>${esc(item.approvedBy || item.rejectedBy || '-')}</td><td>${esc(item.reason || '-')}</td><td>${item.status === 'PENDING' ? `<button class="danger" data-qr-reject="${esc(item.requestId)}">거절</button>` : '-'}</td></tr>`).join('');

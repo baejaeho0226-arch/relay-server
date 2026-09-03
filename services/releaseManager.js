@@ -35,14 +35,21 @@ function GetRelease(type,channel){ return state.releaseCatalog.get(ReleaseKey(ty
 function EligibleForRollout(type,id,release){ if(!release)return false; const p=Math.max(0,Math.min(100,Number(release.rolloutPercent??100))); return p>=100 || HashBucket(type,id)<p; }
 function SignedDownload(artifactId,ttlMs=15*60*1000){ const exp=Date.now()+ttlMs; const sig=crypto.createHmac('sha256',SigningSecret()).update(`${artifactId}|${exp}`).digest('hex'); const rel=`/updates/${encodeURIComponent(artifactId)}?exp=${exp}&sig=${sig}`; return config.UPDATE_BASE_URL ? config.UPDATE_BASE_URL + rel : rel; }
 function VerifyDownload(artifactId,exp,sig){ exp=Number(exp); if(!artifactId||!Number.isFinite(exp)||exp<Date.now()||exp>Date.now()+60*60*1000)return false; const expected=crypto.createHmac('sha256',SigningSecret()).update(`${artifactId}|${exp}`).digest('hex'); const a=Buffer.from(String(sig||'')); const b=Buffer.from(expected); return a.length===b.length && crypto.timingSafeEqual(a,b); }
-function FindArtifact(id){ for(const r of state.releaseCatalog.values())if(r&&r.artifactId===id)return r; return null; }
+function FindArtifact(id){
+    for(const root of state.releaseCatalog.values()){
+        let r=root, depth=0;
+        while(r&&depth++<10){if(r.artifactId===id)return r;r=r.previous;}
+    }
+    return null;
+}
 function UpdateForDevice(type,id,currentVersion){
     type=NormalizeType(type); id=NormalizeID(id); const channel=ChannelFor(type,id); const release=GetRelease(type,channel);
     if(!type||!id||!release||!release.enabled)return {available:false,channel};
     if(!EligibleForRollout(type,id,release))return {available:false,channel,reason:'CANARY_NOT_SELECTED',bucket:HashBucket(type,id),rolloutPercent:release.rolloutPercent};
     const current=NormalizeVersion(currentVersion||''); const target=NormalizeVersion(release.version||'');
-    if(!target || (current && CompareVersions(current,target)>=0))return {available:false,channel,currentVersion:current,targetVersion:target};
-    return {available:true,channel,currentVersion:current,targetVersion:target,release:{...release,download:SignedDownload(release.artifactId)}};
+    const forcedRollback = !!(current && release.forceDowngradeFrom === current && CompareVersions(current,target)>0);
+    if(!target || (current && CompareVersions(current,target)>=0 && !forcedRollback))return {available:false,channel,currentVersion:current,targetVersion:target};
+    return {available:true,channel,currentVersion:current,targetVersion:target,forcedRollback,release:{...release,download:SignedDownload(release.artifactId)}};
 }
 
 function UpdateMessageSignature(type,id,fields){
@@ -61,6 +68,7 @@ function NotifyDevice(type,id){
     if(!secret || c.deviceAuthVerified!==true)return {ok:false,reason:'DEVICE_AUTH_REQUIRED'};
     const u=UpdateForDevice(type,id,c.appVersion); if(!u.available)return {ok:true,available:false,reason:u.reason||''};
     const r=u.release; if(!config.UPDATE_BASE_URL)return {ok:false,available:true,reason:'UPDATE_BASE_URL_REQUIRED',version:r.version,channel:u.channel};
+    require('./updateSupervisor').Begin(type,id,r);
     const fields=[r.version,u.channel,r.download,r.sha256,String(r.size),r.mandatory?'1':'0',encodeURIComponent(r.notes||''),encodeURIComponent(r.originalName||r.fileName||'')];
     const signature=UpdateMessageSignature(type,id,fields);
     if(!signature)return {ok:false,reason:'UPDATE_SIGNATURE_FAILED'};
@@ -76,6 +84,7 @@ function RecordUpdateAck(type,id,parts){
     const detail=SafeField(parts.slice(3).join('|')).slice(0,500);
     const item={type,id,version,status,detail,at:Date.now()};
     state.deviceUpdateStatus.set(DeviceKey(type,id),item);
+    require('./updateSupervisor').Record(type,id,version,status,detail);
     return item;
 }
 function GetUpdateStatus(type,id){ return state.deviceUpdateStatus.get(DeviceKey(type,id)) || null; }
@@ -95,8 +104,13 @@ function PublishFromTemp(meta,tmpPath,sha256,size){
     if(!type||!channel||!version)throw new Error('INVALID_RELEASE_META');
     const ext=path.extname(SafeFileName(meta.fileName)).toLowerCase(); const allow=type==='CLIENT'?new Set(['.apk','.zip']):new Set(['.zip','.exe']); if(!allow.has(ext))throw new Error('INVALID_ARTIFACT_TYPE');
     const artifactId=RandomId(); const destName=`${type.toLowerCase()}-${channel.toLowerCase()}-${version}-${artifactId}${ext}`; const dest=path.join(RELEASE_DIR,destName); EnsureDir(); fs.renameSync(tmpPath,dest);
-    const release={artifactId,type,channel,version,fileName:destName,originalName:SafeFileName(meta.fileName),sha256,size:Number(size)||0,mandatory:!!meta.mandatory,notes:SafeField(meta.notes||'').slice(0,1000),rolloutPercent:Math.max(0,Math.min(100,Number(meta.rolloutPercent??100))),enabled:true,createdAt:Date.now(),updatedAt:Date.now()};
-    const old=GetRelease(type,channel); state.releaseCatalog.set(ReleaseKey(type,channel),release); if(old&&old.fileName&&old.fileName!==release.fileName){try{fs.unlinkSync(path.join(RELEASE_DIR,old.fileName));}catch(_) {}}
+    const old=GetRelease(type,channel);
+    const previous=old?{...old,previous:old.previous||null}:null;
+    const release={artifactId,type,channel,version,fileName:destName,originalName:SafeFileName(meta.fileName),sha256,size:Number(size)||0,mandatory:!!meta.mandatory,notes:SafeField(meta.notes||'').slice(0,1000),rolloutPercent:Math.max(0,Math.min(100,Number(meta.rolloutPercent??100))),enabled:true,createdAt:Date.now(),updatedAt:Date.now(),previous};
+    // Keep a bounded previous chain: automatic rollback cannot work if the
+    // previous verified artifact is deleted during publish.
+    let cursor=release, depth=0; while(cursor&&cursor.previous){depth++;if(depth>=3){cursor.previous=null;break;}cursor=cursor.previous;}
+    state.releaseCatalog.set(ReleaseKey(type,channel),release);
     return release;
 }
 function ArtifactPath(release){ if(!release||!release.fileName)return ''; const p=path.resolve(RELEASE_DIR,release.fileName); return p.startsWith(path.resolve(RELEASE_DIR)+path.sep)?p:''; }

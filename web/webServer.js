@@ -174,6 +174,23 @@ async function RequestHandler(req, res) {
         return;
     }
 
+    if (pathname === '/api/passkey/login/begin' && method === 'POST') {
+        let body; try { body = await ReadJsonBody(req); } catch (error) { ApiError(res, 400, error.message); return; }
+        const result = require('../services/passkeyAuth').LoginBegin(body.role, req);
+        if (!result.ok) ApiError(res, 400, result.reason); else Json(res, 200, result);
+        return;
+    }
+
+    if (pathname === '/api/passkey/login/finish' && method === 'POST') {
+        let body; try { body = await ReadJsonBody(req); } catch (error) { ApiError(res, 400, error.message); return; }
+        const result = require('../services/passkeyAuth').LoginFinish(req, body);
+        if (!result.ok) { ApiError(res, 401, result.reason); return; }
+        const session = require('./webAuth').CreateSession(req, result.role);
+        res.setHeader('Set-Cookie', SessionCookie(req, session.token, SESSION_MS / 1000));
+        Json(res, 200, { ok:true, role:session.role, csrf:session.csrf, expiresAt:session.expiresAt });
+        return;
+    }
+
     if (pathname.startsWith('/api/')) {
         const session = Authenticate(req);
         if (!session) {

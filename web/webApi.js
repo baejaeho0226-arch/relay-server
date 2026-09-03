@@ -40,6 +40,7 @@ const deviceAuth = require('../services/deviceAuth');
 const qrApproval = require('../services/qrApproval');
 const buildGate = require('../services/buildGate');
 const buildQrRoutes = require('./routes/buildQrRoutes');
+const productionRoutes = require('./routes/productionRoutes');
 const loadSimulator = require('../services/loadSimulator');
 const storageMigration = require('../services/storageMigration');
 const releaseManager = require('../services/releaseManager');
@@ -437,6 +438,18 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
+    if (!['GET','HEAD'].includes(method) && require('../services/privilegedApproval').Required(pathname)) {
+        const ticketId = String(req.headers['x-approval-ticket'] || '');
+        const approval = require('../services/privilegedApproval').Consume(ticketId, session, method, pathname, body);
+        if (!approval.ok) {
+            if (approval.reason === 'DUAL_APPROVAL_REQUIRED') {
+                const requested = require('../services/privilegedApproval').Request(session, method, pathname, body, 'AUTO_GUARD');
+                ApiError(res, 428, approval.reason, requested.ok ? requested.ticket.ticketId : '');
+            } else ApiError(res, 428, approval.reason);
+            return;
+        }
+    }
+
     if (method === 'GET' && pathname === '/api/ha/status') {
         if (!RequireOperation(res, session, 'VIEW')) return;
         Json(res, 200, { ok: true, ha: require('../services/haCoordinator').Status() });
@@ -467,6 +480,11 @@ async function HandleApiRequest(req, res, session) {
     if (await buildQrRoutes.Handle({
         method, pathname, body, res, session,
         BuildServers, RequireAdmin, Json, ApiError
+    })) return;
+
+    if (await productionRoutes.Handle({
+        method, pathname, body, req, res, session,
+        RequireAdmin, Json, ApiError
     })) return;
 
     if (method === 'GET' && pathname === '/api/servers') {

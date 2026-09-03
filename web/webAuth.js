@@ -208,6 +208,7 @@ module.exports = {
     ClientIP,
     SessionCookie,
     Login,
+    CreateSession,
     Authenticate,
     Logout,
     ValidateCsrf,

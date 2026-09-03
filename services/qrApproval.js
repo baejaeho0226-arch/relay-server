@@ -37,6 +37,7 @@ function PublicRecord(record) {
         rejectedBy: record.rejectedBy || '',
         reason: record.reason || '',
         licenseRef: record.licenseRef || (record.licenseKey ? `QR-${String(record.licenseKey).slice(-8)}` : ''),
+        serverId: NormalizeID(record.serverId),
         accessType: require('./clientPassword').NormalizeAccessType(record.accessType),
         lastIP: record.lastIP || '',
         scanCount: Number(record.scanCount || 0)
@@ -222,6 +223,15 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
     if (!VerifyApprovalToken(record, approvalToken)) return { ok: false, reason: 'QR_APPROVAL_TOKEN_INVALID' };
 
+    // QR approval is also the explicit, server-authoritative 1:1 pairing
+    // transaction.  License/PIN enrollment cannot commit to an ambiguous PC.
+    let targetServerId = NormalizeID(options.serverId);
+    const existingSaved = require('../identity/identityManager').GetSavedClientByID(record.clientId);
+    if (!targetServerId && existingSaved) targetServerId = NormalizeID(existingSaved.serverId);
+    const pairing = require('./pairingApproval').BindForApproval(record.clientId, targetServerId, actor);
+    if (!pairing.ok) return pairing;
+    record.serverId = pairing.pairing.serverId;
+
     const days = Math.max(1, Math.min(3650, Number(options.days) || config.QR_AUTH_DEFAULT_DAYS));
     const memo = SafeField(options.memo || `QR 승인 ${record.clientId}`).slice(0, 200);
     const tags = require('../license/licenseManager').NormalizeTags([...(Array.isArray(options.tags) ? options.tags : []), 'QR']);
@@ -263,7 +273,7 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
     require('../storage/audit').LogEvent('QR_AUTH_APPROVED', `${record.requestId} -> ${record.clientId} / ${record.approvedBy}`);
     try { require('./notificationCenter').AddNotification({ severity: 'INFO', type: 'QR_AUTH_APPROVED', title: 'QR 기기 인증 승인', message: `${record.clientId} QR 승인이 완료되었습니다.`, entityType: 'CLIENT', entityId: record.clientId, dedupeKey: `QR_AUTH_APPROVED|${record.requestId}` }); } catch (_) {}
-    return { ok: true, delivered, request: PublicRecord(record), expiresAt: bound.license.expiresAt };
+    return { ok: true, delivered, pairing: pairing.pairing, request: PublicRecord(record), expiresAt: bound.license.expiresAt };
 }
 
 function Reject(requestId, reason = 'ADMIN_REJECTED', actor = 'admin') {

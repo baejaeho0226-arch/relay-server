@@ -23,7 +23,7 @@ function ValidateDatabaseObject(data, source = 'DATABASE') {
         return { ok: false, source, checkedAt: Now(), errors, warnings, stats };
     }
 
-    if (Number(data.version || 0) !== 119) AddIssue(warnings, 'DB_VERSION', `Unexpected database version: ${data.version ?? 'missing'} (current 119)`);
+    if (Number(data.version || 0) !== 143) AddIssue(warnings, 'DB_VERSION', `Unexpected database version: ${data.version ?? 'missing'} (current 143)`);
 
     const servers = data.servers && typeof data.servers === 'object' && !Array.isArray(data.servers) ? data.servers : {};
     for (const [deviceKey, rawId] of Object.entries(servers)) {

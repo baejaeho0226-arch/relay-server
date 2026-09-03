@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <title>RELAY // Operations Console</title>
-  <link rel="stylesheet" href="/admin.css?v=3.5.0-fix5">
+  <link rel="stylesheet" href="/admin.css?v=3.5.0-fix6">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -32,6 +32,7 @@
           <input id="login-password" type="password" autocomplete="current-password" required>
         </label>
         <button class="primary wide" type="submit">로그인</button>
+        <button id="passkey-login-btn" class="ghost wide" type="button">패스키로 로그인</button>
       </form>
       <div id="login-error" class="form-error"></div>
     </div>
@@ -82,6 +83,7 @@
         <details class="nav-group">
           <summary>배포 · 정책</summary>
           <div class="nav-items">
+            <button data-view="production" data-admin-only>Production Hardening</button>
             <button data-view="releases" data-admin-only>Releases / Updates</button>
             <button data-view="features" data-admin-only>Feature Flags</button>
             <button data-view="confighistory" data-admin-only>Config History</button>
@@ -144,10 +146,11 @@
     </div>
   </div>
 
-  <script src="/admin.js?v=3.5.0-fix5" defer></script>
-  <script src="/admin-pages-monitoring.js?v=3.5.0-fix5" defer></script>
-  <script src="/admin-pages-access.js?v=3.5.0-fix5" defer></script>
-  <script src="/admin-pages-operations.js?v=3.5.0-fix5" defer></script>
-  <script src="/admin-actions.js?v=3.5.0-fix5" defer></script>
+  <script src="/admin.js?v=3.5.0-fix6" defer></script>
+  <script src="/admin-pages-monitoring.js?v=3.5.0-fix6" defer></script>
+  <script src="/admin-pages-access.js?v=3.5.0-fix6" defer></script>
+  <script src="/admin-pages-operations.js?v=3.5.0-fix6" defer></script>
+  <script src="/admin-actions.js?v=3.5.0-fix6" defer></script>
+  <script src="/admin-pages-production.js?v=3.5.0-fix6" defer></script>
 </body>
 </html>

@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'fix5';
+const WEB_UI_REVISION = 'fix6';
 
 let session = null;
 let currentView = 'dashboard';
@@ -80,6 +80,7 @@ const titles = {
   notifications: ['Notifications', '중요 운영 경고와 시스템 이벤트를 확인합니다.'],
   processors: ['Number Processing', '숫자 허용 범위·차단값 정책과 Processor 처리 통계를 관리합니다.'],
   reports: ['Push / Daily Report', 'PWA Push 구독과 날짜별 Relay Health 리포트를 관리합니다.'],
+  production: ['Production Hardening', '1:1 승인, 배포 무결성, 패스키, 감사 체인과 운영 복원력을 통합 관리합니다.'],
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
   clientpasswords: ['Client PIN 관리', 'APK Client PIN 상태 확인과 안전한 재설정을 수행합니다.'],
@@ -407,6 +408,7 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'notifications') await renderNotifications();
     else if (currentView === 'processors') await renderProcessors();
     else if (currentView === 'reports') await renderReports();
+    else if (currentView === 'production') await renderProductionHardening();
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
     else if (currentView === 'clientpasswords') await renderClientPasswords();

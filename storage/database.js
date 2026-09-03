@@ -19,7 +19,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 128,
+        version: 143,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -68,6 +68,7 @@ function BuildDatabaseObject() {
         clientBuildBindings: Object.fromEntries(state.clientBuildBindings),
         accessGroupGuids: Object.fromEntries(state.accessGroupGuids),
         buildSessionPolicy: state.buildSessionPolicy,
+        productionControl: require('../services/productionState').ExportPersisted(),
         licenseRevision: Number(state.licenseRevision) || 0,
         servers: Object.fromEntries(serverIdentities),
         clients: Object.fromEntries(clientIdentities),
@@ -304,6 +305,7 @@ function ImportDatabaseObject(data) {
     require('../services/qrApproval').ImportPersisted(data);
     require('../services/buildGate').ImportPersisted(data);
     require('../services/userDashboard').ImportPersisted(data);
+    require('../services/productionState').ImportPersisted(data);
     if (data.clientPasswordProfiles && typeof data.clientPasswordProfiles === 'object') {
         for (const [rawClientId, raw] of Object.entries(data.clientPasswordProfiles)) {
             const clientId = NormalizeID(rawClientId);

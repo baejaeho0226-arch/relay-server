@@ -19,6 +19,7 @@ async function run() {
     const QRCode = require('qrcode');
     require('../core/utils').EnsureDirs();
     const clientId = 'A1B2C3D4E5F60708';
+    const serverId = '0102030405060708';
     const requestId = 'QRA-00112233445566778899AABB';
     const token = crypto.randomBytes(32).toString('base64url');
     const expiresAt = Date.now() + 5 * 60 * 1000;
@@ -26,7 +27,7 @@ async function run() {
 
     state.clientIdentities.set('ANDROID-QR-TEST', {
         id: clientId,
-        serverId: '0102030405060708',
+        serverId,
         createdAt: Date.now(),
         lastSeenAt: 0,
         lastAuthAt: 0,
@@ -35,6 +36,8 @@ async function run() {
         sendCount: 0,
         reconnectCount: 0
     });
+    state.serverIdentities.set('WINDOWS-QR-TEST', serverId);
+    state.servers.set(serverId, { serverId, registered: true, clients: new Set(), socket: { destroyed: false } });
     state.qrAuthRequests.set(requestId, {
         requestId,
         clientId,
@@ -64,7 +67,8 @@ async function run() {
         days: 30,
         memo: 'QR integration test',
         tags: ['QR', 'TEST'],
-        accessType: 'TYPE2'
+        accessType: 'TYPE2',
+        serverId
     }, 'admin');
     assert.strictEqual(approved.ok, true);
     assert.strictEqual(approved.delivered, false);
@@ -175,6 +179,7 @@ async function run() {
     passwordConnection.deviceAuthVerified = true;
     const buildRequestId = 'BUILD-001122334455';
     state.servers.delete(buildServerId);
+    state.serverIdentities.delete('WINDOWS-QR-TEST');
     require('../relay/clientHandler').HandleClientBuild(passwordConnection, `BUILD|${buildRequestId}|${clientId}`);
     assert.ok(passwordWrites.some(line => line.startsWith(`BUILD_WAITING|${buildRequestId}|`)));
     assert.strictEqual(state.pendingBuildGrants.get(clientId).status, 'PENDING');

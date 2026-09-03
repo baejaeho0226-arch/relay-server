@@ -19,6 +19,7 @@ const endpoints = [
     '/api/ha/status',
     '/api/dashboard',
     '/api/qr-auth',
+    '/api/production',
     '/api/build-sessions',
     '/api/servers',
     '/api/clients',
