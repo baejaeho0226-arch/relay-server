@@ -1,5 +1,10 @@
 relay-identities.json
 relay-identities.bak.json
+relay.db
+relay.db-wal
+relay.db-shm
+relay-licenses.json
+relay-licenses.bak.json
 backups/
 audit/
 data/
