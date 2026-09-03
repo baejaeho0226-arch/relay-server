@@ -75,7 +75,6 @@ function BindUnassignedClients(serverId) {
     for (const [deviceKey, saved] of waiting) {
         if (assignedCount >= MAX_CLIENTS_PER_SERVER) break;
         saved.serverId = serverId;
-        require('../services/pairingApproval').CompleteDeferredBinding(saved.id, serverId, 'SERVER_ONLINE');
         assignedCount++;
         changed++;
 

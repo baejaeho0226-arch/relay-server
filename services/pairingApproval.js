@@ -89,14 +89,10 @@ function BindForApproval(clientId, serverId, actor = 'admin') {
         const oldRequiresPairingApproval = Boolean(check.saved.requiresPairingApproval);
         const oldPairingApprovedAt = Number(check.saved.pairingApprovedAt) || 0;
         const oldPairingApprovedBy = String(check.saved.pairingApprovedBy || '');
-        const oldPairingDeferredAt = Number(check.saved.pairingDeferredAt) || 0;
-        const oldPairingBoundAt = Number(check.saved.pairingBoundAt) || 0;
         check.saved.serverId = serverId;
         check.saved.requiresPairingApproval = false;
         check.saved.pairingApprovedAt = now;
         check.saved.pairingApprovedBy = claim.actor;
-        check.saved.pairingBoundAt = now;
-        delete check.saved.pairingDeferredAt;
 
         const live = Identity().GetOnlineClient(clientId);
         const oldLiveServer = Identity().GetOnlineServer(oldServerId);
@@ -111,8 +107,6 @@ function BindForApproval(clientId, serverId, actor = 'admin') {
             check.saved.requiresPairingApproval = oldRequiresPairingApproval;
             check.saved.pairingApprovedAt = oldPairingApprovedAt;
             check.saved.pairingApprovedBy = oldPairingApprovedBy;
-            check.saved.pairingBoundAt = oldPairingBoundAt;
-            if (oldPairingDeferredAt) check.saved.pairingDeferredAt = oldPairingDeferredAt;
             if (live) {
                 live.serverId = oldServerId;
                 if (target && target.clients instanceof Set) target.clients.delete(clientId);
@@ -129,87 +123,10 @@ function BindForApproval(clientId, serverId, actor = 'admin') {
     }
 }
 
-function CompleteDeferredBinding(clientId, serverId, source = 'AUTO') {
-    clientId = NormalizeID(clientId);
-    serverId = NormalizeID(serverId);
-    const saved = Identity().GetSavedClientByID(clientId);
-    if (!saved || !serverId) return false;
-    const wasDeferred = Number(saved.pairingDeferredAt) > 0;
-    if (wasDeferred) {
-        saved.pairingBoundAt = Now();
-        delete saved.pairingDeferredAt;
-        for (const record of state.qrAuthRequests.values()) {
-            if (record && record.clientId === clientId && record.status === 'APPROVED' && !NormalizeID(record.serverId)) {
-                record.serverId = serverId;
-                record.pairingBoundAt = saved.pairingBoundAt;
-            }
-        }
-        require('../storage/audit').LogEvent('PAIRING_DEFERRED_BOUND', `${clientId} -> ${serverId} / ${SafeField(source).slice(0, 64)}`);
-    }
-    return wasDeferred;
-}
-
-function DeferForApproval(clientId, actor = 'admin') {
-    clientId = NormalizeID(clientId);
-    const saved = Identity().GetSavedClientByID(clientId);
-    if (!saved) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
-    const now = Now();
-    const oldRequiresPairingApproval = Boolean(saved.requiresPairingApproval);
-    const oldPairingApprovedAt = Number(saved.pairingApprovedAt) || 0;
-    const oldPairingApprovedBy = String(saved.pairingApprovedBy || '');
-    const oldPairingDeferredAt = Number(saved.pairingDeferredAt) || 0;
-    saved.requiresPairingApproval = false;
-    saved.pairingApprovedAt = now;
-    saved.pairingApprovedBy = SafeField(actor).slice(0, 64);
-    saved.pairingDeferredAt = now;
-    if (!require('../storage/database').SaveDatabase()) {
-        saved.requiresPairingApproval = oldRequiresPairingApproval;
-        saved.pairingApprovedAt = oldPairingApprovedAt;
-        saved.pairingApprovedBy = oldPairingApprovedBy;
-        if (oldPairingDeferredAt) saved.pairingDeferredAt = oldPairingDeferredAt;
-        else delete saved.pairingDeferredAt;
-        return { ok: false, reason: 'PAIR_PERSIST_FAILED' };
-    }
-    require('../storage/audit').LogEvent('PAIRING_APPROVED_DEFERRED', `${clientId} -> WAITING_SERVER / ${saved.pairingApprovedBy}`);
-    return {
-        ok: true,
-        pairing: {
-            clientId,
-            serverId: '',
-            oldServerId: '',
-            status: 'DEFERRED',
-            approvedAt: now,
-            approvedBy: saved.pairingApprovedBy
-        }
-    };
-}
-
-function ResolveForApproval(clientId, requestedServerId, actor = 'admin') {
-    clientId = NormalizeID(clientId);
-    const rawTarget = String(requestedServerId || '').trim();
-    const target = NormalizeID(rawTarget);
-    if (!clientId) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
-    if (rawTarget && !target) return { ok: false, reason: 'PAIR_TARGET_INVALID' };
-    if (target) return BindForApproval(clientId, target, actor);
-
-    const saved = Identity().GetSavedClientByID(clientId);
-    if (!saved) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
-    const currentServerId = NormalizeID(saved.serverId);
-    if (currentServerId) return BindForApproval(clientId, currentServerId, actor);
-
-    // Compatibility for both the serverless QR flow and an older cached Web
-    // Admin bundle that does not send serverId. With one unambiguous target we
-    // can commit immediately; otherwise approval succeeds and the Relay binds
-    // one empty PC later without exceeding the 1:1 capacity.
-    const candidates = EligibleServers(clientId).filter(row => row.eligible);
-    if (candidates.length === 1) return BindForApproval(clientId, candidates[0].id, actor);
-    return DeferForApproval(clientId, actor);
-}
-
 function CleanupClaims() {
     const now = Now();
     for (const [key, value] of state.production.pairingClaims)
         if (!value || Number(value.expiresAt) <= now) state.production.pairingClaims.delete(key);
 }
 
-module.exports = { EligibleServers, Validate, BindForApproval, DeferForApproval, ResolveForApproval, CompleteDeferredBinding, CleanupClaims };
+module.exports = { EligibleServers, Validate, BindForApproval, CleanupClaims };

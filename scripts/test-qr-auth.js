@@ -335,32 +335,8 @@ async function run() {
     assert.ok(qrPendingLine);
     assert.strictEqual(qrPendingLine.trim().split('|').length, 4);
 
-    // Real-device path: Web approval must succeed before WinSockServer starts.
-    // This is also backward compatible with a cached Admin UI that omits
-    // serverId from the approval request.
-    const serverlessRequest = state.qrAuthRequests.get(qrChallenge[1]);
-    const serverlessToken = crypto.randomBytes(32).toString('base64url');
-    serverlessRequest.tokenHash = crypto.createHash('sha256').update(serverlessToken, 'utf8').digest('hex');
-    const serverlessPayload = service.BuildPayload(
-        serverlessRequest.requestId,
-        serverlessRequest.clientId,
-        serverlessRequest.expiresAt,
-        serverlessToken
-    );
-    const serverlessScan = service.InspectPayload(serverlessPayload);
-    const serverlessApproval = service.Approve(serverlessRequest.requestId, serverlessScan.approvalToken, {
-        days: 30,
-        accessType: 'TYPE1',
-        memo: 'serverless real-device approval'
-    }, 'admin');
-    assert.strictEqual(serverlessApproval.ok, true, serverlessApproval.reason);
-    assert.strictEqual(serverlessApproval.pairing.status, 'DEFERRED');
-    assert.strictEqual(serverlessApproval.pairing.serverId, '');
-    assert.strictEqual(state.clientIdentities.get('ANDROID-NO-WINSOCK').serverId, '');
-    assert.ok(Array.from(state.licenses.values()).some(x => x.boundClient === serverlessConnection.clientId));
-
-    // When a WinSockServer appears later, the already-approved client receives
-    // its first fixed binding without repeating QR approval.
+    // When a WinSockServer appears later, only never-assigned clients receive
+    // their first fixed binding without interrupting the QR session.
     const lateServerId = '1122334455667788';
     state.serverIdentities.set('SERVER-LATE-START', lateServerId);
     state.servers.set(lateServerId, {
@@ -372,7 +348,6 @@ async function run() {
     assert.strictEqual(assigned, 1);
     assert.strictEqual(serverlessConnection.serverId, lateServerId);
     assert.ok(serverlessWrites.some(line => line.startsWith(`SERVER_ASSIGNED|${lateServerId}`)));
-    assert.strictEqual(state.qrAuthRequests.get(serverlessRequest.requestId).serverId, lateServerId);
 
     const productRoot = path.resolve(__dirname, '..', '..');
     const apkDir = path.join(productRoot, 'ApkWinSock_Android64');
@@ -559,7 +534,6 @@ async function run() {
     console.log('- APK responsive QR frame and expiry countdown: PASS');
     console.log('- QR relative TTL + Android monotonic countdown contract: PASS');
     console.log('- Relay QR issuance with WinSockServer offline: PASS');
-    console.log('- Real-device QR approval before WinSockServer + deferred 1:1 bind: PASS');
     console.log('- APK reinstall secret recovery without UNKNOWN_COMMAND: PASS');
     console.log('- Late WinSockServer first-binding handoff: PASS');
     console.log('- Web selected-photo persistence across live refresh: PASS');

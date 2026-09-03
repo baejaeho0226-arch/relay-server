@@ -142,7 +142,6 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
         const availableServerId = FindAssignableServerId();
         if (availableServerId) {
             saved.serverId = availableServerId;
-            require('../services/pairingApproval').CompleteDeferredBinding(saved.id, availableServerId, 'CLIENT_RECONNECT');
             SaveDatabase();
             LogEvent('CLIENT_LIVE_ONE_TO_ONE_BIND', `${saved.id} -> ${availableServerId}`);
         }
