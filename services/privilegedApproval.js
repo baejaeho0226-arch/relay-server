@@ -9,7 +9,6 @@ const PROTECTED = [
     /^\/api\/backups\/[^/]+\/(restore|delete)$/,
     /^\/api\/(servers|clients|licenses)\/[^/]+$/,
     /^\/api\/deleted-devices\/DEL-[0-9A-Fa-f]{24}\/restore$/,
-    /^\/api\/registry\/reset$/,
     /^\/api\/(servers|clients)\/[^/]+\/(kick|disable)$/,
     /^\/api\/licenses\/bulk$/,
     /^\/api\/licenses\/[^/]+\/(reissue|delete)$/,

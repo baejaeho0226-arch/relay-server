@@ -268,21 +268,6 @@ content.addEventListener('click', async event => {
       const v=await openModal({title:'Bulk License Delete',message:`${keys.length}개 License를 삭제합니다.`,danger:true,confirmLabel:'DELETE'}); if(!v)return;
       const r=await api('/api/licenses/bulk',{method:'POST',body:{action:'delete',keys}}); toast(`${r.success}/${r.total} License 삭제`); await renderDangerZone(); return;
     }
-    if (event.target.id === 'danger-registry-reset') {
-      const v = await openModal({
-        title: 'Device Registry Reset',
-        message: '모든 ApkWinSock과 WinSockServer를 먼저 종료하세요. Server/Client ID, QR/PIN/Build/HMAC, 1:1 연결, DELETE 잠금과 기기 이력이 초기화됩니다. License는 보존하고 바인딩만 해제하며 자동 백업을 생성합니다.',
-        fields: [{ name: 'confirmation', label: '확인 문구', type: 'text', placeholder: 'RESET' }],
-        danger: true,
-        confirmLabel: 'RESET ALL DEVICES'
-      });
-      if (!v) return;
-      if (String(v.confirmation || '').trim().toUpperCase() !== 'RESET') throw new Error('확인 문구에 RESET을 입력하세요.');
-      const r = await api('/api/registry/reset', { method: 'POST', body: { scope: 'ALL_DEVICES', confirm: 'RESET' } });
-      toast(`초기화 완료 · Server ${r.removed.servers} · Client ${r.removed.clients}`);
-      await renderDangerZone();
-      return;
-    }
     if (event.target.id && event.target.id.startsWith('load-preset-')) {
       const name=event.target.id.replace('load-preset-','').toLowerCase(); const presets={smoke:[2,10,1],medium:[10,100,1],heavy:[100,1000,1]}; const v=presets[name]; if(v){document.getElementById('load-servers').value=v[0];document.getElementById('load-clients').value=v[1];document.getElementById('load-requests').value=v[2];} return;
     }
