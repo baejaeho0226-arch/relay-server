@@ -2,12 +2,19 @@ PURE TCP RELAY // WEB ADMIN FINAL TEST RECORD
 Web Admin Version: 3.5.0
 Relay Version: 6.7.0
 
-CURRENT PWA REVISION: 3.5.0-fix5
+CURRENT PWA REVISION: 3.5.0-fix7-reset1
+- fix7 QR approval target requirement is retained.
+- Danger Zone can reset all offline Server/Client registrations and dependent auth state.
+- Reset creates a recovery backup, preserves license inventory and removes device bindings.
+- Running APK/WinSockServer connections block reset to prevent immediate re-enrollment races.
 - Dashboard qrApproval/buildGate dependency restored.
-- 38 authenticated GET APIs return JSON without HTTP 500 in empty state.
+- 40 authenticated GET APIs return JSON without HTTP 500 in empty state.
 - Dedicated API error panel no longer prefixes errors with [NO_DATA].
 - Internal errors carry a safe REF shared with the server log.
 - Server/Client Delete, 1:1 Repair and active-preserving History CLEAN enabled.
+- DELETE creates a persistent reconnect lock; RESTORE is required before the same installation can enroll again.
+- QR target lists are recalculated for the scanned CLIENT and verified with four independent pairs.
+- Railway/CGNAT private hop changes are RELAY_PRIVATE and do not create IP-change notifications.
 - Server status and #Accept capacity are separate; ONLINE 1/1 is FULL.
 - TYPE1/TYPE2/TYPE3 are displayed as TalesRunner/R2Beat/Lostsaga.
 - Sticky ADMIN DELETE actions and per-list Server/Client History CLEAN enabled.
@@ -18,13 +25,14 @@ APK Version: 2.9.0
 WinSockServer Version: 2.6.0
 
 CURRENT RESULT
-- npm run check: 81 JavaScript modules PASS
+- npm run check: 95 JavaScript modules PASS
 - npm run test:roadmap14: PASS
 - npm run test:roadmap18: PASS
 - npm run test:roadmap23: PASS
 - npm run test:qrauth: PASS
 - npm run test:buildsessions: PASS
 - npm run test:registry: PASS
+- npm run test:identity: PASS
 - npm run test:webapi: PASS
 
 BUILD SESSION 24-27
@@ -49,6 +57,7 @@ REGRESSION
 - Server #Accept READY/FULL does not masquerade as OFFLINE: PASS
 - Delete dependent-state purge and History CLEAN active-item preservation: PASS
 - Pair Repair / History Clean / Device Delete authenticated HTTP routes: PASS
+- Offline-only full device registry reset and automatic pre-reset backup: PASS
 
 DELPHI
 - Project unit references and source policy validation: PASS
