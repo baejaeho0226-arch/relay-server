@@ -19,7 +19,7 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 144,
+        version: 143,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -45,7 +45,6 @@ function BuildDatabaseObject() {
         configHistory: state.configHistory,
         enrollmentPolicy: state.enrollmentPolicy,
         deviceEnrollments: Object.fromEntries(state.deviceEnrollments),
-        deletedDevices: Object.fromEntries(state.deletedDevices),
         deviceSecretRotations: Object.fromEntries(state.deviceSecretRotations),
         deviceSecretMeta: Object.fromEntries(state.deviceSecretMeta),
         deviceNetworkProfiles: Object.fromEntries(state.deviceNetworkProfiles),
@@ -159,10 +158,7 @@ function ImportDatabaseObject(data) {
                 lastIP: String(value.lastIP || ''),
                 authCount: Number(value.authCount) || 0,
                 sendCount: Number(value.sendCount) || 0,
-                reconnectCount: Number(value.reconnectCount) || 0,
-                requiresPairingApproval: Boolean(value.requiresPairingApproval),
-                pairingApprovedAt: Math.max(0, Number(value.pairingApprovedAt) || 0),
-                pairingApprovedBy: SafeField(value.pairingApprovedBy || '').slice(0, 64)
+                reconnectCount: Number(value.reconnectCount) || 0
             });
             used.add(id);
         }
@@ -204,7 +200,7 @@ function ImportDatabaseObject(data) {
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
     state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
-    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deletedDevices.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear(); state.clientPasswordProfiles.clear(); state.clientPasswordChallenges.clear(); state.pendingBuildGrants.clear(); state.buildSessions.clear(); state.clientBuildBindings.clear(); state.accessGroupGuids.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear(); state.clientPasswordProfiles.clear(); state.clientPasswordChallenges.clear(); state.pendingBuildGrants.clear(); state.buildSessions.clear(); state.clientBuildBindings.clear(); state.accessGroupGuids.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -281,7 +277,6 @@ function ImportDatabaseObject(data) {
     if(Array.isArray(data.configHistory)) state.configHistory.push(...data.configHistory.slice(0,100).filter(x=>x&&typeof x==='object'));
     if(data.enrollmentPolicy&&typeof data.enrollmentPolicy==='object') state.enrollmentPolicy={enabled:!!data.enrollmentPolicy.enabled,updatedAt:Number(data.enrollmentPolicy.updatedAt)||0};
     if(data.deviceEnrollments&&typeof data.deviceEnrollments==='object') for(const [key,value] of Object.entries(data.deviceEnrollments)){if(/^(SERVER|CLIENT):/.test(key)&&value&&typeof value==='object')state.deviceEnrollments.set(key,{...value});}
-    require('../services/deviceDeletion').Import(data.deletedDevices);
     if(data.deviceSecretRotations&&typeof data.deviceSecretRotations==='object') for(const [key,value] of Object.entries(data.deviceSecretRotations)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&value&&typeof value==='object')state.deviceSecretRotations.set(key,{...value});}
     if(data.deviceSecretMeta&&typeof data.deviceSecretMeta==='object') for(const [key,value] of Object.entries(data.deviceSecretMeta)){if(/^(SERVER|CLIENT):[0-9A-F]{16}$/.test(key)&&value&&typeof value==='object')state.deviceSecretMeta.set(key,{createdAt:Number(value.createdAt)||0,rotatedAt:Number(value.rotatedAt)||0,rotationCount:Math.max(0,Number(value.rotationCount)||0)});}
     if(data.deviceNetworkProfiles&&typeof data.deviceNetworkProfiles==='object'){

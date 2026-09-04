@@ -80,7 +80,8 @@ async function run() {
     assert.ok(clientWrites.some(line => line.startsWith(`BUILD_WAITING|${requestId}|`)));
 
     const dispatched = buildGate.TryDispatchClient(clientId);
-    assert.strictEqual(dispatched.delivered, true);
+    assert.strictEqual(dispatched.delivered, false);
+    assert.strictEqual(dispatched.reason, 'ALREADY_DISPATCHED');
     const buildLine = serverWrites.find(line => line.startsWith(`BUILD|${requestId}|${clientId}|`));
     assert.ok(buildLine);
     const parts = buildLine.trim().split('|');
@@ -110,7 +111,8 @@ async function run() {
     state.clientIdentities.set('ANDROID-SECOND-PAIR-TEST', secondSaved);
     const secondClient = {
         clientId: secondClientId, serverId, connected: true,
-        accessType: 'TYPE1', passwordVerified: true,
+        accessType: 'TYPE1', passwordVerified: true, deviceAuthVerified: true,
+        licenseAuthorized: true, licenseKey: 'LICENSE-SECOND-DEFERRED',
         socket: { destroyed: false, write() { return true; } }
     };
     assert.strictEqual(buildGate.Queue(secondClient, 'BUILD-SECOND-PAIR').reason,
@@ -122,12 +124,19 @@ async function run() {
 
     const saved = state.clientIdentities.get('ANDROID-BUILD-SESSION-TEST');
     const emergency = require('../services/emergencyFailover');
+    state.clients.set(secondClientId, secondClient);
+    state.licenses.set(secondClient.licenseKey, {
+        boundClient: secondClientId, expiresAt: Date.now() + 86400000,
+        suspended: false, accessType: 'TYPE1', tags: [], memo: ''
+    });
+    assert.strictEqual(buildGate.Queue(secondClient, 'BUILD-SECOND-DEFERRED').ok, true);
     state.servers.set(secondServerId, {
         socket: { destroyed: false, write() { return true; } },
         type: 'server', connected: true, registered: true, serverId: secondServerId,
         deviceAuthVerified: true, clients: new Set()
     });
-    state.clients.set(secondClientId, secondClient);
+    deviceControl.RecordCapabilities('SERVER', secondServerId,
+        'DEVICE_HMAC,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING');
     assert.strictEqual(require('../relay/serverHandler').BindUnassignedClients(secondServerId), 1);
     assert.strictEqual(secondSaved.serverId, secondServerId);
     assert.strictEqual(state.servers.get(secondServerId).clients.has(secondClientId), true);
@@ -149,19 +158,75 @@ async function run() {
     };
     const thirdClient = {
         clientId: thirdClientId, serverId: '', connected: true,
+        accessType: 'TYPE2', passwordVerified: true, deviceAuthVerified: true,
+        licenseAuthorized: true, licenseKey: 'LICENSE-THIRD-DEFERRED',
         socket: { destroyed: false, write() { return true; } }
     };
     state.clientIdentities.set('ANDROID-THIRD-LIVE', thirdSaved);
     state.clients.set(thirdClientId, thirdClient);
+    state.licenses.set(thirdClient.licenseKey, {
+        boundClient: thirdClientId, expiresAt: Date.now() + 86400000,
+        suspended: false, accessType: 'TYPE2', tags: [], memo: ''
+    });
+    assert.strictEqual(buildGate.Queue(thirdClient, 'BUILD-THIRD-DEFERRED').ok, true);
     state.serverIdentities.set('SERVER-THIRD-LIVE', thirdServerId);
     state.servers.set(thirdServerId, {
         socket: { destroyed: false, write() { return true; } },
         type: 'server', connected: true, registered: true,
         serverId: thirdServerId, deviceAuthVerified: false, clients: new Set()
     });
+    deviceControl.RecordCapabilities('SERVER', thirdServerId,
+        'DEVICE_HMAC,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING');
+    assert.strictEqual(require('../relay/serverHandler').BindUnassignedClients(thirdServerId), 0);
+    state.servers.get(thirdServerId).deviceAuthVerified = true;
     assert.strictEqual(require('../relay/serverHandler').BindUnassignedClients(thirdServerId), 1);
     assert.strictEqual(thirdSaved.serverId, thirdServerId);
     assert.strictEqual(state.clientIdentities.get('ANDROID-STALE-OFFLINE').serverId, '');
+
+    // Two fully authenticated phones may wait together while no empty PC is
+    // available. Later HMAC-verified PCs must claim exactly one phone each in
+    // Build FIFO order; the first PC may never consume both pending grants.
+    const waitingPairs = [
+        { clientId: '4400000000000001', deviceKey: 'ANDROID-WAITING-PAIR-1', licenseKey: 'LICENSE-WAITING-PAIR-1', requestId: 'BUILD-WAITING-PAIR-1' },
+        { clientId: '5500000000000002', deviceKey: 'ANDROID-WAITING-PAIR-2', licenseKey: 'LICENSE-WAITING-PAIR-2', requestId: 'BUILD-WAITING-PAIR-2' }
+    ];
+    for (const item of waitingPairs) {
+        const waitingClient = {
+            clientId: item.clientId, serverId: '', connected: true,
+            accessType: 'TYPE1', passwordVerified: true, deviceAuthVerified: true,
+            licenseAuthorized: true, licenseKey: item.licenseKey,
+            socket: { destroyed: false, write() { return true; } }
+        };
+        state.clientIdentities.set(item.deviceKey, {
+            id: item.clientId, serverId: '', createdAt: Date.now(),
+            lastSeenAt: Date.now(), lastAuthAt: Date.now(), lastIP: '',
+            authCount: 1, sendCount: 0, reconnectCount: 0
+        });
+        state.clients.set(item.clientId, waitingClient);
+        state.licenses.set(item.licenseKey, {
+            boundClient: item.clientId, expiresAt: Date.now() + 86400000,
+            suspended: false, accessType: 'TYPE1', tags: [], memo: ''
+        });
+        assert.strictEqual(buildGate.Queue(waitingClient, item.requestId).ok, true);
+    }
+    const lateServers = ['6600000000000001', '7700000000000002'];
+    for (let index = 0; index < lateServers.length; index++) {
+        const lateServerId = lateServers[index];
+        state.servers.set(lateServerId, {
+            socket: { destroyed: false, write() { return true; } },
+            type: 'server', connected: true, registered: true,
+            serverId: lateServerId, deviceAuthVerified: true, clients: new Set()
+        });
+        state.deviceSecrets.set(`SERVER:${lateServerId}`, `late-server-secret-${lateServerId}`);
+        deviceControl.RecordCapabilities('SERVER', lateServerId,
+            'DEVICE_HMAC,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING');
+        const dispatchResult = buildGate.TryDispatchServer(lateServerId);
+        assert.strictEqual(dispatchResult.delivered, 1);
+        assert.strictEqual(state.clientIdentities.get(waitingPairs[index].deviceKey).serverId, lateServerId);
+        assert.strictEqual(state.servers.get(lateServerId).clients.size, 1);
+        if (index === 0)
+            assert.strictEqual(state.clientIdentities.get(waitingPairs[1].deviceKey).serverId, '');
+    }
 
     // First WIN2 registration migrates the old server identity. A second PC
     // with the same synced legacy base no longer collides with it.
@@ -297,6 +362,7 @@ async function run() {
     console.log('- Fixed APK to WinSockServer binding: PASS');
     console.log('- Absolute one APK to one WinSockServer pairing: PASS');
     console.log('- Three live PCs/phones pair independently; stale offline rows skipped: PASS');
+    console.log('- Multiple authenticated APKs wait first; later verified PCs claim one each FIFO: PASS');
     console.log('- Synced legacy Windows device ID collision migration: PASS');
     console.log('- Cloned legacy Android ID collision migration: PASS');
     console.log('- Signed immediate revoke and persisted history: PASS');

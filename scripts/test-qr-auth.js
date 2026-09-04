@@ -27,7 +27,7 @@ async function run() {
 
     state.clientIdentities.set('ANDROID-QR-TEST', {
         id: clientId,
-        serverId,
+        serverId: '',
         createdAt: Date.now(),
         lastSeenAt: 0,
         lastAuthAt: 0,
@@ -36,8 +36,6 @@ async function run() {
         sendCount: 0,
         reconnectCount: 0
     });
-    state.serverIdentities.set('WINDOWS-QR-TEST', serverId);
-    state.servers.set(serverId, { serverId, registered: true, clients: new Set(), socket: { destroyed: false } });
     state.qrAuthRequests.set(requestId, {
         requestId,
         clientId,
@@ -67,11 +65,13 @@ async function run() {
         days: 30,
         memo: 'QR integration test',
         tags: ['QR', 'TEST'],
-        accessType: 'TYPE2',
-        serverId
+        accessType: 'TYPE2'
     }, 'admin');
     assert.strictEqual(approved.ok, true);
     assert.strictEqual(approved.delivered, false);
+    assert.strictEqual(approved.pairing.deferred, true);
+    assert.strictEqual(approved.pairing.serverId, '');
+    assert.strictEqual(state.serverIdentities.size, 0);
     assert.strictEqual(state.qrAuthRequests.get(requestId).status, 'APPROVED');
     assert.strictEqual(state.qrAuthRequests.get(requestId).licenseKey, '');
     assert.match(state.qrAuthRequests.get(requestId).licenseRef, /^QR-[0-9A-F]{8}$/);
@@ -158,7 +158,7 @@ async function run() {
     // BUILD is persisted before WinSockServer starts. Relay holds the grant,
     // then forwards it only after a later WinSockServer connection has
     // completed capability and HMAC authentication.
-    const buildServerId = state.clientIdentities.get('ANDROID-QR-TEST').serverId;
+    const buildServerId = serverId;
     const buildServerWrites = [];
     const buildServerSocket = {
         destroyed: false,
@@ -171,15 +171,12 @@ async function run() {
         serverId: buildServerId, deviceAuthVerified: true,
         buildGateCapable: true, buildUnlocked: false, buildClients: new Set(),
         buildSessions: new Map(),
-        clients: new Set([clientId]),
+        clients: new Set(),
         sequenceStats: { tx: 0, rxLast: 0, rxReceived: 0, rxMissing: 0, rxDuplicates: 0, rxOutOfOrder: 0, lastGapAt: 0, lastRxAt: 0, lastTxAt: 0 }
     };
     buildServerSocket.__relayConnection = buildServer;
-    passwordConnection.serverId = buildServerId;
     passwordConnection.deviceAuthVerified = true;
     const buildRequestId = 'BUILD-001122334455';
-    state.servers.delete(buildServerId);
-    state.serverIdentities.delete('WINDOWS-QR-TEST');
     require('../relay/clientHandler').HandleClientBuild(passwordConnection, `BUILD|${buildRequestId}|${clientId}`);
     assert.ok(passwordWrites.some(line => line.startsWith(`BUILD_WAITING|${buildRequestId}|`)));
     assert.strictEqual(state.pendingBuildGrants.get(clientId).status, 'PENDING');
@@ -193,11 +190,15 @@ async function run() {
     assert.ok(!reconnectBuildWrites.some(line => line.trim() === 'ERROR|DUPLICATE_REQUEST'));
     assert.strictEqual(state.pendingBuildGrants.get(clientId).requestId, buildRequestId);
 
+    state.serverIdentities.set('WINDOWS-QR-TEST', buildServerId);
     state.servers.set(buildServerId, buildServer);
     const buildServerSecret = 'test-build-server-secret-32-bytes-minimum';
     state.deviceSecrets.set(`SERVER:${buildServerId}`, buildServerSecret);
     require('../services/deviceControl').RecordCapabilities('SERVER', buildServerId, 'DEVICE_HMAC,BUILD_GATE,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING,TYPE_PROCESSOR_ROUTING');
     require('../services/buildGate').TryDispatchServer(buildServerId);
+    assert.strictEqual(state.clientIdentities.get('ANDROID-QR-TEST').serverId, buildServerId);
+    assert.strictEqual(passwordConnection.serverId, buildServerId);
+    assert.strictEqual(buildServer.clients.has(clientId), true);
     const signedBuildLine = buildServerWrites.find(line => line.startsWith(`BUILD|${buildRequestId}|${clientId}|BLS-`));
     assert.ok(signedBuildLine, 'Relay must send a signed leased Build grant');
     const signedBuild = signedBuildLine.trim().split('|');
@@ -274,6 +275,7 @@ async function run() {
     };
     serverlessSocket.__relayConnection = serverlessConnection;
     assert.strictEqual(state.servers.size, 0);
+    state.serverIdentities.clear();
     assert.strictEqual(state.serverIdentities.size, 0);
     const clientHandlerModule = require('../relay/clientHandler');
     clientHandlerModule.HandleClientConnect(serverlessConnection, 'ANDROID-NO-WINSOCK', 2, '2.6.0');
@@ -335,19 +337,21 @@ async function run() {
     assert.ok(qrPendingLine);
     assert.strictEqual(qrPendingLine.trim().split('|').length, 4);
 
-    // When a WinSockServer appears later, only never-assigned clients receive
-    // their first fixed binding without interrupting the QR session.
+    // A WinSockServer must not claim an APK that has only reached the QR
+    // screen. Full QR + License + PIN + pending Build is required first.
     const lateServerId = '1122334455667788';
     state.serverIdentities.set('SERVER-LATE-START', lateServerId);
     state.servers.set(lateServerId, {
         serverId: lateServerId, registered: true, connected: true,
         socket: { destroyed: false, write() { return true; } },
-        clients: new Set(), deviceAuthVerified: false
+        clients: new Set(), deviceAuthVerified: true
     });
+    require('../services/deviceControl').RecordCapabilities('SERVER', lateServerId,
+        'DEVICE_HMAC,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING');
     const assigned = require('../relay/serverHandler').BindUnassignedClients(lateServerId);
-    assert.strictEqual(assigned, 1);
-    assert.strictEqual(serverlessConnection.serverId, lateServerId);
-    assert.ok(serverlessWrites.some(line => line.startsWith(`SERVER_ASSIGNED|${lateServerId}`)));
+    assert.strictEqual(assigned, 0);
+    assert.strictEqual(serverlessConnection.serverId, '');
+    assert.ok(!serverlessWrites.some(line => line.startsWith(`SERVER_ASSIGNED|${lateServerId}`)));
 
     const productRoot = path.resolve(__dirname, '..', '..');
     const apkDir = path.join(productRoot, 'ApkWinSock_Android64');
@@ -521,7 +525,7 @@ async function run() {
 
     console.log('QR AUTH END-TO-END PASS');
     console.log('- Signed one-time QR image decode: PASS');
-    console.log('- Admin approval and server-side license binding: PASS');
+    console.log('- Serverless admin approval and server-side license binding: PASS');
     console.log('- Password setup/login proof and no plaintext storage: PASS');
     console.log('- Exact six-digit PIN enforcement and square PIN cells: PASS');
     console.log('- Web Admin PIN reset, one-time reveal and forced APK re-login: PASS');
@@ -530,12 +534,12 @@ async function run() {
     console.log('- Oversized image dimension rejection: PASS');
     console.log('- APK QR/PIN/dashboard/background-Build/main flow: PASS');
     console.log('- Authenticated WinSockServer Build gate and dynamic server ACK: PASS');
-    console.log('- Build-first persistent wait and delayed WinSockServer connection: PASS');
+    console.log('- Dashboard Build wait then authenticated WinSockServer claim: PASS');
     console.log('- APK responsive QR frame and expiry countdown: PASS');
     console.log('- QR relative TTL + Android monotonic countdown contract: PASS');
     console.log('- Relay QR issuance with WinSockServer offline: PASS');
     console.log('- APK reinstall secret recovery without UNKNOWN_COMMAND: PASS');
-    console.log('- Late WinSockServer first-binding handoff: PASS');
+    console.log('- Partial-auth APK cannot be claimed by a late WinSockServer: PASS');
     console.log('- Web selected-photo persistence across live refresh: PASS');
     console.log('- Sidebar grouped navigation scrolling: PASS');
     console.log('- WinSockServer QR authorization source: PASS');

@@ -52,19 +52,8 @@ content.addEventListener('click', async event => {
   try {
     const openViewBtn = event.target.closest('[data-open-view]');
     if (openViewBtn) { switchView(openViewBtn.dataset.openView); await renderCurrent(); return; }
-    const restoreDeleted = event.target.closest('[data-deleted-device-restore]');
-    if (restoreDeleted) {
-      const tombstoneId = restoreDeleted.dataset.deletedDeviceRestore;
-      const type = restoreDeleted.dataset.deviceType || 'DEVICE';
-      const v = await openModal({ title: `${type} Restore`, message: '삭제 차단을 해제합니다. 실행 중인 프로그램은 다음 재접속 때 신규 장치로 등록되며, CLIENT는 새 QR 승인이 필요합니다.', danger: true, confirmLabel: 'RESTORE' });
-      if (!v) return;
-      await api(`/api/deleted-devices/${encodeURIComponent(tombstoneId)}/restore`, { method: 'POST', body: {} });
-      toast(`${type} 재등록 허용 완료`);
-      await renderCurrent();
-      return;
-    }
     if (event.target.id === 'pairing-repair-btn') {
-      const v = await openModal({ title: '1:1 Matching Repair', message: '존재하지 않는 SERVER 바인딩과 중복 배정을 정리합니다. 미배정 APK의 PC 선택은 QR 승인에서만 이루어지며 연결 순서로 자동 배정하지 않습니다.', confirmLabel: 'REPAIR' });
+      const v = await openModal({ title: '1:1 Matching Repair', message: '존재하지 않는 SERVER 바인딩과 중복 배정을 정리하고, 현재 ONLINE 상태인 빈 PC와 대기 APK를 다시 1:1로 연결합니다. OFFLINE이지만 등록이 남아 있는 정상 고정 쌍은 임의로 이동하지 않습니다.', confirmLabel: 'REPAIR' });
       if (!v) return;
       const r = await api('/api/pairing/repair', { method: 'POST', body: {} });
       toast(`1:1 복구 완료 · orphan ${r.repair.orphaned} · duplicate ${r.repair.duplicate} · assigned ${r.repair.assigned}`);
@@ -105,14 +94,10 @@ content.addEventListener('click', async event => {
     }
     if (event.target.id === 'qr-auth-approve-btn') {
       if (!qrScanResult || !qrScanResult.request || !qrScanResult.approvalToken) throw new Error('검증된 QR 요청이 없습니다.');
-      const pairableServers = (qrScanResult.pairingServers || []).filter(x => x.eligible || x.current || x.occupiedBy === qrScanResult.request.clientId);
-      if (!pairableServers.length) throw new Error('승인 가능한 온라인 WinSockServer가 없습니다. PC 프로그램을 먼저 Relay에 연결하세요.');
-      const preferredServer = pairableServers.find(x => x.current || x.occupiedBy === qrScanResult.request.clientId) || pairableServers[0];
       const values = await openModal({
         title: 'QR 기기 승인',
-        message: `${qrScanResult.request.clientId}\n승인할 PC를 명시적으로 선택합니다. 이 선택과 라이선스가 하나의 서버 트랜잭션으로 고정됩니다.`,
+        message: `${qrScanResult.request.clientId}\nAPK의 QR·라이선스·PIN 등록만 승인합니다. WinSockServer는 APK 대시보드가 열린 뒤 실행하며, Relay가 별도로 검증하고 1:1 연결합니다.`,
         fields: [
-          { name: 'serverId', label: '1:1 대상 PC', type: 'select', value: preferredServer.id, options: pairableServers.map(x => ({ value: x.id, label: `${x.alias || x.id} · ${x.id}${x.current || x.occupiedBy === qrScanResult.request.clientId ? ' · 현재 연결' : ''}` })) },
           { name: 'days', label: '사용 기간(일)', type: 'number', value: String(qrScanResult.defaultDays || 30) },
           { name: 'accessType', label: 'APK 전용 콘텐츠', type: 'select', value: 'TYPE1', options: [{ value: 'TYPE1', label: 'TalesRunner' }, { value: 'TYPE2', label: 'R2Beat' }, { value: 'TYPE3', label: 'Lostsaga' }] },
           { name: 'memo', label: '메모', value: `QR 승인 ${qrScanResult.request.clientId}` },
@@ -124,7 +109,6 @@ content.addEventListener('click', async event => {
       const result = await api('/api/qr-auth/approve', { method: 'POST', body: {
         requestId: qrScanResult.request.requestId,
         approvalToken: qrScanResult.approvalToken,
-        serverId: values.serverId,
         days: Number(values.days),
         accessType: values.accessType,
         memo: values.memo,
@@ -132,7 +116,7 @@ content.addEventListener('click', async event => {
       }});
       qrScanResult = null;
       clearQrSelectedFile();
-      toast(result.delivered ? '승인 완료 · APK 즉시 인증됨' : '승인 완료 · APK 재접속 시 자동 인증');
+      toast(result.delivered ? '승인 완료 · APK 인증을 계속합니다' : '승인 완료 · APK 재접속 시 자동 인증');
       await updateQrAuthBadge();
       await renderQrAuth();
       return;
@@ -551,10 +535,10 @@ async function serverAction(action, id) {
   }
 
   if (action === 'delete') {
-    const v = await openModal({ title: 'Server Delete', message: `${id}\nSERVER-ID, HMAC, 고정 Build 바인딩과 종속 설정을 삭제하고 이 설치의 자동 재등록을 차단합니다. 연결된 APK는 미배정 상태가 되며, RESTORE 전에는 같은 EXE가 새 ID를 만들 수 없습니다.`, danger: true, confirmLabel: 'DELETE' });
+    const v = await openModal({ title: 'Server Delete', message: `${id}\nSERVER-ID, HMAC, 고정 Build 바인딩과 종속 설정을 삭제합니다. 연결된 APK는 미배정 상태로 복구됩니다. 같은 EXE가 다시 접속하면 신규 Server 등록으로 처리됩니다.`, danger: true, confirmLabel: 'DELETE' });
     if (!v) return;
     const r = await api(`/api/servers/${encodedId}`, { method: 'DELETE', body: {} });
-    toast(`Server 삭제 및 재접속 차단 · released ${r.releasedClients}`);
+    toast(`Server 삭제 · released ${r.releasedClients} · reassigned ${r.reassignedClients}`);
     await renderServers();
     return;
   }
@@ -640,7 +624,7 @@ async function clientAction(action, id) {
   }
 
   if (action === 'delete') {
-    const v = await openModal({ title: 'Client Delete', message: `${id}\nCLIENT-ID와 QR, PIN, License 결합, Build 바인딩 및 종속 데이터를 삭제하고 이 설치의 자동 재등록을 차단합니다. RESTORE 전에는 실행 중 APK가 새 ID를 만들 수 없습니다.`, danger: true, confirmLabel: 'DELETE' });
+    const v = await openModal({ title: 'Client Delete', message: `${id}\nCLIENT-ID와 QR, PIN, License 결합, Build 바인딩 및 종속 데이터를 삭제합니다. APK 재접속 시 신규 QR 승인부터 다시 진행됩니다.`, danger: true, confirmLabel: 'DELETE' });
     if (!v) return;
     await api(`/api/clients/${encodedId}`, { method: 'DELETE', body: {} });
     toast(`Client 삭제: ${id}`);

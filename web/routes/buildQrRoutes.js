@@ -7,14 +7,13 @@ const { LogEvent } = require('../../storage/audit');
 
 async function Handle(context) {
     const {
-        method, pathname, url, body, res, session,
+        method, pathname, body, res, session,
         BuildServers, RequireAdmin, Json, ApiError
     } = context;
 
     if (method === 'GET' && pathname === '/api/qr-auth') {
         if (!RequireAdmin(res, session)) return true;
-        const clientId = url && url.searchParams ? url.searchParams.get('clientId') || '' : '';
-        Json(res, 200, { ok: true, requests: qrApproval.List(), summary: qrApproval.Summary(), servers: require('../../services/pairingApproval').EligibleServers(clientId) });
+        Json(res, 200, { ok: true, requests: qrApproval.List(), summary: qrApproval.Summary() });
         return true;
     }
 
@@ -70,11 +69,7 @@ async function Handle(context) {
         try {
             const result = qrApproval.ScanImage(body.imageData || '');
             LogEvent('QR_AUTH_SCANNED', `${result.request.requestId} -> ${result.request.clientId} / ${session.role}`);
-            Json(res, 200, {
-                ok: true,
-                ...result,
-                pairingServers: require('../../services/pairingApproval').EligibleServers(result.request.clientId)
-            });
+            Json(res, 200, { ok: true, ...result });
         } catch (error) {
             const code = String(error && error.message || 'QR_SCAN_FAILED');
             LogEvent('QR_AUTH_SCAN_FAILED', `${code} / ${session.role}`);
@@ -89,8 +84,7 @@ async function Handle(context) {
             days: body.days,
             memo: body.memo,
             tags: body.tags,
-            accessType: body.accessType,
-            serverId: body.serverId
+            accessType: body.accessType
         }, session.role);
         if (!result.ok) {
             LogEvent('QR_AUTH_APPROVE_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);

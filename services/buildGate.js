@@ -154,6 +154,14 @@ function Queue(connection, requestId) {
     Save();
     SendLine(connection.socket, `BUILD_WAITING|${requestId}|${grant.expiresAt}|${sessionId}`);
     Log('BUILD_WAITING', `${requestId} / ${clientId} / ${serverId || 'UNASSIGNED'} / ${sessionId}`);
+    // A server may have completed its own authentication just before the APK
+    // submitted Build. Let verified, empty servers atomically claim this new
+    // pending grant without waiting for another reconnect event.
+    for (const server of Array.from(state.servers.values())) {
+        if (!server || !server.serverId || server.deviceAuthVerified !== true) continue;
+        TryDispatchServer(server.serverId);
+        if (NormalizeID(saved.serverId)) break;
+    }
     return { ok: true, grant };
 }
 
@@ -265,10 +273,21 @@ function TryDispatchServer(serverId) {
     serverId = NormalizeID(serverId);
     const server = OnlineServer(serverId);
     if (!server || !require('./deviceAuth').Verified('SERVER', serverId)) return { delivered: 0, waiting: false };
+    const dispatchedBeforeClaim = new Set(Array.from(state.pendingBuildGrants.values())
+        .filter(grant => grant && grant.status === 'DISPATCHED')
+        .map(grant => grant.sessionId));
+    // New APKs complete QR + PIN first and intentionally have no PC yet.
+    // Claiming occurs only after this server has passed HMAC authentication.
+    require('../relay/serverHandler').BindUnassignedClients(serverId);
     let delivered = 0;
     for (const grant of Array.from(state.pendingBuildGrants.values())) {
         const saved = SavedClient(grant.clientId);
-        if (saved && NormalizeID(saved.serverId) === serverId && TryDispatchClient(grant.clientId).delivered) delivered++;
+        if (!saved || NormalizeID(saved.serverId) !== serverId) continue;
+        if (grant.status === 'DISPATCHED' && !dispatchedBeforeClaim.has(grant.sessionId)) {
+            delivered++;
+            continue;
+        }
+        if (TryDispatchClient(grant.clientId).delivered) delivered++;
     }
     return { delivered, waiting: HasGrantForServer(serverId) };
 }

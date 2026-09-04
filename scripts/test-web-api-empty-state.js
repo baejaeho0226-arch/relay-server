@@ -22,7 +22,6 @@ const endpoints = [
     '/api/production',
     '/api/build-sessions',
     '/api/servers',
-    '/api/deleted-devices',
     '/api/clients',
     '/api/licenses',
     '/api/notifications',
@@ -159,7 +158,7 @@ async function run() {
     console.log(`WEB API EMPTY-STATE PASS: ${endpoints.length} authenticated GET endpoints`);
     console.log('- No HTTP 500 / INTERNAL_ERROR / empty JSON response: PASS');
     console.log('- Serialization fallback and dedicated error panel: PASS');
-    console.log('- Pair repair, history clean, delete lock and restore HTTP routes: PASS');
+    console.log('- Pair repair, history clean and device delete HTTP routes: PASS');
 }
 
 run().finally(async () => {

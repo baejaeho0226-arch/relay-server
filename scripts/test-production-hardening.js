@@ -58,7 +58,7 @@ async function run(){
   assert.ok(immersive.includes('FullScreen := True'));assert.ok(!/Androidapi|JNI|WindowManager/.test(immersive));
   const web=fs.readFileSync(path.resolve(__dirname,'../public/admin-pages-production.js'),'utf8');assert.ok(web.includes('renderProductionHardening'));assert.ok(web.includes('navigator.credentials'));
   console.log('PRODUCTION HARDENING 28-43 PASS');
-  console.log('- Explicit atomic QR to PC pairing: PASS');
+  console.log('- Atomic fixed-pair collision guard: PASS');
   console.log('- Compatibility fingerprints, TLS truth-state and signed rollback: PASS');
   console.log('- WebAuthn, dual approval and config dry-run: PASS');
   console.log('- Audit chain, diagnostics, incidents, SLO and recovery drill: PASS');

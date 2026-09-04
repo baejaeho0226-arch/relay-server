@@ -59,22 +59,36 @@ function BindUnassignedClients(serverId) {
     if (GetKickUntil(kickedServers, serverId) > Now()) return 0;
     const targetServer = GetOnlineServer(serverId);
     if (!targetServer) return 0;
+    if (targetServer.deviceAuthVerified !== true) return 0;
+    const capabilities = require('../services/deviceControl').Capabilities('SERVER', serverId);
+    if (!capabilities.includes('BUILD_SESSION_LEASE')) return 0;
 
     let assignedCount = GetServerClientCount(serverId);
+    const buildGate = require('../services/buildGate');
+    const fixedOwner = buildGate.BindingForServer(serverId);
+    if (fixedOwner) return 0;
     let changed = 0;
-    // A stale offline client record must never consume a newly connected PC.
-    // Only phones that are currently online are eligible, oldest wait first.
+    // A stale, merely connected, or partially authenticated APK must never
+    // consume a PC. Only clients that completed QR, License, PIN and Client
+    // HMAC and have a persisted Build grant may enter the FIFO claim queue.
     const waiting = Array.from(clientIdentities.entries())
         .filter(([, saved]) => {
-            if (!saved || saved.serverId || saved.requiresPairingApproval) return false;
+            if (!saved || saved.serverId) return false;
             const live = GetOnlineClient(saved.id);
-            return !!live && live.connected && live.socket && !live.socket.destroyed;
+            const grant = state.pendingBuildGrants.get(saved.id);
+            return !!live && live.connected && live.socket && !live.socket.destroyed &&
+                live.deviceAuthVerified === true && live.passwordVerified === true &&
+                !!GetUsableLicenseForConnection(live) && !!grant &&
+                Number(grant.expiresAt) > Now() && !buildGate.BindingForClient(saved.id);
         })
-        .sort((a, b) => (Number(a[1].lastSeenAt) || 0) - (Number(b[1].lastSeenAt) || 0) ||
+        .sort((a, b) => (Number(state.pendingBuildGrants.get(a[1].id).createdAt) || 0) -
+            (Number(state.pendingBuildGrants.get(b[1].id).createdAt) || 0) ||
             String(a[1].id).localeCompare(String(b[1].id)));
     for (const [deviceKey, saved] of waiting) {
         if (assignedCount >= MAX_CLIENTS_PER_SERVER) break;
         saved.serverId = serverId;
+        saved.pairingApprovedAt = Now();
+        saved.pairingApprovedBy = 'DEFERRED_BUILD_CLAIM';
         assignedCount++;
         changed++;
 
@@ -88,7 +102,7 @@ function BindUnassignedClients(serverId) {
             // Do not wait for the periodic Build cleanup/sweep.  If QR + PIN
             // were completed while this PC was offline, resume the pending
             // grant on the same event-loop turn.
-            require('../services/buildGate').TryDispatchClient(saved.id);
+            buildGate.TryDispatchClient(saved.id);
         }
         LogEvent('CLIENT_FIRST_BIND', `${saved.id} -> ${serverId} (${deviceKey})`);
     }
@@ -99,7 +113,6 @@ function BindUnassignedClients(serverId) {
 function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     deviceKey = String(deviceKey || '').trim();
     if (!deviceKey) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return false; }
-    if (require('../services/deviceDeletion').RejectConnection(connection, 'SERVER', deviceKey)) return false;
     if (!ValidateProtocolAndVersion(connection, 'server', protocolVersion, appVersion)) return false;
 
     let serverId = serverIdentities.get(deviceKey);
@@ -156,8 +169,9 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     SendLine(connection.socket, `REGISTERED|${serverId}|${protocolVersion}|${appVersion}`);
     LogEvent('SERVER_ONLINE', `${serverId} v${appVersion}`);
 
-    // Repair invalid legacy rows, then offer this empty PC to an online APK
-    // that is not waiting for an explicit post-delete QR re-pair.
+    // Repair legacy many-to-one rows before assigning a waiting APK.  With
+    // MAX_CLIENTS_PER_SERVER fixed at one, this server can claim one client
+    // only; the rest remain unassigned until their own PC registers.
     RepairOrphanAssignments();
     RepairOneToOneAssignments();
     BindUnassignedClients(serverId);

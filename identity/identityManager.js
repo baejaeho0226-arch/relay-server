@@ -90,17 +90,12 @@ function ClientHealth(connection) {
 function TrackIP(kind, id, ip) {
     if (!id || !ip) return;
     const key = `${kind}:${id}`;
-    try {
-        const network = require('../services/networkSecurity');
-        const normalized = network.NormalizeIP(ip);
-        const profile = network.Track(kind, id, normalized);
-        ipHistory.set(key, {
-            ip: profile ? profile.displayIp : network.DisplayIP(kind, id, normalized),
-            observedIp: normalized,
-            scope: network.Scope(normalized),
-            changedAt: Now()
-        });
-    } catch (_) {}
+    const prev = ipHistory.get(key);
+    if (prev && prev.ip && prev.ip !== ip) {
+        LogEvent('IP_CHANGED', `${key} ${prev.ip} -> ${ip}`);
+    }
+    ipHistory.set(key, { ip, changedAt: Now() });
+    try { require('../services/networkSecurity').Track(kind, id, ip); } catch (_) {}
 }
 
 function GetServerClientCount(serverId) {
@@ -119,9 +114,6 @@ function RepairOrphanAssignments() {
         const serverId = NormalizeID(saved.serverId);
         if (serverId && !validServers.has(serverId)) {
             saved.serverId = '';
-            saved.requiresPairingApproval = true;
-            saved.pairingApprovedAt = 0;
-            saved.pairingApprovedBy = '';
             const live = GetOnlineClient(saved.id);
             if (live) {
                 live.serverId = '';
@@ -249,9 +241,6 @@ function ClientMove(clientId, newServerId) {
 
     const oldServer = saved.serverId;
     saved.serverId = newServerId;
-    saved.requiresPairingApproval = false;
-    saved.pairingApprovedAt = Now();
-    saved.pairingApprovedBy = 'WEB_ADMIN_MOVE';
     try { require('../services/emergencyFailover').HandleManualMove(clientId, newServerId); } catch (_) {}
     SaveDatabase();
 

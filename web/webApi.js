@@ -178,7 +178,6 @@ function BuildDashboard() {
             online: onlineClients,
             disabled: state.disabledClients.size
         },
-        deletedDeviceLocks: require('../services/deviceDeletion').List().length,
         licenses: {
             total: state.licenses.size,
             available,
@@ -253,7 +252,7 @@ function BuildServers() {
             savedClients,
             canAcceptClients,
             acceptState,
-            lastIP: networkSecurity.DisplayIP('SERVER', serverId, live ? live.lastIP : ''),
+            lastIP: live ? live.lastIP : '',
             lastSeen: live ? live.lastSeen : 0,
             kickedUntil,
             protocolVersion: live ? live.protocolVersion : 0,
@@ -310,7 +309,7 @@ function BuildClients() {
             licenseExpiresAt: bound ? bound.license.expiresAt : 0,
             lastAuthAt: saved.lastAuthAt,
             lastSeenAt: saved.lastSeenAt,
-            lastIP: networkSecurity.DisplayIP('CLIENT', saved.id, saved.lastIP),
+            lastIP: saved.lastIP,
             authCount: saved.authCount,
             sendCount: saved.sendCount,
             reconnectCount: saved.reconnectCount,
@@ -479,7 +478,7 @@ async function HandleApiRequest(req, res, session) {
     }
 
     if (await buildQrRoutes.Handle({
-        method, pathname, url, body, res, session,
+        method, pathname, body, res, session,
         BuildServers, RequireAdmin, Json, ApiError
     })) return;
 
@@ -494,25 +493,10 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
-    if (method === 'GET' && pathname === '/api/deleted-devices') {
-        if (!RequireAdmin(res, session)) return;
-        Json(res, 200, { ok: true, deletedDevices: require('../services/deviceDeletion').List(url.searchParams.get('type') || '') });
-        return;
-    }
-
-    let deletedMatch = pathname.match(/^\/api\/deleted-devices\/(DEL-[0-9A-Fa-f]{24})\/restore$/);
-    if (method === 'POST' && deletedMatch) {
-        if (!RequireAdmin(res, session)) return;
-        const result = require('../services/deviceDeletion').Restore(deletedMatch[1], `WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
-        if (!result.ok) { ApiError(res, result.reason === 'DELETED_DEVICE_NOT_FOUND' ? 404 : 409, result.reason); return; }
-        Json(res, 200, result);
-        return;
-    }
-
     let match = pathname.match(/^\/api\/servers\/([^/]+)$/);
     if (method === 'DELETE' && match) {
         if (!RequireAdmin(res, session)) return;
-        const result = deviceRegistry.DeleteServer(DecodePart(match[1]), `WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
+        const result = deviceRegistry.DeleteServer(DecodePart(match[1]));
         if (!result.ok) { ApiError(res, 404, result.reason); return; }
         Json(res, 200, result);
         return;
@@ -601,7 +585,7 @@ async function HandleApiRequest(req, res, session) {
     match = pathname.match(/^\/api\/clients\/([^/]+)$/);
     if (method === 'DELETE' && match) {
         if (!RequireAdmin(res, session)) return;
-        const result = deviceRegistry.DeleteClient(DecodePart(match[1]), `WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
+        const result = deviceRegistry.DeleteClient(DecodePart(match[1]));
         if (!result.ok) { ApiError(res, 404, result.reason); return; }
         Json(res, 200, result);
         return;

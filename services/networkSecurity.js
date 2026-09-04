@@ -6,7 +6,6 @@ const { NormalizeID, Now, SafeField } = require('../core/utils');
 
 const MAX_CHANGES = 30;
 const COUNTRY_UNKNOWN = new Set(['', 'UNKNOWN', 'LOCAL']);
-const CHANGE_CONFIRM_OBSERVATIONS = 2;
 
 function Type(value) {
     const type = String(value || '').toUpperCase();
@@ -30,19 +29,9 @@ function IsPrivateIPv4(ip) {
     if (parts.length !== 4 || parts.some(x => !Number.isInteger(x) || x < 0 || x > 255)) return false;
     return parts[0] === 10 ||
         parts[0] === 127 ||
-        // RFC 6598 carrier-grade NAT. Railway and similar TCP relays commonly
-        // expose 100.64.0.0/10 here; it is infrastructure, not a stable device
-        // address and must never raise a customer IP-change alarm.
-        (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
         (parts[0] === 192 && parts[1] === 168) ||
         (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
         (parts[0] === 169 && parts[1] === 254);
-}
-
-function Scope(ip) {
-    ip = NormalizeIP(ip);
-    if (!ip || !net.isIP(ip)) return 'INVALID';
-    return IsLocalIP(ip) ? 'RELAY_PRIVATE' : 'PUBLIC';
 }
 
 function IsLocalIP(ip) {
@@ -90,7 +79,6 @@ function Snapshot(ip) {
     const geo = GeoLookup(ip);
     return {
         ip: NormalizeIP(ip),
-        scope: Scope(ip),
         subnet: Subnet(ip),
         country: geo.country,
         region: geo.region,
@@ -110,8 +98,6 @@ function SameCountry(a, b) {
 
 function Classify(trusted, current) {
     if (!trusted || !current || !trusted.ip || !current.ip) return { changed: false, severity: '', code: 'TRUSTED' };
-    if (Scope(trusted.ip) !== 'PUBLIC' || Scope(current.ip) !== 'PUBLIC')
-        return { changed: false, severity: '', code: 'RELAY_PRIVATE' };
     if (!SameCountry(trusted.country, current.country)) return { changed: true, severity: 'CRITICAL', code: 'COUNTRY_CHANGED' };
     if (trusted.subnet && current.subnet && trusted.subnet !== current.subnet) return { changed: true, severity: 'WARNING', code: 'SUBNET_CHANGED' };
     if (trusted.ip !== current.ip) return { changed: true, severity: 'INFO', code: 'IP_CHANGED' };
@@ -129,10 +115,6 @@ function NormalizeStoredProfile(raw) {
     const trusted = raw.trusted && typeof raw.trusted === 'object'
         ? { ...raw.trusted }
         : Snapshot(raw.trustedIp || raw.ip || '');
-    current.ip = NormalizeIP(current.ip);
-    current.scope = Scope(current.ip);
-    trusted.ip = NormalizeIP(trusted.ip);
-    trusted.scope = Scope(trusted.ip);
 
     return {
         type,
@@ -145,84 +127,23 @@ function NormalizeStoredProfile(raw) {
         lastChangeAt: Math.max(0, Number(raw.lastChangeAt) || 0),
         changeCount: Math.max(0, Number(raw.changeCount) || 0),
         untrustedChangeCount: Math.max(0, Number(raw.untrustedChangeCount) || 0),
-        changes: Array.isArray(raw.changes) ? raw.changes.slice(-MAX_CHANGES).map(x => ({ ...x })) : [],
-        candidateChange: raw.candidateChange && typeof raw.candidateChange === 'object' ? {
-            signature: String(raw.candidateChange.signature || ''),
-            count: Math.max(0, Number(raw.candidateChange.count) || 0),
-            firstSeenAt: Math.max(0, Number(raw.candidateChange.firstSeenAt) || 0),
-            lastSeenAt: Math.max(0, Number(raw.candidateChange.lastSeenAt) || 0),
-            confirmedAt: Math.max(0, Number(raw.candidateChange.confirmedAt) || 0)
-        } : null
+        changes: Array.isArray(raw.changes) ? raw.changes.slice(-MAX_CHANGES).map(x => ({ ...x })) : []
     };
 }
 
 function Public(profile) {
     if (!profile) return null;
     const classification = Classify(profile.trusted, profile.current);
-    const relayPrivate = Scope(profile.current && profile.current.ip) !== 'PUBLIC';
-    const pending = !!(profile.candidateChange && !profile.candidateChange.confirmedAt);
     return {
         ...profile,
         current: { ...profile.current },
         trusted: { ...profile.trusted },
         changes: profile.changes.map(x => ({ ...x })),
-        changed: classification.changed && !pending && !relayPrivate,
+        changed: classification.changed,
         severity: classification.severity,
         changeCode: classification.code,
-        status: relayPrivate ? 'RELAY_PRIVATE' : (pending ? 'PENDING_CONFIRMATION' : (classification.changed ? 'CHANGED' : 'TRUSTED')),
-        displayIp: DisplayFromProfile(profile)
+        status: classification.changed ? 'CHANGED' : 'TRUSTED'
     };
-}
-
-function DisplayFromProfile(profile) {
-    if (!profile) return '';
-    const current = profile.current || {};
-    const trusted = profile.trusted || {};
-    if (Scope(current.ip) !== 'PUBLIC') return Scope(trusted.ip) === 'PUBLIC' ? trusted.ip : 'RELAY_PRIVATE';
-    if (Scope(trusted.ip) === 'PUBLIC') return trusted.ip;
-    return current.ip || '';
-}
-
-function RecordConfirmedChange(profile, classification, previousObserved, current, now) {
-    const signature = `${classification.code}|${profile.trusted.ip || ''}|${current.ip}`;
-    const already = profile.changes.some(x => x && x.signature === signature);
-    if (already) return false;
-    const change = {
-        signature,
-        at: now,
-        severity: classification.severity,
-        code: classification.code,
-        fromIp: profile.trusted.ip || previousObserved.ip || '',
-        toIp: current.ip,
-        trustedIp: profile.trusted.ip || '',
-        fromSubnet: profile.trusted.subnet || previousObserved.subnet || '',
-        toSubnet: current.subnet || '',
-        trustedSubnet: profile.trusted.subnet || '',
-        fromCountry: profile.trusted.country || previousObserved.country || '',
-        toCountry: current.country || '',
-        trustedCountry: profile.trusted.country || '',
-        acknowledgedAt: 0
-    };
-    profile.changes.push(change);
-    while (profile.changes.length > MAX_CHANGES) profile.changes.shift();
-    profile.changeCount += 1;
-    profile.untrustedChangeCount += 1;
-    profile.lastChangeAt = now;
-
-    const detail = `${profile.type} ${profile.id} ${profile.trusted.ip || '?'} (${profile.trusted.country || '?'}) -> ${current.ip} (${current.country || '?'}) ${classification.code}`;
-    try { require('../storage/audit').LogEvent(`DEVICE_${classification.code}`, detail); } catch (_) {}
-    try {
-        require('./notificationCenter').AddNotification({
-            severity: classification.severity,
-            type: 'DEVICE_NETWORK_CHANGE',
-            title: classification.code === 'COUNTRY_CHANGED' ? 'Device country changed' : classification.code === 'SUBNET_CHANGED' ? 'Device subnet changed' : 'Device IP changed',
-            message: detail,
-            entityType: profile.type,
-            entityId: profile.id,
-            dedupeKey: `DEVICE_NETWORK_CHANGE|${signature}`
-        });
-    } catch (_) {}
-    return true;
 }
 
 function Track(type, id, ip) {
@@ -260,53 +181,49 @@ function Track(type, id, ip) {
     profile.current = current;
     profile.lastSeenAt = now;
 
-    let classification = Classify(profile.trusted, current);
-    let candidateChanged = false;
+    const classification = Classify(profile.trusted, current);
+    if (observationChanged && classification.changed) {
+        const change = {
+            at: now,
+            severity: classification.severity,
+            code: classification.code,
+            fromIp: previousObserved.ip || '',
+            toIp: current.ip,
+            trustedIp: profile.trusted.ip || '',
+            fromSubnet: previousObserved.subnet || '',
+            toSubnet: current.subnet || '',
+            trustedSubnet: profile.trusted.subnet || '',
+            fromCountry: previousObserved.country || '',
+            toCountry: current.country || '',
+            trustedCountry: profile.trusted.country || '',
+            acknowledgedAt: 0
+        };
+        profile.changes.push(change);
+        while (profile.changes.length > MAX_CHANGES) profile.changes.shift();
+        profile.changeCount += 1;
+        profile.untrustedChangeCount += 1;
+        profile.lastChangeAt = now;
 
-    if (Scope(current.ip) !== 'PUBLIC') {
-        // The relay's private hop can change on every TCP reconnect. Keep the
-        // observation for diagnostics, but never treat it as device movement.
-        candidateChanged = !!profile.candidateChange;
-        profile.candidateChange = null;
-    } else if (Scope(profile.trusted.ip) !== 'PUBLIC') {
-        // First trustworthy public observation after a private relay address:
-        // establish a baseline without producing a false incident.
-        profile.trusted = { ...current };
-        profile.trustedAt = now;
-        profile.candidateChange = null;
-        classification = Classify(profile.trusted, current);
-        candidateChanged = true;
-    } else if (classification.changed) {
-        const signature = `${classification.code}|${profile.trusted.ip || ''}|${current.ip}`;
-        if (!profile.candidateChange || profile.candidateChange.signature !== signature) {
-            profile.candidateChange = { signature, count: 1, firstSeenAt: now, lastSeenAt: now, confirmedAt: 0 };
-            candidateChanged = true;
-        } else if (!profile.candidateChange.confirmedAt) {
-            profile.candidateChange.count = Number(profile.candidateChange.count || 0) + 1;
-            profile.candidateChange.lastSeenAt = now;
-            candidateChanged = true;
-            if (profile.candidateChange.count >= CHANGE_CONFIRM_OBSERVATIONS) {
-                profile.candidateChange.confirmedAt = now;
-                RecordConfirmedChange(profile, classification, previousObserved, current, now);
-            }
-        }
-    } else {
-        candidateChanged = !!profile.candidateChange;
-        profile.candidateChange = null;
+        const detail = `${type} ${id} ${profile.trusted.ip || '?'} (${profile.trusted.country || '?'}) -> ${current.ip} (${current.country || '?'}) ${classification.code}`;
+        try { require('../storage/audit').LogEvent(`DEVICE_${classification.code}`, detail); } catch (_) {}
+        try {
+            require('./notificationCenter').AddNotification({
+                severity: classification.severity,
+                type: 'DEVICE_NETWORK_CHANGE',
+                title: classification.code === 'COUNTRY_CHANGED' ? 'Device country changed' : classification.code === 'SUBNET_CHANGED' ? 'Device subnet changed' : 'Device IP changed',
+                message: detail,
+                entityType: type,
+                entityId: id,
+                dedupeKey: `DEVICE_NETWORK_CHANGE|${type}|${id}|${profile.trusted.ip}|${current.ip}|${classification.code}`
+            });
+        } catch (_) {}
     }
 
     state.deviceNetworkProfiles.set(key, profile);
-    if (observationChanged || candidateChanged) {
+    if (observationChanged) {
         try { require('../storage/database').SaveDatabase(); } catch (_) {}
     }
     return Public(profile);
-}
-
-function DisplayIP(type, id, fallback = '') {
-    const profile = NormalizeStoredProfile(state.deviceNetworkProfiles.get(Key(type, id)));
-    if (profile) return DisplayFromProfile(profile);
-    fallback = NormalizeIP(fallback);
-    return Scope(fallback) === 'RELAY_PRIVATE' ? 'RELAY_PRIVATE' : fallback;
 }
 
 function Get(type, id) {
@@ -368,9 +285,6 @@ module.exports = {
     GeoLookup,
     GeoStatus,
     NormalizeIP,
-    IsLocalIP,
-    Scope,
-    DisplayIP,
     Subnet,
     Classify,
     NormalizeStoredProfile

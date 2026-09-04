@@ -39,7 +39,7 @@ function PublicRecord(record) {
         licenseRef: record.licenseRef || (record.licenseKey ? `QR-${String(record.licenseKey).slice(-8)}` : ''),
         serverId: NormalizeID(record.serverId),
         accessType: require('./clientPassword').NormalizeAccessType(record.accessType),
-        lastIP: require('./networkSecurity').DisplayIP('CLIENT', record.clientId, record.lastIP || ''),
+        lastIP: record.lastIP || '',
         scanCount: Number(record.scanCount || 0)
     };
 }
@@ -155,13 +155,7 @@ function Resume(connection) {
     const gate = RequireQrSecurity(connection);
     if (!gate.ok) return gate;
     const bound = GetBoundLicenseEntry(connection.clientId);
-    const saved = require('../identity/identityManager').GetSavedClientByID(connection.clientId);
-    const pairedServerId = NormalizeID(saved && saved.serverId);
-    // A surviving license does not authorize a new or deleted PC binding.
-    // The administrator must explicitly select the replacement target in a
-    // fresh signed QR transaction.
-    if (bound && saved && !saved.requiresPairingApproval && pairedServerId && require('../identity/identityManager').ServerExists(pairedServerId) &&
-        !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
+    if (bound && !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
         return { ok: AuthorizeBoundClientByQr(connection, 'RESUME'), resumed: true };
     }
     return Issue(connection);
@@ -229,14 +223,12 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
     if (!VerifyApprovalToken(record, approvalToken)) return { ok: false, reason: 'QR_APPROVAL_TOKEN_INVALID' };
 
-    // QR approval is also the explicit, server-authoritative 1:1 pairing
-    // transaction.  License/PIN enrollment cannot commit to an ambiguous PC.
-    let targetServerId = NormalizeID(options.serverId);
+    // QR/PIN enrollment belongs to the APK and must never depend on a running
+    // WinSockServer. A returning client keeps its fixed server identity; a new
+    // client remains unassigned until an authenticated WinSockServer claims
+    // its pending Build request.
     const existingSaved = require('../identity/identityManager').GetSavedClientByID(record.clientId);
-    if (!targetServerId && existingSaved) targetServerId = NormalizeID(existingSaved.serverId);
-    const pairing = require('./pairingApproval').BindForApproval(record.clientId, targetServerId, actor);
-    if (!pairing.ok) return pairing;
-    record.serverId = pairing.pairing.serverId;
+    record.serverId = existingSaved ? NormalizeID(existingSaved.serverId) : '';
 
     const days = Math.max(1, Math.min(3650, Number(options.days) || config.QR_AUTH_DEFAULT_DAYS));
     const memo = SafeField(options.memo || `QR 승인 ${record.clientId}`).slice(0, 200);
@@ -279,7 +271,17 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
     require('../storage/audit').LogEvent('QR_AUTH_APPROVED', `${record.requestId} -> ${record.clientId} / ${record.approvedBy}`);
     try { require('./notificationCenter').AddNotification({ severity: 'INFO', type: 'QR_AUTH_APPROVED', title: 'QR 기기 인증 승인', message: `${record.clientId} QR 승인이 완료되었습니다.`, entityType: 'CLIENT', entityId: record.clientId, dedupeKey: `QR_AUTH_APPROVED|${record.requestId}` }); } catch (_) {}
-    return { ok: true, delivered, pairing: pairing.pairing, request: PublicRecord(record), expiresAt: bound.license.expiresAt };
+    return {
+        ok: true,
+        delivered,
+        pairing: {
+            clientId: record.clientId,
+            serverId: record.serverId,
+            deferred: !record.serverId
+        },
+        request: PublicRecord(record),
+        expiresAt: bound.license.expiresAt
+    };
 }
 
 function Reject(requestId, reason = 'ADMIN_REJECTED', actor = 'admin') {
