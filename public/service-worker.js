@@ -1,15 +1,15 @@
 'use strict';
 
-const CACHE = 'relay-admin-shell-v3.5.0-fix7';
+const CACHE = 'relay-admin-shell-v3.5.0-fix7-reset1';
 const SHELL = [
   '/index.html',
-  '/admin.css?v=3.5.0-fix7',
-  '/admin.js?v=3.5.0-fix7',
-  '/admin-pages-monitoring.js?v=3.5.0-fix7',
-  '/admin-pages-access.js?v=3.5.0-fix7',
-  '/admin-pages-operations.js?v=3.5.0-fix7',
-  '/admin-actions.js?v=3.5.0-fix7',
-  '/admin-pages-production.js?v=3.5.0-fix7',
+  '/admin.css?v=3.5.0-fix7-reset1',
+  '/admin.js?v=3.5.0-fix7-reset1',
+  '/admin-pages-monitoring.js?v=3.5.0-fix7-reset1',
+  '/admin-pages-access.js?v=3.5.0-fix7-reset1',
+  '/admin-pages-operations.js?v=3.5.0-fix7-reset1',
+  '/admin-actions.js?v=3.5.0-fix7-reset1',
+  '/admin-pages-production.js?v=3.5.0-fix7-reset1',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'

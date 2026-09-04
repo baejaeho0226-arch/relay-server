@@ -57,6 +57,7 @@ const pushManager = require('../services/pushManager');
 const dailyHealth = require('../services/dailyHealth');
 const clientPassword = require('../services/clientPassword');
 const deviceRegistry = require('../services/deviceRegistry');
+const registryReset = require('../services/registryReset');
 const historyCleanup = require('../services/historyCleanup');
 
 const {
@@ -467,6 +468,22 @@ async function HandleApiRequest(req, res, session) {
         if (!RequireAdmin(res, session)) return;
         const repair = deviceRegistry.RepairPairing();
         Json(res, 200, { ok: true, repair });
+        return;
+    }
+
+    if (method === 'POST' && pathname === '/api/registry/reset') {
+        if (!RequireAdmin(res, session)) return;
+        if (String(body.scope || '').toUpperCase() !== 'ALL_DEVICES' || String(body.confirm || '').toUpperCase() !== 'RESET') {
+            ApiError(res, 400, 'REGISTRY_RESET_CONFIRM_REQUIRED');
+            return;
+        }
+        const result = registryReset.Reset(`WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
+        if (!result.ok) {
+            ApiError(res, result.reason === 'DEVICES_MUST_BE_OFFLINE' ? 409 : 500, result.reason,
+                result.reason === 'DEVICES_MUST_BE_OFFLINE' ? `SERVER=${result.onlineServers};CLIENT=${result.onlineClients}` : '');
+            return;
+        }
+        Json(res, 200, result);
         return;
     }
 

@@ -134,6 +134,8 @@ async function run() {
     for (const request of [
         { method: 'POST', endpoint: '/api/pairing/repair', body: {}, status: 200 },
         { method: 'POST', endpoint: '/api/history/clean', body: { scope: 'ALL' }, status: 200 },
+        { method: 'POST', endpoint: '/api/registry/reset', body: {}, status: 400, error: 'REGISTRY_RESET_CONFIRM_REQUIRED' },
+        { method: 'POST', endpoint: '/api/registry/reset', body: { scope: 'ALL_DEVICES', confirm: 'RESET' }, status: 200 },
         { method: 'DELETE', endpoint: '/api/servers/0000000000000000', status: 404, error: 'SERVER_NOT_FOUND' },
         { method: 'DELETE', endpoint: '/api/clients/0000000000000000', status: 404, error: 'CLIENT_NOT_FOUND' }
     ]) {

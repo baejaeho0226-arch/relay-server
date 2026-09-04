@@ -39,6 +39,7 @@ async function run() {
     const clientHandler = require('../relay/clientHandler');
     const lifecycle = require('../core/lifecycle');
     const registry = require('../services/deviceRegistry');
+    const registryReset = require('../services/registryReset');
     const history = require('../services/historyCleanup');
     require('../core/utils').EnsureDirs();
 
@@ -230,6 +231,48 @@ async function run() {
     assert.ok(webApi.includes("pathname === '/api/deleted-devices'"));
     assert.ok(adminSource.includes('data-deleted-device-restore'));
 
+    // A full reset refuses to race currently running devices. Once every APK
+    // and WinSockServer is offline it clears all registration/auth/binding
+    // state, removes DELETE locks and leaves license inventory recoverable.
+    const guardedReset = registryReset.Reset('TEST');
+    assert.strictEqual(guardedReset.ok, false);
+    assert.strictEqual(guardedReset.reason, 'DEVICES_MUST_BE_OFFLINE');
+    state.servers.clear();
+    state.clients.clear();
+    state.releaseCatalog.set('SERVER:STABLE', { version: '2.6.0' });
+    state.licenses.set('RESET-BOUND-LICENSE', {
+        createdAt: Date.now(), expiresAt: Date.now() + 60000,
+        boundClient: clientIdB, boundAt: Date.now(), lastAuthAt: 0,
+        lastSeenAt: 0, lastIP: '', authCount: 0, sendCount: 0,
+        suspended: false, memo: 'preserve inventory', tags: ['QR'], accessType: 'TYPE1'
+    });
+    state.deviceSecrets.set(`CLIENT:${clientIdB}`, 'A'.repeat(48));
+    state.clientPasswordProfiles.set(clientIdB, {
+        salt: 'A'.repeat(32), verifier: 'B'.repeat(64), iterations: 4096,
+        pinDigits: 6, accessType: 'TYPE1', createdAt: Date.now()
+    });
+    const resetResult = registryReset.Reset('TEST');
+    assert.strictEqual(resetResult.ok, true);
+    assert.ok(resetResult.removed.servers >= 1);
+    assert.ok(resetResult.removed.clients >= 1);
+    assert.ok(resetResult.removed.deletedLocks >= 1);
+    assert.ok(resetResult.backup.includes('pre_device_registry_reset'));
+    assert.ok(fs.existsSync(path.join(require('../config/config').BACKUP_DIR, resetResult.backup)));
+    assert.strictEqual(state.serverIdentities.size, 0);
+    assert.strictEqual(state.clientIdentities.size, 0);
+    assert.strictEqual(state.deletedDevices.size, 0);
+    assert.strictEqual(state.qrAuthRequests.size, 0);
+    assert.strictEqual(state.clientPasswordProfiles.size, 0);
+    assert.strictEqual(state.pendingBuildGrants.size, 0);
+    assert.strictEqual(state.buildSessions.size, 0);
+    assert.strictEqual(state.clientBuildBindings.size, 0);
+    assert.strictEqual(state.deviceSecrets.size, 0);
+    assert.strictEqual(state.licenses.has('RESET-BOUND-LICENSE'), true);
+    assert.strictEqual(state.licenses.get('RESET-BOUND-LICENSE').boundClient, '');
+    assert.strictEqual(state.releaseCatalog.has('SERVER:STABLE'), true);
+    assert.ok(adminSource.includes('danger-registry-reset'));
+    assert.ok(webApi.includes("pathname === '/api/registry/reset'"));
+
     console.log('DEVICE REGISTRY / HISTORY PASS');
     console.log('- Two PCs and two APKs keep independent fixed pairs: PASS');
     console.log('- Server #Accept READY/FULL stays separate from ONLINE/OFFLINE: PASS');
@@ -238,6 +281,7 @@ async function run() {
     console.log('- Orphan pairing repair preserves registered fixed pairs: PASS');
     console.log('- History CLEAN preserves active work: PASS');
     console.log('- Web Delete / Repair / CLEAN controls: PASS');
+    console.log('- Offline-only recoverable full device registry reset: PASS');
 }
 
 run().finally(() => {
