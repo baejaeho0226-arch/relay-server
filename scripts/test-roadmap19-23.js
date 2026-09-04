@@ -31,9 +31,12 @@ function staticSourceChecks() {
     assert.ok(apk.includes('FDashboardTabsCard := UiRect(Self, FMainPanel'));
     assert.ok(apk.includes('FMX.BiometricAuth'));
     assert.ok(apk.includes('TBiometricStrength.Strong'));
+    assert.ok(apk.includes('TBiometricStrength.Weak'));
+    assert.ok(apk.includes('procedure TForm1.CancelBiometricPrompt'));
     assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
     assert.ok(apk.includes('FQrCornerH: array[0..3] of TRectangle'));
-    assert.ok(apk.includes('FBrightnessTrack: TTrackBar'));
+    assert.ok(!apk.includes('FBrightness'));
+    assert.ok(apk.includes('Result.StyledSettings := []'));
     assert.ok(apk.includes('FSupportButton: TRectangle'));
     assert.ok(apk.includes('procedure TForm1.ShowMainPage'));
     assert.ok(!apk.includes('FFinalCheckBox'));

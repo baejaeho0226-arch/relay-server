@@ -137,16 +137,23 @@ async function run() {
 
     assert.ok(apk.includes('FMX.BiometricAuth'));
     assert.ok(apk.includes('TBiometricStrength.Strong'));
+    assert.ok(apk.includes('TBiometricStrength.Weak'));
+    assert.ok(!apk.includes('TBiometricStrength.DeviceCredential'));
+    assert.ok(apk.includes('procedure TForm1.CancelBiometricPrompt'));
+    assert.ok(apk.includes('FBiometricTimeoutTimer.Interval := BIOMETRIC_PROMPT_TIMEOUT_MS'));
     assert.ok(apk.includes("ALine.StartsWith('BIOMETRIC_CHALLENGE|')"));
     assert.ok(apk.includes("ALine.StartsWith('BIOMETRIC_OK|')"));
     assert.ok(apk.includes('FQrCornerH: array[0..3] of TRectangle'));
-    assert.ok(apk.includes('FBrightnessTrack: TTrackBar'));
+    assert.ok(!apk.includes('FBrightness'));
+    assert.ok(apk.includes('Result.StyledSettings := []'));
     assert.ok(apk.includes("FSupportLabel.Text := '요청 완료'"));
     assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
     assert.ok(!apk.includes('FTitleBar'));
     assert.ok(!apk.includes('FPassword'));
     assert.ok(!project.includes('ApkPasswordCrypto'));
     assert.ok(apkProtocol.includes('BIOMETRIC_STRONG'));
+    assert.ok(apkProtocol.includes('BIOMETRIC_WEAK'));
+    assert.ok(!apkProtocol.includes('SCREEN_BRIGHTNESS'));
     assert.ok(apkProtocol.includes('REALTIME_SUPPORT'));
     assert.ok(serverProject.includes('ServerInstanceGuard'));
     assert.ok(serverGuard.includes('fmShareExclusive'));
@@ -155,7 +162,7 @@ async function run() {
 
     console.log('QR + BIOMETRIC END-TO-END PASS');
     console.log('- Signed one-minute QR approval: PASS');
-    console.log('- Strong biometric challenge and device HMAC proof: PASS');
+    console.log('- Strong/Weak biometric challenge and device HMAC proof: PASS');
     console.log('- No biometric template storage: PASS');
     console.log('- Duplicate WinSockServer local guard source: PASS');
 }
