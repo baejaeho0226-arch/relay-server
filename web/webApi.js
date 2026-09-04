@@ -55,7 +55,7 @@ const requestRecovery = require('../services/requestRecovery');
 const processorCenter = require('../services/processorCenter');
 const pushManager = require('../services/pushManager');
 const dailyHealth = require('../services/dailyHealth');
-const clientPassword = require('../services/clientPassword');
+const clientBiometric = require('../services/clientBiometric');
 const deviceRegistry = require('../services/deviceRegistry');
 const historyCleanup = require('../services/historyCleanup');
 
@@ -317,7 +317,7 @@ function BuildClients() {
             appVersion: live ? live.appVersion : '',
             rttMs: live ? live.rttMs : -1,
             kickedUntil,
-            password: clientPassword.PublicStatus(saved.id),
+            biometric: clientBiometric.PublicStatus(saved.id),
             buildSession: buildGate.PublicSession(buildGate.ActiveSessionForClient(saved.id)),
             buildBinding: buildGate.BindingForClient(saved.id)
         });
@@ -347,7 +347,7 @@ function BuildLicenseItem(key, license) {
         authCount: license.authCount || 0,
         sendCount: license.sendCount || 0,
         suspended: !!license.suspended,
-        accessType: require('../services/clientPassword').NormalizeAccessType(license.accessType),
+        accessType: require('../services/accessType').NormalizeAccessType(license.accessType),
         tags: NormalizeTags(license.tags || [])
     };
 }
@@ -624,14 +624,14 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
-    match = pathname.match(/^\/api\/clients\/([^/]+)\/password\/reset$/);
+    match = pathname.match(/^\/api\/clients\/([^/]+)\/biometric\/reset$/);
     if (method === 'POST' && match) {
         if (!RequireAdmin(res, session)) return;
         const id = NormalizeID(DecodePart(match[1]));
         if (!ClientExists(id)) { ApiError(res, 404, 'CLIENT_NOT_FOUND'); return; }
-        const result = clientPassword.ResetPassword(id, body.password, `WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
+        const result = clientBiometric.Reset(id, `WEB_${String(session.role || 'ADMIN').toUpperCase()}`);
         if (!result.ok) { ApiError(res, 400, result.reason); return; }
-        Json(res, 200, { ok: true, id, password: result.status });
+        Json(res, 200, { ok: true, id, biometric: result.status });
         return;
     }
 

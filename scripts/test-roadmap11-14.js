@@ -160,6 +160,17 @@ async function authenticateDevice(socket, type, id, deviceKey) {
     await socket.waitFor(x => x.startsWith(`DEVICE_AUTH_OK|${challenge[1]}`));
 }
 
+async function completeBiometric(socket, clientId, deviceKey) {
+    const line = await socket.waitFor(x => x.startsWith('BIOMETRIC_CHALLENGE|'));
+    const parts = line.split('|');
+    const secret = deviceSecrets.get(`CLIENT:${deviceKey}`);
+    assert.ok(secret, `Missing CLIENT secret for biometric proof: ${deviceKey}`);
+    const proof = hmac(secret,
+        `BIOMETRIC|${parts[1]}|${clientId}|${parts[2]}|${parts[3]}`);
+    socket.send(`BIOMETRIC_PROOF|${parts[1]}|${parts[2]}|${proof}`);
+    await socket.waitFor(x => x.startsWith('BIOMETRIC_OK|'));
+}
+
 async function registerServer(deviceKey) {
     const socket = await connectLineSocket();
     socket.send(`REGISTER|2|2.0.0|${deviceKey}`);
@@ -175,10 +186,11 @@ async function connectClient(deviceKey, licenseKey) {
     socket.send(`CONNECT|2|2.0.0|${deviceKey}`);
     const connected = await socket.waitFor(x => x.startsWith('CONNECTED|'));
     const parts = connected.split('|');
-    socket.send('CAPABILITIES|DEVICE_HMAC,BUILD_GATE,BUILD_SESSION_LEASE');
+    socket.send('CAPABILITIES|DEVICE_HMAC,BIOMETRIC_AUTH,BIOMETRIC_STRONG,BUILD_GATE,BUILD_SESSION_LEASE');
     await authenticateDevice(socket, 'CLIENT', parts[1], deviceKey);
     socket.send(`LICENSE_AUTH|${licenseKey}|${parts[1]}`);
     await socket.waitFor(x => x.startsWith('LICENSE_OK|'));
+    await completeBiometric(socket, parts[1], deviceKey);
     return { socket, id: parts[1], serverId: parts[2], deviceKey };
 }
 

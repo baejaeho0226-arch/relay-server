@@ -28,7 +28,13 @@ function staticSourceChecks() {
     assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
     assert.ok(apk.includes('BuildBuildLine(RequestID, FState.ClientID)'));
     assert.ok(apk.includes('FDashboardTabs: array[0..3] of TRectangle'));
-    assert.ok(apk.includes('FDashboardTabsCard.Parent := FMainPanel'));
+    assert.ok(apk.includes('FDashboardTabsCard := UiRect(Self, FMainPanel'));
+    assert.ok(apk.includes('FMX.BiometricAuth'));
+    assert.ok(apk.includes('TBiometricStrength.Strong'));
+    assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
+    assert.ok(apk.includes('FQrCornerH: array[0..3] of TRectangle'));
+    assert.ok(apk.includes('FBrightnessTrack: TTrackBar'));
+    assert.ok(apk.includes('FSupportButton: TRectangle'));
     assert.ok(apk.includes('procedure TForm1.ShowMainPage'));
     assert.ok(!apk.includes('FFinalCheckBox'));
     assert.equal((apk.match(/TCheckBox/g) || []).length, 0);
@@ -179,7 +185,7 @@ async function run() {
     console.log('- SQLite primary + JSON auto-migration/recovery mirror: PASS');
     console.log('- Relay A/B replication + promotion + revision-safe failback: PASS');
     console.log('- Win64/Android primary-backup endpoint source: PASS');
-    console.log('- APK source-built QR/PIN/dashboard/background-Build/main UI: PASS');
+    console.log('- APK source-built QR/strong-biometric/dashboard/background-Build/main UI: PASS');
     console.log('- ShellExecute/cmd/Winapi.Windows removal: PASS');
 }
 

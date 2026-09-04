@@ -17,7 +17,6 @@ const SECRET = 'roadmap18-test-secret';
 let relay = null;
 let relayOutput = '';
 const deviceSecrets = new Map();
-const testPassword = '258036';
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -135,15 +134,14 @@ async function authenticateDevice(socket, type, id, key) {
     await socket.waitFor(x => x.startsWith(`DEVICE_AUTH_OK|${challenge[1]}`));
 }
 
-async function completePassword(socket, clientId) {
-    const line = await socket.waitFor(x => x.startsWith('PASSWORD_CHALLENGE|'));
+async function completeBiometric(socket, clientId, key) {
+    const line = await socket.waitFor(x => x.startsWith('BIOMETRIC_CHALLENGE|'));
     const parts = line.split('|');
-    let verifier = hmac(parts[3], testPassword);
-    for (let i = 1; i < Number(parts[4]); i++) verifier = hmac(parts[3], verifier);
-    const proof = hmac(verifier, `${parts[1]}|${clientId}|${parts[2]}|${parts[5]}|PIN6`);
-    if (parts[1] === 'SETUP') socket.send(`PASSWORD_SETUP|${parts[2]}|${verifier}|${proof}|6`);
-    else socket.send(`PASSWORD_VERIFY|${parts[2]}|${proof}|6`);
-    await socket.waitFor(x => x.startsWith('PASSWORD_OK|'));
+    const secret = deviceSecrets.get(key);
+    const proof = hmac(secret,
+        `BIOMETRIC|${parts[1]}|${clientId}|${parts[2]}|${parts[3]}`);
+    socket.send(`BIOMETRIC_PROOF|${parts[1]}|${parts[2]}|${proof}`);
+    await socket.waitFor(x => x.startsWith('BIOMETRIC_OK|'));
 }
 
 async function registerServer() {
@@ -162,10 +160,11 @@ async function connectClient(licenseKey) {
     socket.send('CONNECT|2|2.1.0|ROADMAP18-CLIENT');
     const connected = await socket.waitFor(x => x.startsWith('CONNECTED|'));
     const id = connected.split('|')[1];
-    socket.send('CAPABILITIES|DEVICE_HMAC,PASSWORD_KEYPAD,BUILD_GATE,BUILD_SESSION_LEASE');
+    socket.send('CAPABILITIES|DEVICE_HMAC,BIOMETRIC_AUTH,BIOMETRIC_STRONG,BUILD_GATE,BUILD_SESSION_LEASE');
     await authenticateDevice(socket, 'CLIENT', id, 'ROADMAP18-CLIENT');
     socket.send(`LICENSE_AUTH|${licenseKey}|${id}`);
     await socket.waitFor(x => x.startsWith('LICENSE_OK|'));
+    await completeBiometric(socket, id, 'ROADMAP18-CLIENT');
     return { socket, id };
 }
 

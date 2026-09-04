@@ -25,7 +25,7 @@ async function run(){
   assert.equal(pairing.BindForApproval(c2,s1,'TEST').reason,'SERVER_ALREADY_PAIRED');
   assert.equal(state.clientIdentities.get('APK-A').serverId,s1);
 
-  for(const [type,id,caps]of[['SERVER',s1,['DEVICE_HMAC','BUILD_SESSION_LEASE','FIXED_BUILD_BINDING','SIGNED_UPDATE','SERVER_AUTHORITY']],['CLIENT',c1,['DEVICE_HMAC','QR_DEVICE_APPROVAL','PIN6_ONLY','BUILD_SESSION_LEASE','FIXED_BUILD_BINDING','SIGNED_UPDATE','SERVER_AUTHORITY']]])state.deviceCapabilities.set(`${type}:${id}`,new Set(caps));
+  for(const [type,id,caps]of[['SERVER',s1,['DEVICE_HMAC','BUILD_SESSION_LEASE','FIXED_BUILD_BINDING','SIGNED_UPDATE','SERVER_AUTHORITY']],['CLIENT',c1,['DEVICE_HMAC','QR_DEVICE_APPROVAL','BIOMETRIC_AUTH','BIOMETRIC_STRONG','BUILD_SESSION_LEASE','FIXED_BUILD_BINDING','SIGNED_UPDATE','SERVER_AUTHORITY']]])state.deviceCapabilities.set(`${type}:${id}`,new Set(caps));
   const center=require('../services/productionCenter');
   const compatibility=center.CompatibilityOverview();assert.ok(compatibility.devices.find(x=>x.id===c1).compatible);
   const plan=center.ConfigDryRun({minProtocolVersion:2,heartbeatMs:12000},'TEST');assert.ok(plan.ok);assert.equal(center.ApplyPlan(plan.plan.planId,'TEST').ok,true);assert.equal(state.desiredRuntimeConfig.heartbeatMs,12000);

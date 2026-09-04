@@ -1,7 +1,7 @@
 {
   "name": "pure-tcp-relay",
   "version": "6.7.0",
-  "description": "Pure TCP Relay with signed QR approval, PIN proof, leased Build sessions, fixed device pairing, typed processors, SQLite storage and active/standby HA",
+  "description": "Pure TCP Relay with signed QR approval, strong biometric proof, leased Build sessions, fixed device pairing, typed processors, SQLite storage and active/standby HA",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -40,7 +40,7 @@ async function run() {
     };
     const client = {
         socket: clientSocket, type: 'client', connected: true, clientId,
-        serverId, deviceAuthVerified: true, passwordVerified: true,
+        serverId, deviceAuthVerified: true, biometricVerified: true,
         accessType: 'TYPE3', licenseAuthorized: true, licenseKey,
         buildCompleted: false, buildSessionId: ''
     };
@@ -111,7 +111,7 @@ async function run() {
     state.clientIdentities.set('ANDROID-SECOND-PAIR-TEST', secondSaved);
     const secondClient = {
         clientId: secondClientId, serverId, connected: true,
-        accessType: 'TYPE1', passwordVerified: true, deviceAuthVerified: true,
+        accessType: 'TYPE1', biometricVerified: true, deviceAuthVerified: true,
         licenseAuthorized: true, licenseKey: 'LICENSE-SECOND-DEFERRED',
         socket: { destroyed: false, write() { return true; } }
     };
@@ -158,7 +158,7 @@ async function run() {
     };
     const thirdClient = {
         clientId: thirdClientId, serverId: '', connected: true,
-        accessType: 'TYPE2', passwordVerified: true, deviceAuthVerified: true,
+        accessType: 'TYPE2', biometricVerified: true, deviceAuthVerified: true,
         licenseAuthorized: true, licenseKey: 'LICENSE-THIRD-DEFERRED',
         socket: { destroyed: false, write() { return true; } }
     };
@@ -193,7 +193,7 @@ async function run() {
     for (const item of waitingPairs) {
         const waitingClient = {
             clientId: item.clientId, serverId: '', connected: true,
-            accessType: 'TYPE1', passwordVerified: true, deviceAuthVerified: true,
+            accessType: 'TYPE1', biometricVerified: true, deviceAuthVerified: true,
             licenseAuthorized: true, licenseKey: item.licenseKey,
             socket: { destroyed: false, write() { return true; } }
         };

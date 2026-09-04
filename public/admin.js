@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'postauth1';
+const WEB_UI_REVISION = 'biometric1';
 
 let session = null;
 let currentView = 'dashboard';
@@ -83,7 +83,7 @@ const titles = {
   production: ['Production Hardening', '1:1 승인, 배포 무결성, 패스키, 감사 체인과 운영 복원력을 통합 관리합니다.'],
   servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
   clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
-  clientpasswords: ['Client PIN 관리', 'APK Client PIN 상태 확인과 안전한 재설정을 수행합니다.'],
+  clientbiometrics: ['Client 생체인증', 'APK의 Android 시스템 생체인증 상태와 재등록을 관리합니다.'],
   buildsessions: ['Build Sessions', 'Build Lease, APK↔Server 고정 바인딩, 즉시 Revoke를 관리합니다.'],
   licenses: ['Licenses', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
   qrauth: ['QR 인증', 'APK의 QR 사진을 서버에서 검증하고 해당 기기를 승인합니다.'],
@@ -276,7 +276,7 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    const liveViews = ['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'clientpasswords', 'buildsessions', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
+    const liveViews = ['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'clientbiometrics', 'buildsessions', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
     const qrEditInProgress = currentView === 'qrauth' && (qrSelectedFile || qrScanResult);
     if (liveViews.includes(currentView) && !qrEditInProgress) renderCurrent(true);
     updateNotificationBadge();
@@ -411,7 +411,7 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'production') await renderProductionHardening();
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
-    else if (currentView === 'clientpasswords') await renderClientPasswords();
+    else if (currentView === 'clientbiometrics') await renderClientBiometrics();
     else if (currentView === 'buildsessions') await renderBuildSessions();
     else if (currentView === 'qrauth') await renderQrAuth();
     else if (currentView === 'licenses') await renderLicenses();

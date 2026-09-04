@@ -130,7 +130,7 @@ function EnqueueRequest(input, reason = 'SERVER_OFFLINE') {
         clientId,
         requestId,
         number,
-        payload: `NUMBER|${requestId}|${clientId}|${require('./clientPassword').NormalizeAccessType(input.accessType)}|${number}`,
+        payload: `NUMBER|${requestId}|${clientId}|${require('./accessType').NormalizeAccessType(input.accessType)}|${number}`,
         serverId: NormalizeID(input.serverId || ''),
         createdAt: Number(input.originCreatedAt || input.createdAt) || now,
         queuedAt: now,
@@ -249,7 +249,7 @@ function DispatchRequest(input, options = {}) {
     const build = ready.ok ? BuildSessionReady(clientId, serverId) : { ok: false, reason: ready.reason };
     const common = {
         clientId, requestId, serverId, number,
-        accessType: build.ok ? build.session.accessType : require('./clientPassword').NormalizeAccessType(input.accessType),
+        accessType: build.ok ? build.session.accessType : require('./accessType').NormalizeAccessType(input.accessType),
         payload: build.ok ? `NUMBER|${requestId}|${clientId}|${build.session.accessType}|${number}` : '',
         source: SafeField(input.source || options.source || 'ADMIN_REPLAY'),
         replayOf: SafeField(input.replayOf || ''),
@@ -485,7 +485,7 @@ function ImportPersisted(data) {
             const clientId = NormalizeID(value.clientId);
             const requestId = String(value.requestId || '').trim().slice(0, 64);
             const number = NumberFrom(value);
-            const accessType = require('./clientPassword').NormalizeAccessType(value.accessType);
+            const accessType = require('./accessType').NormalizeAccessType(value.accessType);
             if (!/^QUEUE-[A-Z0-9-]+$/.test(queueId) || !clientId || !GetSavedClientByID(clientId) || !requestId || !number) continue;
             state.offlineQueue.set(queueId, {
                 queueId, clientId, requestId, number, accessType,

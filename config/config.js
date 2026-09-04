@@ -81,7 +81,7 @@ const HA_SHARED_SECRET = String(process.env.HA_SHARED_SECRET || '');
 const HA_POLL_MS = Math.max(500, Number(process.env.HA_POLL_MS || 2000));
 const HA_FAILOVER_TIMEOUT_MS = Math.max(3000, Number(process.env.HA_FAILOVER_TIMEOUT_MS || 10000));
 
-const QR_AUTH_TTL_MS = Math.max(60 * 1000, Math.min(15 * 60 * 1000, Number(process.env.QR_AUTH_TTL_MS || 10 * 60 * 1000)));
+const QR_AUTH_TTL_MS = 60 * 1000;
 const QR_AUTH_MAX_IMAGE_BYTES = Math.max(512 * 1024, Math.min(12 * 1024 * 1024, Number(process.env.QR_AUTH_MAX_IMAGE_BYTES || 8 * 1024 * 1024)));
 const QR_AUTH_MAX_REQUESTS = Math.max(100, Math.min(5000, Number(process.env.QR_AUTH_MAX_REQUESTS || 500)));
 const QR_AUTH_DEFAULT_DAYS = Math.max(1, Math.min(3650, Number(process.env.QR_AUTH_DEFAULT_DAYS || 30)));

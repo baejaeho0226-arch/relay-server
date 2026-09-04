@@ -63,7 +63,7 @@ function DisconnectConnection(connection) {
             return;
         }
         if(connection.clientId) require('../services/buildGate').RevokeForClient(connection.clientId,'CLIENT_OFFLINE');
-        if(connection.clientId) state.clientPasswordChallenges.delete(connection.clientId);
+        if(connection.clientId) state.clientBiometricChallenges.delete(connection.clientId);
         if(connection.clientId&&clients.get(connection.clientId)===connection)clients.delete(connection.clientId);
         if(connection.clientId&&connection.serverId){const s=GetOnlineServer(connection.serverId);if(s)s.clients.delete(connection.clientId);}
         if(connection.clientId)LogEvent('CLIENT_OFFLINE',connection.clientId);

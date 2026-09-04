@@ -38,7 +38,7 @@ function PublicRecord(record) {
         reason: record.reason || '',
         licenseRef: record.licenseRef || (record.licenseKey ? `QR-${String(record.licenseKey).slice(-8)}` : ''),
         serverId: NormalizeID(record.serverId),
-        accessType: require('./clientPassword').NormalizeAccessType(record.accessType),
+        accessType: require('./accessType').NormalizeAccessType(record.accessType),
         lastIP: record.lastIP || '',
         scanCount: Number(record.scanCount || 0)
     };
@@ -223,7 +223,7 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
     if (!VerifyApprovalToken(record, approvalToken)) return { ok: false, reason: 'QR_APPROVAL_TOKEN_INVALID' };
 
-    // QR/PIN enrollment belongs to the APK and must never depend on a running
+    // QR/biometric enrollment belongs to the APK and never depends on a running
     // WinSockServer. A returning client keeps its fixed server identity; a new
     // client remains unassigned until an authenticated WinSockServer claims
     // its pending Build request.
@@ -233,7 +233,7 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     const days = Math.max(1, Math.min(3650, Number(options.days) || config.QR_AUTH_DEFAULT_DAYS));
     const memo = SafeField(options.memo || `QR 승인 ${record.clientId}`).slice(0, 200);
     const tags = require('../license/licenseManager').NormalizeTags([...(Array.isArray(options.tags) ? options.tags : []), 'QR']);
-    const accessType = require('./clientPassword').NormalizeAccessType(options.accessType);
+    const accessType = require('./accessType').NormalizeAccessType(options.accessType);
     let bound = GetBoundLicenseEntry(record.clientId);
     if (bound && (bound.license.suspended || Now() >= Number(bound.license.expiresAt || 0))) {
         bound.license.boundClient = '';
@@ -250,7 +250,7 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
 
     bound.license.accessType = accessType;
-    require('./clientPassword').SetAccessType(record.clientId, accessType);
+    require('./clientBiometric').SetAccessType(record.clientId, accessType);
 
     record.status = 'APPROVED';
     record.approvedAt = Now();
@@ -381,7 +381,7 @@ function ImportPersisted(data) {
             reason: SafeField(raw.reason || '').slice(0, 80),
             licenseKey: '',
             licenseRef: String(raw.licenseRef || (raw.licenseKey ? `QR-${String(raw.licenseKey).slice(-8)}` : '')).slice(0, 16),
-            accessType: require('./clientPassword').NormalizeAccessType(raw.accessType),
+            accessType: require('./accessType').NormalizeAccessType(raw.accessType),
             lastIP: String(raw.lastIP || '').slice(0, 64),
             scanCount: Math.max(0, Number(raw.scanCount) || 0),
             lastScannedAt: Number(raw.lastScannedAt) || 0

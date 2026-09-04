@@ -48,8 +48,8 @@ function DeleteClientState(id, deviceKey) {
     state.clientFeatureOverrides.delete(id);
     state.clientProtocolProfiles.delete(id);
     state.clientUiStates.delete(id);
-    state.clientPasswordProfiles.delete(id);
-    state.clientPasswordChallenges.delete(id);
+    state.clientBiometricProfiles.delete(id);
+    state.clientBiometricChallenges.delete(id);
     state.clientFailoverEnabled.delete(id);
     state.clientFailoverRecords.delete(id);
     state.clientServerBindings.delete(id);

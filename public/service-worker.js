@@ -1,15 +1,15 @@
 'use strict';
 
-const CACHE = 'relay-admin-shell-v3.5.0-postauth1';
+const CACHE = 'relay-admin-shell-v3.5.0-biometric1';
 const SHELL = [
   '/index.html',
-  '/admin.css?v=3.5.0-postauth1',
-  '/admin.js?v=3.5.0-postauth1',
-  '/admin-pages-monitoring.js?v=3.5.0-postauth1',
-  '/admin-pages-access.js?v=3.5.0-postauth1',
-  '/admin-pages-operations.js?v=3.5.0-postauth1',
-  '/admin-actions.js?v=3.5.0-postauth1',
-  '/admin-pages-production.js?v=3.5.0-postauth1',
+  '/admin.css?v=3.5.0-biometric1',
+  '/admin.js?v=3.5.0-biometric1',
+  '/admin-pages-monitoring.js?v=3.5.0-biometric1',
+  '/admin-pages-access.js?v=3.5.0-biometric1',
+  '/admin-pages-operations.js?v=3.5.0-biometric1',
+  '/admin-actions.js?v=3.5.0-biometric1',
+  '/admin-pages-production.js?v=3.5.0-biometric1',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'

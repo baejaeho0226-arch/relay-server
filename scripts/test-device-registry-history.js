@@ -56,15 +56,15 @@ async function run() {
     assert.strictEqual(serverA1.serverId, serverIdA);
     assert.strictEqual(serverB1.serverId, serverIdB);
 
-    // The same local device key must replace only its previous transport and
-    // keep the persisted SERVER-ID.
+    // A second live process with the same fixed identity must be rejected.
+    // The original server and its future Build lease remain untouched.
     const serverA2 = Connection('server', 'server-a-reconnect');
-    assert.strictEqual(serverHandler.RegisterServer(serverA2, serverKeyA, 2, '2.6.0'), true);
-    assert.strictEqual(serverA2.serverId, serverIdA);
-    assert.strictEqual(serverA1.superseded, true);
-    assert.strictEqual(serverA1.socket.destroyed, true);
-    lifecycle.DisconnectConnection(serverA1);
-    assert.strictEqual(state.servers.get(serverIdA), serverA2);
+    assert.strictEqual(serverHandler.RegisterServer(serverA2, serverKeyA, 2, '2.6.0'), false);
+    assert.strictEqual(serverA2.socket.writes.some(line =>
+        String(line).includes('ERROR|SERVER_ALREADY_RUNNING')), true);
+    assert.strictEqual(serverA1.superseded, false);
+    assert.strictEqual(serverA1.socket.destroyed, false);
+    assert.strictEqual(state.servers.get(serverIdA), serverA1);
 
     // #Accept describes remaining one-to-one capacity, not socket online
     // status. An online server without a binding is READY.
@@ -95,7 +95,7 @@ async function run() {
     assert.strictEqual(clientB1.clientId, clientIdB);
     assert.strictEqual(clientA1.serverId, serverIdA);
     assert.strictEqual(clientB1.serverId, serverIdB);
-    assert.strictEqual(serverA2.clients.has(clientIdA), true);
+    assert.strictEqual(serverA1.clients.has(clientIdA), true);
     assert.strictEqual(serverB1.clients.has(clientIdB), true);
 
     // At the configured 1/1 capacity an online server is FULL, never OFFLINE.
@@ -133,7 +133,7 @@ async function run() {
     assert.strictEqual(deletedClient.ok, true);
     assert.strictEqual(state.clientIdentities.has(clientKeyA), false);
     assert.strictEqual(state.licenses.get('DELETE-CLIENT-LICENSE').boundClient, '');
-    assert.strictEqual(serverA2.clients.has(clientIdA), false);
+    assert.strictEqual(serverA1.clients.has(clientIdA), false);
 
     // An explicit Delete is the only operation that intentionally creates a
     // new ID on the next appearance of the same physical installation.
@@ -207,7 +207,7 @@ async function run() {
     console.log('DEVICE REGISTRY / HISTORY PASS');
     console.log('- Two PCs and two APKs keep independent fixed pairs: PASS');
     console.log('- Server #Accept READY/FULL stays separate from ONLINE/OFFLINE: PASS');
-    console.log('- Reconnect replaces transport without changing IDs: PASS');
+    console.log('- Duplicate live Server is rejected without changing IDs: PASS');
     console.log('- Explicit Delete purges bindings and permits new enrollment: PASS');
     console.log('- Orphan pairing repair preserves registered fixed pairs: PASS');
     console.log('- History CLEAN preserves active work: PASS');

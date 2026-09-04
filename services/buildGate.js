@@ -10,7 +10,7 @@ function RequestKey(clientId, requestId) {
 }
 
 function NormalizeAccessType(value) {
-    return require('./clientPassword').NormalizeAccessType(value);
+    return require('./accessType').NormalizeAccessType(value);
 }
 
 function OnlineClient(clientId) {
@@ -201,7 +201,7 @@ function TryDispatchClient(clientId) {
     const client = OnlineClient(clientId);
     if (!client || !client.connected) return { delivered: false, waiting: true, reason: 'CLIENT_OFFLINE' };
     if (!require('./deviceAuth').Verified('CLIENT', clientId)) return { delivered: false, waiting: true, reason: 'CLIENT_AUTH_REQUIRED' };
-    if (!client.passwordVerified) return { delivered: false, waiting: true, reason: 'PASSWORD_AUTH_REQUIRED' };
+    if (!client.biometricVerified) return { delivered: false, waiting: true, reason: 'BIOMETRIC_AUTH_REQUIRED' };
     const active = require('../license/licenseManager').GetUsableLicenseForConnection(client);
     if (!active) return { delivered: false, waiting: true, reason: 'LICENSE_REQUIRED' };
 
@@ -276,7 +276,7 @@ function TryDispatchServer(serverId) {
     const dispatchedBeforeClaim = new Set(Array.from(state.pendingBuildGrants.values())
         .filter(grant => grant && grant.status === 'DISPATCHED')
         .map(grant => grant.sessionId));
-    // New APKs complete QR + PIN first and intentionally have no PC yet.
+    // New APKs complete QR + biometric first and intentionally have no PC yet.
     // Claiming occurs only after this server has passed HMAC authentication.
     require('../relay/serverHandler').BindUnassignedClients(serverId);
     let delivered = 0;

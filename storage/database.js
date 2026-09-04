@@ -62,7 +62,7 @@ function BuildDatabaseObject() {
         dailyHealthReports: Object.fromEntries(state.dailyHealthReports),
         dailyHealthAccumulator: state.dailyHealthAccumulator,
         qrAuthRequests: Object.fromEntries(state.qrAuthRequests),
-        clientPasswordProfiles: Object.fromEntries(state.clientPasswordProfiles),
+        clientBiometricProfiles: Object.fromEntries(state.clientBiometricProfiles),
         pendingBuildGrants: Object.fromEntries(state.pendingBuildGrants),
         buildSessions: Object.fromEntries(state.buildSessions),
         clientBuildBindings: Object.fromEntries(state.clientBuildBindings),
@@ -183,7 +183,7 @@ function ImportDatabaseObject(data) {
                 suspended: Boolean(value.suspended),
                 memo: SafeField(value.memo || ''),
                 tags: require('../license/licenseManager').NormalizeTags(value.tags || []),
-                accessType: require('../services/clientPassword').NormalizeAccessType(value.accessType)
+                accessType: require('../services/accessType').NormalizeAccessType(value.accessType)
             });
         }
     }
@@ -200,7 +200,7 @@ function ImportDatabaseObject(data) {
     state.clientNotes.clear();
     state.serverDrainMeta.clear();
     state.serverFeatureOverrides.clear(); state.clientFeatureOverrides.clear();
-    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear(); state.clientPasswordProfiles.clear(); state.clientPasswordChallenges.clear(); state.pendingBuildGrants.clear(); state.buildSessions.clear(); state.clientBuildBindings.clear(); state.accessGroupGuids.clear();
+    state.serverProtocolProfiles.clear(); state.clientProtocolProfiles.clear(); state.deviceSecrets.clear(); state.releaseCatalog.clear(); state.deviceReleaseChannels.clear(); state.configHistory.length=0; state.deviceEnrollments.clear(); state.deviceSecretRotations.clear(); state.deviceSecretMeta.clear(); state.deviceNetworkProfiles.clear(); state.clientFailoverEnabled.clear(); state.clientFailoverRecords.clear(); state.clientServerBindings.clear(); state.clientOfflineQueueEnabled.clear(); state.offlineQueue.clear(); state.deadLetters.clear(); state.processorStats.clear(); state.pushSubscriptions.clear(); state.dailyHealthReports.clear(); state.qrAuthRequests.clear(); state.clientBiometricProfiles.clear(); state.clientBiometricChallenges.clear(); state.pendingBuildGrants.clear(); state.buildSessions.clear(); state.clientBuildBindings.clear(); state.accessGroupGuids.clear();
 
     for (const [k, v] of newServers) serverIdentities.set(k, v);
     for (const [k, v] of newClients) clientIdentities.set(k, v);
@@ -306,24 +306,15 @@ function ImportDatabaseObject(data) {
     require('../services/buildGate').ImportPersisted(data);
     require('../services/userDashboard').ImportPersisted(data);
     require('../services/productionState').ImportPersisted(data);
-    if (data.clientPasswordProfiles && typeof data.clientPasswordProfiles === 'object') {
-        for (const [rawClientId, raw] of Object.entries(data.clientPasswordProfiles)) {
+    if (data.clientBiometricProfiles && typeof data.clientBiometricProfiles === 'object') {
+        for (const [rawClientId, raw] of Object.entries(data.clientBiometricProfiles)) {
             const clientId = NormalizeID(rawClientId);
             if (!clientId || !raw || typeof raw !== 'object') continue;
-            const salt = String(raw.salt || '').toUpperCase();
-            const verifier = String(raw.verifier || '').toUpperCase();
-            const iterations = Math.max(1, Math.min(20000, Number(raw.iterations) || 4096));
-            if (!/^[0-9A-F]{32}$/.test(salt) || !/^[0-9A-F]{64}$/.test(verifier)) continue;
-            state.clientPasswordProfiles.set(clientId, {
-                salt,
-                iterations,
-                verifier,
-                pinDigits: Number(raw.pinDigits) === 6 ? 6 : 0,
-                accessType: require('../services/clientPassword').NormalizeAccessType(raw.accessType),
-                createdAt: Number(raw.createdAt) || Now(),
-                updatedAt: Number(raw.updatedAt) || 0,
-                failedAttempts: Math.max(0, Math.min(4, Number(raw.failedAttempts) || 0)),
-                lockUntil: Math.max(0, Number(raw.lockUntil) || 0),
+            state.clientBiometricProfiles.set(clientId, {
+                accessType: require('../services/accessType').NormalizeAccessType(raw.accessType),
+                enrolledAt: Math.max(0, Number(raw.enrolledAt) || 0),
+                verifiedAt: Math.max(0, Number(raw.verifiedAt) || 0),
+                verificationCount: Math.max(0, Number(raw.verificationCount) || 0),
                 resetAt: Math.max(0, Number(raw.resetAt) || 0),
                 resetBy: String(raw.resetBy || '').replace(/[\r\n|]/g, '').slice(0, 64)
             });

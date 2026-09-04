@@ -96,7 +96,7 @@ content.addEventListener('click', async event => {
       if (!qrScanResult || !qrScanResult.request || !qrScanResult.approvalToken) throw new Error('검증된 QR 요청이 없습니다.');
       const values = await openModal({
         title: 'QR 기기 승인',
-        message: `${qrScanResult.request.clientId}\nAPK의 QR·라이선스·PIN 등록만 승인합니다. WinSockServer는 APK 대시보드가 열린 뒤 실행하며, Relay가 별도로 검증하고 1:1 연결합니다.`,
+        message: `${qrScanResult.request.clientId}\nAPK의 QR·라이선스 등록만 승인합니다. 이후 Android 생체인증을 수행하며, WinSockServer는 대시보드가 열린 뒤 Relay가 별도로 검증하고 1:1 연결합니다.`,
         fields: [
           { name: 'days', label: '사용 기간(일)', type: 'number', value: String(qrScanResult.defaultDays || 30) },
           { name: 'accessType', label: 'APK 전용 콘텐츠', type: 'select', value: 'TYPE1', options: [{ value: 'TYPE1', label: 'TalesRunner' }, { value: 'TYPE2', label: 'R2Beat' }, { value: 'TYPE3', label: 'Lostsaga' }] },
@@ -564,35 +564,22 @@ async function clientAction(action, id) {
   const encodedId = encodeURIComponent(id);
   if (action === 'detail') {
     const { client } = await api(`/api/clients/${encodedId}`);
-    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(client.alias || '-')}</div><div>Note</div><div>${esc(client.note || '-')}</div><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Password</div><div>${badge(client.password?.locked ? 'LOCKED' : (client.password?.registered ? 'SET' : 'NONE'))} <span class="code">${esc(client.password?.masked || '-')}</span></div><div>Password Updated</div><div>${esc(fmtTime(client.password?.updatedAt))}</div><div>Password Lock</div><div>${esc(fmtTime(client.password?.lockUntil))}</div><div>Server</div><div class="code">${esc(client.serverAlias || client.serverId)}${client.serverAlias ? ` [${esc(client.serverId)}]` : ''}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>License Status</div><div>${badge(client.licenseStatus)}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>Kick Until</div><div>${esc(fmtTime(client.kickedUntil))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Protocol / Version</div><div>${client.protocolVersion || '-'} / ${esc(client.appVersion || '-')}</div><div>RTT</div><div>${client.rttMs >= 0 ? `${client.rttMs} ms` : '-'}</div><div>Auth / Send / Reconnect</div><div>${client.authCount} / ${client.sendCount} / ${client.reconnectCount}</div><div>Last Auth</div><div>${esc(fmtTime(client.lastAuthAt))}</div><div>Last Seen</div><div>${esc(fmtTime(client.lastSeenAt))}</div></div>`, confirmLabel: '닫기' });
+    await openModal({ title: `Client ${id}`, html: `<div class="kv"><div>Alias</div><div>${esc(client.alias || '-')}</div><div>Note</div><div>${esc(client.note || '-')}</div><div>Device Key</div><div class="code">${esc(client.deviceKey)}</div><div>Status</div><div>${badge(client.status)}</div><div>Health</div><div>${badge(client.health)}</div><div>Biometric</div><div>${badge(client.biometric?.verified ? 'VERIFIED' : (client.biometric?.enrolled ? 'ENROLLED' : 'NONE'))}</div><div>Biometric Enrolled</div><div>${esc(fmtTime(client.biometric?.enrolledAt))}</div><div>Last Verified</div><div>${esc(fmtTime(client.biometric?.verifiedAt))}</div><div>Server</div><div class="code">${esc(client.serverAlias || client.serverId)}${client.serverAlias ? ` [${esc(client.serverId)}]` : ''}</div><div>License</div><div class="code">${esc(client.licenseKey || '-')}</div><div>License Status</div><div>${badge(client.licenseStatus)}</div><div>Expires</div><div>${esc(fmtTime(client.licenseExpiresAt))}</div><div>Kick Until</div><div>${esc(fmtTime(client.kickedUntil))}</div><div>IP</div><div>${esc(client.lastIP || '-')}</div><div>Protocol / Version</div><div>${client.protocolVersion || '-'} / ${esc(client.appVersion || '-')}</div><div>RTT</div><div>${client.rttMs >= 0 ? `${client.rttMs} ms` : '-'}</div><div>Auth / Send / Reconnect</div><div>${client.authCount} / ${client.sendCount} / ${client.reconnectCount}</div><div>Last Auth</div><div>${esc(fmtTime(client.lastAuthAt))}</div><div>Last Seen</div><div>${esc(fmtTime(client.lastSeenAt))}</div></div>`, confirmLabel: '닫기' });
     return;
   }
 
-  if (action === 'password') {
+  if (action === 'biometric') {
     const { client } = await api(`/api/clients/${encodedId}`);
-    let v = null;
-    while (true) {
-      v = await openModal({
-        title: 'Client Password Reset',
-        message: `${id}\n기존 비밀번호는 단방향 검증값으로만 저장되어 원문 조회가 불가능합니다. 새 PIN을 입력하면 즉시 교체되며, 온라인 APK는 다시 로그인해야 합니다.`,
-        html: `<div class="password-status"><span>현재 상태</span>${badge(client.password?.locked ? 'LOCKED' : (client.password?.registered ? 'SET' : 'NONE'))}<span>마지막 변경</span><strong>${esc(fmtTime(client.password?.updatedAt))}</strong></div>`,
-        fields: [
-          { name: 'password', label: '새 PIN (6자리 숫자)', type: 'password', placeholder: '6자리 PIN', maxLength: 6 },
-          { name: 'confirmPassword', label: '새 PIN 재확인', type: 'password', placeholder: '같은 6자리 PIN', maxLength: 6 }
-        ],
-        confirmLabel: '재설정'
-      });
-      if (!v) return;
-      v.password = String(v.password || '').trim();
-      v.confirmPassword = String(v.confirmPassword || '').trim();
-      if (!/^\d{6}$/.test(v.password)) { toast('PIN은 정확히 6자리 숫자만 사용할 수 있습니다.', true); continue; }
-      if (v.password !== v.confirmPassword) { toast('PIN 재확인이 일치하지 않습니다.', true); continue; }
-      break;
-    }
-    await api(`/api/clients/${encodedId}/password/reset`, { method: 'POST', body: { password: v.password } });
-    await openModal({ title: '비밀번호 재설정 완료', html: `<div class="password-once"><span>새 PIN · 이번 화면에서만 표시</span><strong>${esc(v.password)}</strong><small>서버에는 PIN 원문이 아닌 HMAC 검증값만 저장됩니다.</small></div>`, confirmLabel: '닫기' });
-    toast('Client 비밀번호 재설정 완료');
-    if (currentView === 'clientpasswords') await renderClientPasswords();
+    const v = await openModal({
+      title: 'Client 생체인증 초기화',
+      message: `${id}\n지문 데이터는 서버에 저장되지 않습니다. 초기화 후 온라인 APK는 Android 시스템 생체인증을 다시 수행합니다.`,
+      html: `<div class="biometric-status"><span>현재 상태</span>${badge(client.biometric?.verified ? 'VERIFIED' : (client.biometric?.enrolled ? 'ENROLLED' : 'NONE'))}<span>마지막 인증</span><strong>${esc(fmtTime(client.biometric?.verifiedAt))}</strong></div>`,
+      confirmLabel: '초기화', danger: true
+    });
+    if (!v) return;
+    await api(`/api/clients/${encodedId}/biometric/reset`, { method: 'POST', body: {} });
+    toast('Client 생체인증 초기화 완료');
+    if (currentView === 'clientbiometrics') await renderClientBiometrics();
     else await renderClients();
     return;
   }
@@ -624,7 +611,7 @@ async function clientAction(action, id) {
   }
 
   if (action === 'delete') {
-    const v = await openModal({ title: 'Client Delete', message: `${id}\nCLIENT-ID와 QR, PIN, License 결합, Build 바인딩 및 종속 데이터를 삭제합니다. APK 재접속 시 신규 QR 승인부터 다시 진행됩니다.`, danger: true, confirmLabel: 'DELETE' });
+    const v = await openModal({ title: 'Client Delete', message: `${id}\nCLIENT-ID와 QR, 생체인증 상태, License 결합, Build 바인딩 및 종속 데이터를 삭제합니다. APK 재접속 시 신규 QR 승인부터 다시 진행됩니다.`, danger: true, confirmLabel: 'DELETE' });
     if (!v) return;
     await api(`/api/clients/${encodedId}`, { method: 'DELETE', body: {} });
     toast(`Client 삭제: ${id}`);

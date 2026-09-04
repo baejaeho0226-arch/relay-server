@@ -60,7 +60,7 @@ function AttachClient(connection, saved) {
     const old = GetOnlineClient(saved.id);
     if (old && old !== connection) {
         // The late close event from the replaced socket must never revoke the
-        // newly established client's password/build session.
+        // newly established client's biometric/build session.
         old.superseded = true;
         const oldServer = GetOnlineServer(old.serverId);
         if (oldServer) oldServer.clients.delete(saved.id);
@@ -74,7 +74,7 @@ function AttachClient(connection, saved) {
     connection.licenseAuthorized = false;
     connection.licenseKey = '';
     connection.licenseExpiresAt = 0;
-    connection.passwordVerified = false;
+    connection.biometricVerified = false;
     connection.accessType = '';
     connection.buildCompleted = false;
     connection.buildSessionId = '';
@@ -170,9 +170,9 @@ function HandleClientSend(connection, line) {
     if (state.maintenanceMode && !connection.licenseAuthorized) { SendLine(connection.socket, 'SERVICE_STATE|MAINTENANCE'); return; }
     if (IsRateLimited(connection)) { SendLine(connection.socket, 'ERROR|RATE_LIMIT'); return; }
 
-    if (!connection.passwordVerified) {
-        SendLine(connection.socket, 'ERROR|PASSWORD_AUTH_REQUIRED');
-        require('../services/clientPassword').Begin(connection, connection.accessType);
+    if (!connection.biometricVerified) {
+        SendLine(connection.socket, 'ERROR|BIOMETRIC_AUTH_REQUIRED');
+        require('../services/clientBiometric').Begin(connection, connection.accessType);
         return;
     }
 
@@ -201,7 +201,7 @@ function HandleClientSend(connection, line) {
     const server = saved ? GetOnlineServer(saved.serverId) : null;
     if (!saved) { SendLine(connection.socket, 'ERROR|CLIENT_NOT_FOUND'); return; }
     const buildSession = require('../services/buildGate').ActiveSessionForClient(clientId);
-    const payloadAccessType = buildSession ? buildSession.accessType : require('../services/clientPassword').NormalizeAccessType(connection.accessType);
+    const payloadAccessType = buildSession ? buildSession.accessType : require('../services/accessType').NormalizeAccessType(connection.accessType);
     const payload = `NUMBER|${requestId}|${clientId}|${payloadAccessType}|${number}`;
     const recovery = require('../services/requestRecovery');
     const recordAccepted = () => {
@@ -278,9 +278,9 @@ function HandleClientBuild(connection, line) {
         deviceAuth.IssueChallenge('CLIENT', clientId);
         return;
     }
-    if (!connection.passwordVerified) {
-        SendLine(connection.socket, 'ERROR|PASSWORD_AUTH_REQUIRED');
-        require('../services/clientPassword').Begin(connection, connection.accessType);
+    if (!connection.biometricVerified) {
+        SendLine(connection.socket, 'ERROR|BIOMETRIC_AUTH_REQUIRED');
+        require('../services/clientBiometric').Begin(connection, connection.accessType);
         return;
     }
     const active = GetUsableLicenseForConnection(connection);
@@ -398,13 +398,48 @@ function HandleClientLine(connection, line) {
         return;
     }
 
-    if (line.startsWith('PASSWORD_SETUP|')) {
-        require('../services/clientPassword').HandleSetup(connection, line.split('|'));
+    if (line.startsWith('BIOMETRIC_BEGIN|')) {
+        const requestedClient = NormalizeID(line.split('|')[1] || '');
+        if (requestedClient && requestedClient !== connection.clientId) {
+            SendLine(connection.socket, 'BIOMETRIC_ERROR|CLIENT_NOT_OWNER');
+            return;
+        }
+        require('../services/clientBiometric').Begin(connection, connection.accessType);
         return;
     }
 
-    if (line.startsWith('PASSWORD_VERIFY|')) {
-        require('../services/clientPassword').HandleVerify(connection, line.split('|'));
+    if (line.startsWith('BIOMETRIC_PROOF|')) {
+        require('../services/clientBiometric').HandleProof(connection, line.split('|'));
+        return;
+    }
+
+    if (line.startsWith('SUPPORT_REQUEST|')) {
+        const parts = line.split('|');
+        const requestId = String(parts[1] || '').trim().slice(0, 64);
+        const clientId = NormalizeID(parts[2] || '');
+        const screen = String(parts[3] || 'UNKNOWN').replace(/[^A-Z0-9_-]/gi, '').slice(0, 32);
+        if (!requestId || clientId !== connection.clientId) {
+            SendLine(connection.socket, `SUPPORT_ERROR|${requestId}|INVALID_REQUEST`);
+            return;
+        }
+        if (!require('../services/deviceAuth').Verified('CLIENT', clientId)) {
+            SendLine(connection.socket, `SUPPORT_ERROR|${requestId}|DEVICE_AUTH_REQUIRED`);
+            return;
+        }
+        if (IsRateLimited(connection)) {
+            SendLine(connection.socket, `SUPPORT_ERROR|${requestId}|RATE_LIMIT`);
+            return;
+        }
+        require('../services/notificationCenter').AddNotification({
+            severity: 'INFO', type: 'REALTIME_SUPPORT', title: '실시간 지원 요청',
+            message: `${clientId} 사용자가 ${screen || 'UNKNOWN'} 화면에서 지원을 요청했습니다.`,
+            entityType: 'CLIENT', entityId: clientId,
+            dedupeKey: `REALTIME_SUPPORT|${clientId}|${requestId}`
+        });
+        require('../storage/audit').LogEvent('REALTIME_SUPPORT_REQUEST',
+            `${clientId} / ${screen || 'UNKNOWN'} / ${requestId}`);
+        SaveDatabase();
+        SendLine(connection.socket, `SUPPORT_OK|${requestId}`);
         return;
     }
 

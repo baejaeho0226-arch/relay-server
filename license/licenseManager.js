@@ -65,7 +65,7 @@ function GetUsableLicenseForConnection(connection) {
 
 function CompleteAuthorization(connection, licenseKey, license, source = 'LICENSE', requestId = '') {
     const eventSource = source === 'QR' || source === 'QR_RESUME' ? source : 'LICENSE';
-    const accessType = require('../services/clientPassword').NormalizeAccessType(license.accessType);
+    const accessType = require('../services/accessType').NormalizeAccessType(license.accessType);
     license.accessType = accessType;
     if (!license.boundClient) {
         license.boundClient = connection.clientId;
@@ -89,19 +89,15 @@ function CompleteAuthorization(connection, licenseKey, license, source = 'LICENS
     connection.licenseAuthorized = true;
     connection.licenseKey = licenseKey;
     connection.licenseExpiresAt = license.expiresAt;
-    connection.passwordVerified = eventSource === 'LICENSE';
+    connection.biometricVerified = false;
     connection.accessType = accessType;
     connection.lastServerAuthState = '';
     SaveDatabase();
 
     if (eventSource === 'LICENSE') SendLine(connection.socket, `LICENSE_OK|${licenseKey}|${license.expiresAt}`);
     else SendLine(connection.socket, `QR_AUTH_OK|${requestId || 'RESUME'}|${license.expiresAt}|${accessType}`);
-    if (eventSource === 'LICENSE') {
-        NotifyServerAuthorized(connection.clientId, connection.serverId, license.expiresAt, eventSource);
-    } else {
-        NotifyServerUnauthorized(connection.clientId, 'PASSWORD_REQUIRED');
-        require('../services/clientPassword').Begin(connection, accessType);
-    }
+    NotifyServerUnauthorized(connection.clientId, 'BIOMETRIC_REQUIRED');
+    require('../services/clientBiometric').Begin(connection, accessType);
 
     const remainingDays = Math.ceil((license.expiresAt - Now()) / 86400000);
     if (remainingDays <= 7) SendLine(connection.socket, `LICENSE_WARNING|${remainingDays}|${license.expiresAt}`);
@@ -178,7 +174,7 @@ function ExtendLicense(key, days) {
     license.expiresAt = Math.max(Now(), license.expiresAt) + days * 86400000;
     if (license.boundClient) {
         const client = GetOnlineClient(license.boundClient);
-        if (client && client.licenseAuthorized && client.passwordVerified && client.licenseKey === NormalizeLicenseKey(key)) {
+        if (client && client.licenseAuthorized && client.biometricVerified && client.licenseKey === NormalizeLicenseKey(key)) {
             client.licenseExpiresAt = license.expiresAt;
             SendLine(client.socket, `LICENSE_UPDATED|${license.expiresAt}`);
             NotifyServerAuthorized(client.clientId, client.serverId, license.expiresAt);
@@ -193,9 +189,9 @@ function RevokeLiveLicense(clientId, reason) {
     if (client) {
         client.licenseAuthorized = false;
         client.licenseExpiresAt = 0;
-        client.passwordVerified = false;
+        client.biometricVerified = false;
         client.accessType = '';
-        state.clientPasswordChallenges.delete(clientId);
+        state.clientBiometricChallenges.delete(clientId);
         client.lastServerAuthState = '';
         SendLine(client.socket, `LICENSE_ERROR|${reason}`);
     }
@@ -331,8 +327,8 @@ function ValidateClientLicense(connection) {
         return;
     }
     const bound = GetBoundLicenseEntry(connection.clientId);
-    connection.licenseAuthorized=false;connection.licenseExpiresAt=0;connection.passwordVerified=false;connection.accessType='';connection.lastServerAuthState='';
-    state.clientPasswordChallenges.delete(connection.clientId);
+    connection.licenseAuthorized=false;connection.licenseExpiresAt=0;connection.biometricVerified=false;connection.accessType='';connection.lastServerAuthState='';
+    state.clientBiometricChallenges.delete(connection.clientId);
     if(bound&&bound.license.suspended){SendLine(connection.socket,'LICENSE_ERROR|SUSPENDED');NotifyServerUnauthorized(connection.clientId,'SUSPENDED');}
     else if(bound&&Now()>=bound.license.expiresAt){SendLine(connection.socket,'LICENSE_ERROR|EXPIRED');NotifyServerUnauthorized(connection.clientId,'EXPIRED');}
     else {SendLine(connection.socket,'LICENSE_ERROR|LICENSE_REQUIRED');NotifyServerUnauthorized(connection.clientId,'LICENSE_REQUIRED');}

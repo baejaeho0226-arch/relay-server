@@ -135,7 +135,7 @@ async function renderClients() {
     if (roleCanOperate() && client.online) html += `<button data-client-action="notice" data-id="${id}">Notice</button>`;
     if (roleCanOperate()) html += `<button data-client-action="note" data-id="${id}">Note</button>`;
     if (roleIsAdmin()) {
-      html += `<button class="primary" data-client-action="password" data-id="${id}">PIN 관리</button>`;
+      html += `<button class="primary" data-client-action="biometric" data-id="${id}">생체인증 관리</button>`;
       html += `<button data-client-action="alias" data-id="${id}">Alias</button>`;
       html += `<button data-client-action="move" data-id="${id}">Move</button>`;
       if (client.online && client.status !== 'DISABLED') html += `<button class="warning" data-client-action="kick" data-id="${id}">Kick 60s</button>`;
@@ -147,31 +147,31 @@ async function renderClients() {
     return `<div class="actions">${html}</div>`;
   };
 
-  content.innerHTML = `<div class="toolbar">${roleIsAdmin() ? '<button id="pairing-repair-btn" class="primary">1:1 MATCH REPAIR</button><button class="primary pin-manage-open" data-open-view="clientpasswords">CLIENT PIN 관리 열기</button><button class="danger" data-history-clean="CLIENT_HISTORY">CLEAN CLIENT HISTORY</button>' : '<button class="danger" disabled title="ADMIN 권한 필요">DELETE · ADMIN</button>'}<span class="small-note">DELETE는 QR/PIN/바인딩 포함 전체 삭제 · CLEAN은 접속/Flapping 이력만 정리</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>PIN</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th class="sticky-actions">Action</th></tr></thead><tbody>
-    ${clients.map(c => `<tr><td>${esc(c.alias || '-')}</td><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td>${badge(c.password?.locked ? 'LOCKED' : (c.password?.registered ? 'SET' : 'NONE'))}</td><td class="code">${esc(c.serverAlias || c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td class="note-cell" title="${esc(c.note || '')}">${esc(c.note || '-')}</td><td class="sticky-actions">${actions(c)}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">Client 없음</td></tr>'}
+  content.innerHTML = `<div class="toolbar">${roleIsAdmin() ? '<button id="pairing-repair-btn" class="primary">1:1 MATCH REPAIR</button><button class="primary" data-open-view="clientbiometrics">CLIENT 생체인증 관리</button><button class="danger" data-history-clean="CLIENT_HISTORY">CLEAN CLIENT HISTORY</button>' : '<button class="danger" disabled title="ADMIN 권한 필요">DELETE · ADMIN</button>'}<span class="small-note">DELETE는 QR/생체인증/바인딩 포함 전체 삭제 · CLEAN은 접속/Flapping 이력만 정리</span></div><div class="table-wrap"><table><thead><tr><th>Alias</th><th>CLIENT-ID</th><th>Status</th><th>Health</th><th>Biometric</th><th>Server</th><th>License</th><th>Expires</th><th>RTT</th><th>Send</th><th>Last Seen</th><th>Note</th><th class="sticky-actions">Action</th></tr></thead><tbody>
+    ${clients.map(c => `<tr><td>${esc(c.alias || '-')}</td><td class="code">${esc(c.id)}</td><td>${badge(c.status)}</td><td>${badge(c.health)}</td><td>${badge(c.biometric?.verified ? 'VERIFIED' : (c.biometric?.enrolled ? 'ENROLLED' : 'NONE'))}</td><td class="code">${esc(c.serverAlias || c.serverId)}</td><td>${badge(c.licenseStatus)}</td><td>${esc(fmtTime(c.licenseExpiresAt))}</td><td>${c.rttMs >= 0 ? `${c.rttMs} ms` : '-'}</td><td>${c.sendCount}</td><td>${esc(fmtTime(c.lastSeenAt))}</td><td class="note-cell" title="${esc(c.note || '')}">${esc(c.note || '-')}</td><td class="sticky-actions">${actions(c)}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">Client 없음</td></tr>'}
   </tbody></table></div>`;
 }
 
-async function renderClientPasswords() {
+async function renderClientBiometrics() {
   if (!roleIsAdmin()) { content.innerHTML = '<div class="empty">ADMIN 권한이 필요합니다.</div>'; return; }
   const { clients } = await api('/api/clients');
-  const registered = clients.filter(client => client.password?.registered).length;
-  const locked = clients.filter(client => client.password?.locked).length;
-  const missing = clients.length - registered;
+  const enrolled = clients.filter(client => client.biometric?.enrolled).length;
+  const verified = clients.filter(client => client.biometric?.verified).length;
+  const missing = clients.length - enrolled;
   content.innerHTML = `
-    <div class="pin-hero">
-      <div><span class="pin-eyebrow">CLIENT ACCESS SECURITY</span><h3>PIN 관리 센터</h3><p>기존 PIN 원문은 저장하지 않습니다. 새 PIN을 재설정할 때 입력값을 확인하고, 완료 직후 한 번만 볼 수 있습니다.</p></div>
-      <div class="pin-hero-lock">••••</div>
+    <div class="biometric-hero">
+      <div><span class="biometric-eyebrow">CLIENT ACCESS SECURITY</span><h3>생체인증 관리 센터</h3><p>Relay에는 지문 원본이나 템플릿이 저장되지 않습니다. Android 시스템 인증 결과와 기기 HMAC 증명만 확인합니다.</p></div>
+      <div class="biometric-hero-mark">◎</div>
     </div>
-    <div class="cards pin-summary-cards">
-      <div class="card"><div class="stat-label">REGISTERED</div><div class="stat-value">${registered}</div><div class="stat-sub">PIN 등록 완료</div></div>
-      <div class="card"><div class="stat-label">NOT SET</div><div class="stat-value">${missing}</div><div class="stat-sub">PIN 미등록</div></div>
-      <div class="card"><div class="stat-label">LOCKED</div><div class="stat-value">${locked}</div><div class="stat-sub">입력 제한 상태</div></div>
-      <div class="card"><div class="stat-label">STORAGE</div><div class="stat-value compact">HMAC</div><div class="stat-sub">원문 저장 안 함</div></div>
+    <div class="cards biometric-summary-cards">
+      <div class="card"><div class="stat-label">ENROLLED</div><div class="stat-value">${enrolled}</div><div class="stat-sub">생체인증 등록</div></div>
+      <div class="card"><div class="stat-label">VERIFIED</div><div class="stat-value">${verified}</div><div class="stat-sub">현재 세션 인증</div></div>
+      <div class="card"><div class="stat-label">NOT SET</div><div class="stat-value">${missing}</div><div class="stat-sub">등록 대기</div></div>
+      <div class="card"><div class="stat-label">PROOF</div><div class="stat-value compact">HMAC</div><div class="stat-sub">지문 데이터 미수집</div></div>
     </div>
-    <div class="section-card pin-client-list"><div class="section-head"><h3>Client PIN Status</h3><span class="small-note">관리할 Client의 PIN 재설정을 누르세요.</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>PIN</th><th>Content</th><th>Updated</th><th>Lock Until</th><th>Action</th></tr></thead><tbody>
-        ${clients.map(client => `<tr><td><strong>${esc(client.alias || '이름 없음')}</strong><div class="code pin-client-id">${esc(client.id)}</div></td><td>${badge(client.status)}</td><td>${badge(client.password?.locked ? 'LOCKED' : (client.password?.registered ? 'SET' : 'NONE'))}</td><td>${accessTypeBadge(client.password?.accessType || 'TYPE1')}</td><td>${esc(fmtTime(client.password?.updatedAt))}</td><td>${esc(fmtTime(client.password?.lockUntil))}</td><td><button class="primary pin-reset-button" data-client-action="password" data-id="${esc(client.id)}">PIN 재설정 / 보기</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Client 없음</td></tr>'}
+    <div class="section-card biometric-client-list"><div class="section-head"><h3>Client Biometric Status</h3><span class="small-note">초기화하면 온라인 APK에서 시스템 생체인증을 다시 수행합니다.</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Client</th><th>Status</th><th>Biometric</th><th>Content</th><th>Enrolled</th><th>Last Verified</th><th>Action</th></tr></thead><tbody>
+        ${clients.map(client => `<tr><td><strong>${esc(client.alias || '이름 없음')}</strong><div class="code biometric-client-id">${esc(client.id)}</div></td><td>${badge(client.status)}</td><td>${badge(client.biometric?.verified ? 'VERIFIED' : (client.biometric?.enrolled ? 'ENROLLED' : 'NONE'))}</td><td>${accessTypeBadge(client.biometric?.accessType || 'TYPE1')}</td><td>${esc(fmtTime(client.biometric?.enrolledAt))}</td><td>${esc(fmtTime(client.biometric?.verifiedAt))}</td><td><button class="primary biometric-reset-button" data-client-action="biometric" data-id="${esc(client.id)}">생체인증 초기화</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Client 없음</td></tr>'}
       </tbody></table></div>
     </div>`;
 }

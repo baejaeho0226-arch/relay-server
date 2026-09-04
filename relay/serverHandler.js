@@ -69,7 +69,7 @@ function BindUnassignedClients(serverId) {
     if (fixedOwner) return 0;
     let changed = 0;
     // A stale, merely connected, or partially authenticated APK must never
-    // consume a PC. Only clients that completed QR, License, PIN and Client
+    // consume a PC. Only clients that completed QR, License, biometric and Client
     // HMAC and have a persisted Build grant may enter the FIFO claim queue.
     const waiting = Array.from(clientIdentities.entries())
         .filter(([, saved]) => {
@@ -77,7 +77,7 @@ function BindUnassignedClients(serverId) {
             const live = GetOnlineClient(saved.id);
             const grant = state.pendingBuildGrants.get(saved.id);
             return !!live && live.connected && live.socket && !live.socket.destroyed &&
-                live.deviceAuthVerified === true && live.passwordVerified === true &&
+                live.deviceAuthVerified === true && live.biometricVerified === true &&
                 !!GetUsableLicenseForConnection(live) && !!grant &&
                 Number(grant.expiresAt) > Now() && !buildGate.BindingForClient(saved.id);
         })
@@ -99,7 +99,7 @@ function BindUnassignedClients(serverId) {
             live.buildSessionId = '';
             targetServer.clients.add(saved.id);
             SendLine(live.socket, `SERVER_ASSIGNED|${serverId}`);
-            // Do not wait for the periodic Build cleanup/sweep.  If QR + PIN
+            // Do not wait for the periodic Build cleanup/sweep. If QR + biometric
             // were completed while this PC was offline, resume the pending
             // grant on the same event-loop turn.
             buildGate.TryDispatchClient(saved.id);
@@ -139,11 +139,11 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
 
     const old = GetOnlineServer(serverId);
     if (old && old !== connection) {
-        // Mark before destroy: its asynchronous close event belongs to the old
-        // transport and must not take the replacement server offline.
-        old.superseded = true;
-        SendLine(old.socket, 'ERROR|REPLACED');
-        old.socket.destroy();
+        // Never let a second process steal the same fixed SERVER-ID. The live
+        // owner remains untouched, preventing APK Build state from bouncing.
+        SendLine(connection.socket, 'ERROR|SERVER_ALREADY_RUNNING');
+        LogEvent('SERVER_DUPLICATE_REJECTED', `${serverId} / ${SafeIP(connection.socket)}`);
+        return false;
     }
 
     connection.identityKey = deviceKey;
