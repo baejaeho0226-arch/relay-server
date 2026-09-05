@@ -1,27 +1,29 @@
 'use strict';
 
-const CACHE = 'relay-admin-shell-v3.5.1-fix7';
+const CACHE = 'relay-admin-shell-v3.5.2-fix7a';
 const SHELL = [
   '/index.html',
-  '/admin.css?v=3.5.1-fix7',
-  '/admin.js?v=3.5.1-fix7',
-  '/admin-pages-monitoring.js?v=3.5.1-fix7',
-  '/admin-pages-access.js?v=3.5.1-fix7',
-  '/admin-pages-operations.js?v=3.5.1-fix7',
-  '/admin-pages-support.js?v=3.5.1-fix7',
-  '/admin-actions.js?v=3.5.1-fix7',
-  '/admin-pages-production.js?v=3.5.1-fix7',
+  '/admin.css?v=3.5.2-fix7a',
+  '/admin.js?v=3.5.2-fix7a',
+  '/admin-pages-monitoring.js?v=3.5.2-fix7a',
+  '/admin-pages-access.js?v=3.5.2-fix7a',
+  '/admin-pages-operations.js?v=3.5.2-fix7a',
+  '/admin-pages-support.js?v=3.5.2-fix7a',
+  '/admin-actions.js?v=3.5.2-fix7a',
+  '/admin-pages-production.js?v=3.5.2-fix7a',
+  '/ui-refresh.html',
+  '/ui-refresh.js?v=3.5.2-fix7a',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(url => new Request(url, { cache: 'no-store' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('relay-admin-shell-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', event => {
@@ -29,17 +31,26 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   // Never cache authenticated API/SSE/health data.
-  if (url.pathname.startsWith('/api/') || url.pathname === '/health' || url.pathname === '/healthz') {
-    event.respondWith(fetch(request));
+  if (url.pathname.startsWith('/api/') || url.pathname === '/health' || url.pathname === '/healthz' || url.pathname === '/ui-version.json' || url.pathname === '/ui-refresh' || url.pathname === '/ui-refresh.html' || url.pathname === '/ui-refresh.js') {
+    event.respondWith(fetch(new Request(request, { cache: 'no-store' })));
     return;
   }
   if (request.method !== 'GET') return;
+  const navigation = request.mode === 'navigate';
+  const cacheable = navigation || SHELL.some(item => new URL(item, self.location.origin).pathname === url.pathname);
   event.respondWith(
-    fetch(request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put(request, copy)).catch(() => {});
+    fetch(new Request(request, { cache: 'no-store' })).then(response => {
+      if (cacheable && response.ok) {
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE).then(cache => cache.put(navigation ? '/index.html' : request, copy)).catch(() => {}));
+      }
       return response;
-    }).catch(() => caches.match(request).then(hit => hit || caches.match('/index.html')))
+    }).catch(async () => {
+      const cache = await caches.open(CACHE);
+      const hit = await cache.match(navigation ? '/index.html' : request);
+      // A missing JavaScript/CSS file must never be replaced with HTML.
+      return hit || new Response('Offline: open this page with a network connection.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    })
   );
 });
 

@@ -107,6 +107,26 @@ async function run() {
     relay.stderr.on('data', chunk => { output += chunk.toString(); });
     await waitForWeb();
 
+    const base = `http://127.0.0.1:${webPort}`;
+    const page = await fetch(`${base}/`);
+    assert.strictEqual(page.status, 200);
+    assert.match(page.headers.get('cache-control'), /no-store/);
+    const html = await page.text();
+    assert.match(html, /data-view="console"[\s\S]*data-view="support"[\s\S]*data-view="reinstallblocks"[\s\S]*data-view="monitor"/);
+    assert.ok(html.includes('/admin-pages-support.js?v=3.5.2-fix7a'));
+    const ui = await fetch(`${base}/ui-version.json`);
+    assert.strictEqual(ui.status, 200);
+    assert.strictEqual(ui.headers.get('cache-control'), 'no-store');
+    assert.deepStrictEqual(await ui.json(), { ready: true, webAdminVersion: '3.5.2', uiRevision: 'fix7a', issues: [] });
+    const recovery = await fetch(`${base}/ui-refresh`);
+    assert.strictEqual(recovery.status, 200);
+    assert.ok((await recovery.text()).includes('id="ui-refresh-button"'));
+    for (const endpoint of ['/', '/ui-refresh', '/ui-version.json']) {
+        const head = await fetch(`${base}${endpoint}`, { method: 'HEAD' });
+        assert.strictEqual(head.status, 200);
+        assert.strictEqual(await head.text(), '');
+    }
+
     const login = await fetch(`http://127.0.0.1:${webPort}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -138,7 +158,7 @@ async function run() {
         assert.strictEqual((await denied.json()).error, 'CSRF_FAILED');
     }
     for (const file of ['admin-pages-support.js', 'admin.css', 'service-worker.js']) {
-        const asset = await fetch(`http://127.0.0.1:${webPort}/${file}?v=3.5.1-fix7`);
+        const asset = await fetch(`http://127.0.0.1:${webPort}/${file}?v=3.5.2-fix7a`);
         assert.strictEqual(asset.status, 200, file);
         assert.ok((await asset.text()).length > 100);
     }
@@ -172,6 +192,7 @@ async function run() {
     console.log('- No HTTP 500 / INTERNAL_ERROR / empty JSON response: PASS');
     console.log('- Serialization fallback and dedicated error panel: PASS');
     console.log('- Pair repair, history clean and device delete HTTP routes: PASS');
+    console.log('- FIX7A menu assets, UI manifest, recovery page and HEAD routes: PASS');
 }
 
 run().finally(async () => {

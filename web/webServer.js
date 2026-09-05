@@ -17,6 +17,7 @@ const { RecordAdminActivity } = require('../services/adminActivity');
 const releaseManager = require('../services/releaseManager');
 
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
+const uiBundle = require('./uiBundle');
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
@@ -116,6 +117,10 @@ function ServeFile(req, res, fileName) {
     if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Not found');
+        return;
+    }
+    if (safeName === 'index.html' && !uiBundle.Check().ready) {
+        uiBundle.Unavailable(res, String(req.method).toUpperCase() === 'HEAD');
         return;
     }
     const ext = path.extname(full).toLowerCase();
@@ -266,6 +271,19 @@ async function RequestHandler(req, res) {
         return;
     }
 
+    if (pathname === '/ui-version.json') {
+        res.setHeader('Cache-Control', 'no-store');
+        if (method === 'HEAD') {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end();
+        } else Json(res, 200, uiBundle.Check());
+        return;
+    }
+    if (pathname === '/ui-refresh') {
+        ServeFile(req, res, '/ui-refresh.html');
+        return;
+    }
+
     if (pathname === '/') {
         ServeFile(req, res, '/index.html');
         return;
@@ -277,6 +295,8 @@ async function RequestHandler(req, res) {
 function StartWebAdmin() {
     const port = Number(config.WEB_ADMIN_PORT || 0);
     if (!(port > 0)) return null;
+    const ui = uiBundle.Check();
+    if (!ui.ready) console.error('[WEB_UI_FILES_MISMATCH]', ui.issues.join(', '));
 
     const server = http.createServer((req, res) => {
         Promise.resolve(RequestHandler(req, res)).catch(error => {

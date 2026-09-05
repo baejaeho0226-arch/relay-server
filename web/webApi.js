@@ -414,6 +414,7 @@ function BuildSystem() {
         rateLimit: RATE_LIMIT_MAX,
         dataDir: DATA_DIR,
         webAdminVersion: WEB_ADMIN_VERSION,
+        webUiRevision: config.WEB_UI_REVISION,
         legacyTcpAdminEnabled: ENABLE_LEGACY_TCP_ADMIN,
         health: HealthSnapshot()
     };
