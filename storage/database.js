@@ -19,9 +19,10 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 144,
+        version: 145,
         clientInstallations: Object.fromEntries(state.clientInstallations),
         supportThreads: Object.fromEntries(state.supportThreads),
+        supportSettings: state.supportSettings,
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,

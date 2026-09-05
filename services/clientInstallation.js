@@ -72,9 +72,11 @@ function Reject(connection) {
     const r = Record(deviceKey, true);
     if (r) {
         const fresh = !r.blockedAt;
+        const changed = fresh || r.attemptKey !== deviceKey;
         r.blockedAt = r.blockedAt || Now();
         r.attemptKey = deviceKey;
-        Save(); // Durable before disconnect. Registry is independent of identity rows.
+        // Automatic probes must not rewrite the complete DB every 15 seconds.
+        if (changed || !state.runtimeStats.lastDatabaseSaveOk) Save();
         for (const live of state.clients.values())
             if (live !== connection && RegistryKey(DeviceKey(live)) === r.key) Disconnect(live);
         for (const entry of r.authorized) require('./buildGate').RevokeForClient(entry.clientId, 'REINSTALL_NOT_ALLOWED');
@@ -155,6 +157,7 @@ function Release(key, actor) {
     if (!r || !r.blockedAt) return { ok: false, reason: 'REINSTALL_BLOCK_NOT_FOUND' };
     // This is the sole release path. Reset enrollment proofs, never grant access.
     // Release stale registration/PC slot; the phone must pass new QR + biometric proof.
+    require('./supportCenter').Backfill();
     const ids = new Set(r.authorized.map(x => x.clientId));
     for (const [deviceKey, saved] of state.clientIdentities) {
         if (RegistryKey(deviceKey) !== r.key) continue;
