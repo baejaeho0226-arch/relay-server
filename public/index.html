@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <title>RELAY // Operations Console</title>
-  <link rel="stylesheet" href="/admin.css?v=3.5.0-biometric1">
+  <link rel="stylesheet" href="/admin.css?v=3.5.1-fix7">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
@@ -51,6 +51,8 @@
           <div class="nav-items">
             <button data-view="dashboard" class="active">Dashboard</button>
             <button data-view="console">Live Console</button>
+            <button data-view="support" data-admin-only>고객센터</button>
+            <button data-view="reinstallblocks" data-admin-only>재설치 차단</button>
             <button data-view="monitor">Health Monitor</button>
             <button data-view="notifications">Notifications <span id="notification-badge" class="nav-count hidden">0</span></button>
           </div>
@@ -146,11 +148,12 @@
     </div>
   </div>
 
-  <script src="/admin.js?v=3.5.0-biometric1" defer></script>
-  <script src="/admin-pages-monitoring.js?v=3.5.0-biometric1" defer></script>
-  <script src="/admin-pages-access.js?v=3.5.0-biometric1" defer></script>
-  <script src="/admin-pages-operations.js?v=3.5.0-biometric1" defer></script>
-  <script src="/admin-actions.js?v=3.5.0-biometric1" defer></script>
-  <script src="/admin-pages-production.js?v=3.5.0-biometric1" defer></script>
+  <script src="/admin.js?v=3.5.1-fix7" defer></script>
+  <script src="/admin-pages-monitoring.js?v=3.5.1-fix7" defer></script>
+  <script src="/admin-pages-access.js?v=3.5.1-fix7" defer></script>
+  <script src="/admin-pages-operations.js?v=3.5.1-fix7" defer></script>
+  <script src="/admin-pages-support.js?v=3.5.1-fix7" defer></script>
+  <script src="/admin-actions.js?v=3.5.1-fix7" defer></script>
+  <script src="/admin-pages-production.js?v=3.5.1-fix7" defer></script>
 </body>
 </html>

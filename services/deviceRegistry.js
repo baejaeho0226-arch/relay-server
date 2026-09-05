@@ -147,6 +147,7 @@ function DeleteClient(clientId) {
     const identity = Identity();
     const id = NormalizeID(clientId);
     if (!identity.ClientExists(id)) return { ok: false, reason: 'CLIENT_NOT_FOUND' };
+    require('./clientInstallation').Backfill();
     const deviceKey = identity.FindClientDeviceKey(id);
     const saved = identity.GetSavedClientByID(id);
     const live = identity.GetOnlineClient(id);

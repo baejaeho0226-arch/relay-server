@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'biometric1';
+const WEB_UI_REVISION = 'fix7';
 
 let session = null;
 let currentView = 'dashboard';
@@ -69,6 +69,8 @@ function clearQrSelectedFile() {
 }
 
 const titles = {
+  support: ['고객센터', 'APK 사용자와 대화합니다. 미접속 기기에는 다음 고객센터 연결 시 답변이 전달됩니다.'],
+  reinstallblocks: ['재설치 차단', 'CLIENT 삭제·바인딩 변경과 관계없이 유지되는 재설치 차단을 관리합니다.'],
   dashboard: ['Dashboard', 'Relay 전체 상태와 최근 이벤트를 확인합니다.'],
   console: ['Live Console', 'Relay 이벤트가 실시간으로 스트리밍됩니다.'],
   trace: ['Request Trace', 'Request ID 기준으로 전달/Retry/ACK 처리 과정을 추적합니다.'],
@@ -206,6 +208,7 @@ async function api(url, options = {}) {
 }
 
 function showLogin() {
+  if (typeof resetSupportUiState === 'function') resetSupportUiState();
   session = null;
   qrScanResult = null;
   clearQrSelectedFile();
@@ -233,9 +236,9 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '3.5.0'} · UI ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '3.5.1'} · UI ${WEB_UI_REVISION}`;
   } catch (_) {
-    webVersionLabel.textContent = `WEB v3.5.0 · UI ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `WEB v3.5.1 · UI ${WEB_UI_REVISION}`;
   }
 }
 
@@ -276,7 +279,7 @@ function startEvents() {
   });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
-    const liveViews = ['dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'clientbiometrics', 'buildsessions', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
+    const liveViews = ['support', 'reinstallblocks', 'dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'clientbiometrics', 'buildsessions', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
     const qrEditInProgress = currentView === 'qrauth' && (qrSelectedFile || qrScanResult);
     if (liveViews.includes(currentView) && !qrEditInProgress) renderCurrent(true);
     updateNotificationBadge();
@@ -411,6 +414,8 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'production') await renderProductionHardening();
     else if (currentView === 'servers') await renderServers();
     else if (currentView === 'clients') await renderClients();
+    else if (currentView === 'support') await renderSupportCenter();
+    else if (currentView === 'reinstallblocks') await renderReinstallBlocks();
     else if (currentView === 'clientbiometrics') await renderClientBiometrics();
     else if (currentView === 'buildsessions') await renderBuildSessions();
     else if (currentView === 'qrauth') await renderQrAuth();

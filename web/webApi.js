@@ -477,6 +477,10 @@ async function HandleApiRequest(req, res, session) {
         return;
     }
 
+    if (await require('./routes/supportInstallationRoutes').Handle({
+        method, pathname, body, res, session, RequireAdmin, Json, ApiError
+    })) return;
+
     if (await buildQrRoutes.Handle({
         method, pathname, body, res, session,
         BuildServers, RequireAdmin, Json, ApiError

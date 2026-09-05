@@ -19,6 +19,8 @@ const endpoints = [
     '/api/ha/status',
     '/api/dashboard',
     '/api/qr-auth',
+    '/api/support',
+    '/api/reinstall-blocks',
     '/api/production',
     '/api/build-sessions',
     '/api/servers',
@@ -130,7 +132,18 @@ async function run() {
         assert.strictEqual(data.ok, true, `${endpoint}: ok=false body=${text}`);
     }
 
+    for (const endpoint of ['/api/support/0000000000000000/reply', `/api/reinstall-blocks/${'A'.repeat(64)}/release`]) {
+        const denied = await fetch(`http://127.0.0.1:${webPort}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: '{}' });
+        assert.strictEqual(denied.status, 403);
+        assert.strictEqual((await denied.json()).error, 'CSRF_FAILED');
+    }
+    for (const file of ['admin-pages-support.js', 'admin.css', 'service-worker.js']) {
+        const asset = await fetch(`http://127.0.0.1:${webPort}/${file}?v=3.5.1-fix7`);
+        assert.strictEqual(asset.status, 200, file);
+        assert.ok((await asset.text()).length > 100);
+    }
     for (const request of [
+        { method: 'POST', endpoint: `/api/reinstall-blocks/${'A'.repeat(64)}/release`, body: {}, status: 409, error: 'REINSTALL_BLOCK_NOT_FOUND' },
         { method: 'POST', endpoint: '/api/pairing/repair', body: {}, status: 200 },
         { method: 'POST', endpoint: '/api/history/clean', body: { scope: 'ALL' }, status: 200 },
         { method: 'DELETE', endpoint: '/api/servers/0000000000000000', status: 404, error: 'SERVER_NOT_FOUND' },

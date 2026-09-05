@@ -329,7 +329,8 @@ function HandleClientBuild(connection, line) {
 function HandleClientLine(connection, line) {
     line = line.trim();
     if (!line) return;
-    if (connection.reinstallBlocked) { SendLine(connection.socket, 'ERROR|REINSTALL_NOT_ALLOWED'); return; }
+    if (connection.reinstallBlocked || require('../services/clientInstallation').IsBlocked(connection)) { require('../services/clientInstallation').Reject(connection); return; }
+    if (line.startsWith('SUPPORT_OPEN|') || line.startsWith('SUPPORT_SEND|')) { require('../services/supportCenter').Handle(connection, line); return; }
 
     if (connection.clientId) {
         if (line.startsWith('CLIENT_INSTALLATION|')) { require('../services/clientInstallation').HandleToken(connection, line.substring('CLIENT_INSTALLATION|'.length)); return; }

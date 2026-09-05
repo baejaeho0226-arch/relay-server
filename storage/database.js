@@ -19,7 +19,9 @@ function SafeField(...args) { return require('../core/utils').SafeField(...args)
 
 function BuildDatabaseObject() {
     return {
-        version: 143,
+        version: 144,
+        clientInstallations: Object.fromEntries(state.clientInstallations),
+        supportThreads: Object.fromEntries(state.supportThreads),
         serviceEnabled: state.serviceEnabled,
         maintenanceMode: state.maintenanceMode,
         minProtocolVersion: state.minProtocolVersion,
@@ -323,6 +325,8 @@ function ImportDatabaseObject(data) {
             });
         }
     }
+    require('../services/clientInstallation').ImportPersisted(data);
+    require('../services/supportCenter').ImportPersisted(data);
     require('../services/clientInstallation').Backfill();
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
 

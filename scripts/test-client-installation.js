@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-installation-test-'));
 process.env.DATA_DIR = dataDir;
-process.env.STORAGE_ENGINE = 'json';
+process.env.STORAGE_ENGINE = process.env.STORAGE_ENGINE || 'json';
 process.env.ADMIN_SECRET = 'installation-test-admin-only';
 
 function connection() {
@@ -20,6 +20,7 @@ function connection() {
     return client;
 }
 
+async function run() {
 try {
     const state = require('../core/state');
     const handler = require('../relay/clientHandler');
@@ -36,7 +37,7 @@ try {
     const token = 'C'.repeat(32);
     const connect = deviceKey => {
         const c = connection();
-        handler.HandleClientConnect(c, deviceKey, 2, '2.9.5');
+        handler.HandleClientConnect(c, deviceKey, 2, '2.9.6');
         return c;
     };
     const authenticate = c => {
@@ -74,8 +75,24 @@ try {
     const persisted = JSON.parse(fs.readFileSync(require('../config/config').DB_FILE, 'utf8'));
     assert.strictEqual(persisted.clients[key].installationToken, token);
 
-    // Reinstall must not create an identity/enrollment or displace the still
-    // valid original socket, even when new-device admin enrollment is enabled.
+    const authorizedSnapshot = JSON.parse(JSON.stringify(database.BuildDatabaseObject()));
+    // Ordinary restart/update still works before a reinstall is detected.
+    const update = connect(key);
+    assert.strictEqual(update.clientId, clientId);
+    assert.strictEqual(authenticate(update), secret);
+    assert.ok(!update.writes.some(line => line.startsWith('DEVICE_SECRET|')));
+
+    // Reinstall locks every connection for this device, revokes all work, and
+    // must not enroll or replace the identity even with enrollment enabled.
+    const serverId = 'BBAABBAABBAABBAA';
+    state.serverIdentities.set('TEST-BLOCK-PC', serverId);
+    saved.serverId = serverId;
+    const pc = connection();
+    Object.assign(pc, { registered: true, serverId, clients: new Set([clientId]), buildClients: new Set([clientId]), buildSessions: new Map(), buildUnlocked: true });
+    state.servers.set(serverId, pc);
+    state.deviceSecrets.set(`SERVER:${serverId}`, 'X'.repeat(43));
+    const sessionId = 'BLS-' + 'A'.repeat(32);
+    state.buildSessions.set(sessionId, { sessionId, clientId, serverId, status: 'AUTHORIZED', expiresAt: Date.now() + 60000 });
     state.enrollmentPolicy.enabled = true;
     const enrollmentCount = state.deviceEnrollments.size;
     const denied = connect(otherInstall);
@@ -83,18 +100,51 @@ try {
     assert.ok(denied.writes.includes('ERROR|REINSTALL_NOT_ALLOWED'));
     assert.strictEqual(state.clientIdentities.has(otherInstall), false);
     assert.strictEqual(state.deviceEnrollments.size, enrollmentCount);
-    assert.strictEqual(state.clients.get(clientId), first);
-    assert.strictEqual(first.socket.destroyed, false);
-    handler.HandleClientLine(denied, `CONNECT|2|2.9.5|${key}`);
+    assert.strictEqual(state.clients.get(clientId), update);
+    assert.strictEqual(state.buildSessions.get(sessionId).status, 'REVOKED');
+    assert.strictEqual(pc.buildUnlocked, false);
+    assert.ok(pc.writes.some(x => x.startsWith('BUILD_REVOKE|') && x.includes('|REINSTALL_NOT_ALLOWED|')));
+    assert.strictEqual(require('../services/buildGate').Rebind(clientId, serverId, 'TEST').ok, true);
+    assert.strictEqual(connect(otherInstall).reinstallBlocked, true, 'binding does not release reinstall lock');
+    assert.strictEqual(update.connected, false);
+    assert.strictEqual(update.deviceAuthVerified, false);
+    assert.strictEqual(update.licenseAuthorized, false);
+    await new Promise(resolve => setTimeout(resolve, 180));
+    assert.strictEqual(update.socket.destroyed, true);
+    assert.strictEqual(denied.socket.destroyed, true);
+    handler.HandleClientLine(denied, `CONNECT|2|2.9.6|${key}`);
     assert.strictEqual(denied.connected, false);
     state.enrollmentPolicy.enabled = false;
 
-    // Ordinary restart/in-place update retains client ID and secret.
-    const update = connect(key);
-    assert.strictEqual(update.clientId, clientId);
-    assert.strictEqual(authenticate(update), secret);
-    assert.ok(!update.writes.some(line => line.startsWith('DEVICE_SECRET|')));
+    assert.strictEqual(connect(key).reinstallBlocked, true);
+    const registryKey = policy.RegistryKey(key);
+    assert.strictEqual(policy.List()[0].key, registryKey);
+    // CLIENT removal, binding repair, history cleanup and restart cannot erase it.
+    require('../services/deviceRegistry').DeleteClient(clientId);
+    require('../services/deviceRegistry').RepairPairing();
+    require('../services/historyCleanup').Clean('ALL', 'TEST');
+    const blockedSnapshot = process.env.STORAGE_ENGINE === 'sqlite'
+        ? require('../storage/sqliteDatabase').LoadSnapshot().data
+        : JSON.parse(fs.readFileSync(require('../config/config').DB_FILE, 'utf8'));
+    assert.ok(blockedSnapshot.clientInstallations[registryKey].blockedAt);
+    assert.ok(!blockedSnapshot.clients[key]);
+    database.ImportDatabaseObject(blockedSnapshot);
+    assert.strictEqual(connect(otherInstall).reinstallBlocked, true);
+    assert.strictEqual(connect(key).reinstallBlocked, true);
+    assert.strictEqual(policy.Release(registryKey, 'TEST_ADMIN').ok, true);
+    assert.strictEqual(policy.Release(registryKey, 'TEST_ADMIN').ok, false);
+    const released = connect(otherInstall);
+    assert.strictEqual(released.connected, true);
+    authenticate(released);
+    assert.strictEqual(released.licenseAuthorized, false);
+    assert.strictEqual(released.biometricVerified, false);
+    assert.strictEqual(released.buildCompleted, false);
+    handler.HandleClientLine(released, `QR_AUTH_RESUME|${released.clientId}`);
+    assert.ok(released.writes.some(x => x.startsWith('QR_AUTH_CHALLENGE|')));
 
+    // Restore a known authorized fixture for independent backup/lost-secret cases.
+    state.clients.clear();
+    database.ImportDatabaseObject(authorizedSnapshot);
     // Backup may restore the old device key/secret; a different no-backup
     // token still blocks authentication and never overwrites the binding.
     const restored = connect(key);
@@ -107,6 +157,8 @@ try {
 
     // A client with lost credentials must not silently recover an already
     // authorized identity by asking the server for a replacement secret.
+    state.clients.clear();
+    database.ImportDatabaseObject(authorizedSnapshot);
     const lostSecret = connect(key);
     handler.HandleClientLine(lostSecret, `CLIENT_INSTALLATION|${token}`);
     handler.HandleClientLine(lostSecret, 'CAPABILITIES|DEVICE_HMAC');
@@ -116,6 +168,17 @@ try {
     assert.strictEqual(result.reason, 'REINSTALL_NOT_ALLOWED');
     assert.strictEqual(state.deviceSecrets.get(`CLIENT:${clientId}`), secret);
     assert.ok(!lostSecret.writes.some(line => line.startsWith('DEVICE_SECRET|')));
+
+    assert.strictEqual(policy.Release(registryKey, 'TEST_ADMIN').ok, true);
+    assert.strictEqual(state.clientIdentities.has(key), false);
+    assert.strictEqual(state.deviceSecrets.has(`CLIENT:${clientId}`), false);
+    assert.strictEqual(state.clientBuildBindings.has(clientId), false);
+    assert.ok([...state.licenses.values()].every(x => x.boundClient !== clientId));
+    const freshAfterReset = connect(otherInstall);
+    assert.strictEqual(freshAfterReset.connected, true);
+    assert.strictEqual(freshAfterReset.biometricVerified, false);
+    state.clients.clear();
+    database.ImportDatabaseObject(authorizedSnapshot);
 
     // Another physical device remains independent. Unapproved reinstallations
     // are also unaffected by the completed-authentication policy.
@@ -143,12 +206,16 @@ try {
     console.log('CLIENT INSTALLATION POLICY PASS');
     console.log('- First authentication and in-place update: PASS');
     console.log('- Reinstall/backup restore/lost-secret rejection: PASS');
-    console.log('- Existing socket, IDs and secrets retained: PASS');
+    console.log('- Full device disconnect, durable deletion/history lock, explicit release: PASS');
     console.log('- Independent devices and unapproved installs: PASS');
     console.log('- Persistence, legacy backfill and profile/history reset: PASS');
 } catch (error) {
     console.error(error.stack || error);
     process.exitCode = 1;
 } finally {
+    if (process.env.STORAGE_ENGINE === 'sqlite') require('../storage/sqliteDatabase').Close();
     fs.rmSync(dataDir, { recursive: true, force: true });
 }
+
+}
+run();
