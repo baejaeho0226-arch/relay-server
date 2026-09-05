@@ -6,9 +6,9 @@ refreshButton.addEventListener('click', async () => {
   refreshStatus.textContent = '웹 화면 파일을 확인 중입니다.';
   try {
     const response = await fetch(`/ui-version.json?t=${Date.now()}`, { cache: 'no-store', credentials: 'same-origin' });
-    if (!response.ok) throw new Error('서버를 확인하지 못했습니다. FIX7A 웹 폴더가 배포됐는지 확인해주세요.');
+    if (!response.ok) throw new Error('서버를 확인하지 못했습니다. FIX8 웹 폴더가 배포됐는지 확인해주세요.');
     const version = await response.json();
-    if (!version.ready) throw new Error(`웹 화면 파일의 교체가 완료되지 않았습니다. FIX7A의 public 폴더 전체를 교체하고 다시 배포해주세요.\n확인할 파일: ${(version.issues || []).join(', ')}`);
+    if (!version.ready) throw new Error(`웹 화면 파일의 교체가 완료되지 않았습니다. FIX8의 public 폴더 전체를 교체하고 다시 배포해주세요.\n확인할 파일: ${(version.issues || []).join(', ')}`);
     refreshStatus.textContent = '이전 화면 캐시를 정리하고 있습니다.';
     if ('caches' in window) {
       const names = await caches.keys();

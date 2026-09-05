@@ -568,6 +568,15 @@ async function clientAction(action, id) {
     return;
   }
 
+  if (action === 'auth-recover') {
+    const accepted = await openModal({ title: '기기 인증 복구', message: `${id}\n기기 통신 키를 다시 발급합니다. QR 승인, 기기 ID, 생체인증 등록 및 PC 연결은 유지됩니다. 현재 연결된 APK가 본인 기기인지 확인해주세요.`, confirmLabel: '기기 인증 복구' });
+    if (!accepted) return;
+    await api('/api/control/security/reset', { method: 'POST', body: { type: 'CLIENT', id } });
+    toast('기기 인증 복구를 요청했습니다. APK에서 자동으로 인증을 이어갑니다.');
+    await renderClients();
+    return;
+  }
+
   if (action === 'biometric') {
     const { client } = await api(`/api/clients/${encodedId}`);
     const v = await openModal({

@@ -136,6 +136,7 @@ async function renderClients() {
     if (roleCanOperate()) html += `<button data-client-action="note" data-id="${id}">Note</button>`;
     if (roleIsAdmin()) {
       html += `<button class="primary" data-client-action="biometric" data-id="${id}">생체인증 관리</button>`;
+      if(client.online)html += `<button data-client-action="auth-recover" data-id="${id}">기기 인증 복구</button>`;
       html += `<button data-client-action="alias" data-id="${id}">Alias</button>`;
       html += `<button data-client-action="move" data-id="${id}">Move</button>`;
       if (client.online && client.status !== 'DISABLED') html += `<button class="warning" data-client-action="kick" data-id="${id}">Kick 60s</button>`;
