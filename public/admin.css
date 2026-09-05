@@ -498,3 +498,12 @@ kbd{border:1px solid rgba(50,255,139,.25);padding:2px 6px;border-radius:3px;back
 @media(max-width:800px){.support-workspace{grid-template-columns:1fr}.support-threads{max-height:180px}.support-conversation{padding:12px}}
 
 .ui-refresh-link{position:fixed;right:18px;bottom:10px;font-size:11px;color:var(--muted);z-index:20}.ui-recovery{max-width:620px;margin:10vh auto;padding:32px}.ui-recovery p{line-height:1.7}.ui-recovery-status{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:20px}.ui-recovery button{margin:12px 0}
+
+/* FIX9 persistent device support */
+.support-settings label { display: block; margin: 12px 0; }
+.support-settings input { display: block; width: 100%; margin-top: 6px; }
+.support-settings summary, .support-device-info summary { cursor: pointer; }
+.support-room-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.support-device-info dl { display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 8px; }
+.support-device-info dd { margin: 0; overflow-wrap: anywhere; }
+.support-device-info p, .support-settings p { color: var(--muted); font-size: 12px; }

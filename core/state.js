@@ -16,6 +16,7 @@ module.exports = {
     clientIdentities: new Map(),
     clientInstallations: new Map(), // Independent security registry; never part of CLIENT/history deletion.
     supportThreads: new Map(),
+    supportSettings: {},
     licenses: new Map(),
 
     disabledServers: new Set(),

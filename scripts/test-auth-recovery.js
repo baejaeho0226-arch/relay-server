@@ -25,7 +25,7 @@ function connect(installationToken = token, capabilities = caps) {
     const socket = { destroyed: false, remoteAddress: '100.64.0.18', write(text) { writes.push(String(text).trim()); return true; }, destroy() { this.destroyed = true; } };
     const c = { type: 'client', socket, writes };
     socket.__relayConnection = c;
-    handler.HandleClientConnect(c, key, 2, '2.9.7');
+    handler.HandleClientConnect(c, key, 2, '2.9.8');
     handler.HandleClientLine(c, `CLIENT_INSTALLATION|${installationToken}`);
     handler.HandleClientLine(c, `CAPABILITIES|${capabilities}`);
     return c;
