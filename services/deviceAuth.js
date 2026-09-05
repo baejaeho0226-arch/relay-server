@@ -20,6 +20,7 @@ function SendEnrollmentSecret(type,id,force=false){
     const key=K(type,id),c=Online(type,id);
     if(!c)return {ok:false,reason:'OFFLINE'};
     if(!Capabilities(type,id).includes('DEVICE_HMAC'))return {ok:false,reason:'CAPABILITY_MISSING'};
+    if(type==='CLIENT'&&!require('./clientInstallation').Ready(c))return {ok:false,reason:'INSTALLATION_REQUIRED'};
 
     let secret=state.deviceSecrets.get(key);
     if(secret && !force) return IssueChallenge(type,id);
@@ -39,6 +40,7 @@ function IssueChallenge(type,id){
     const key=K(type,id),c=Online(type,id);
     if(!c)return {ok:false,reason:'OFFLINE'};
     if(!Capabilities(type,id).includes('DEVICE_HMAC'))return {ok:false,reason:'CAPABILITY_MISSING'};
+    if(type==='CLIENT'&&!require('./clientInstallation').Ready(c))return {ok:false,reason:'INSTALLATION_REQUIRED'};
     if(!state.deviceSecrets.has(key))return SendEnrollmentSecret(type,id,false);
 
     const challengeId=crypto.randomBytes(8).toString('hex').toUpperCase();
@@ -71,6 +73,11 @@ function HandleDeviceAuthError(type,id,parts){
         if(c) SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|RECOVERY_DENIED`);
         return {ok:false,reason:'RECOVERY_DENIED'};
     }
+    if(type==='CLIENT'&&require('./clientInstallation').WasAuthorized(require('../identity/identityManager').GetSavedClientByID(id))){
+        state.deviceAuthChallenges.delete(challengeId);
+        require('./clientInstallation').Reject(c);
+        return {ok:false,reason:'REINSTALL_NOT_ALLOWED'};
+    }
     if(Number(c.deviceSecretRecoveryAt||0)>Now()-60000){
         SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|RECOVERY_RATE_LIMIT`);
         return {ok:false,reason:'RECOVERY_RATE_LIMIT'};
@@ -95,6 +102,7 @@ function HandleAuth(type,id,challengeId,hex){
         try{require('../storage/audit').LogEvent('DEVICE_AUTH_INVALID_CHALLENGE',`${type} ${id} ${challengeId}`);}catch(_){}
         return false;
     }
+    if(type==='CLIENT'&&!require('./clientInstallation').Ready(c))return false;
     const secret=state.deviceSecrets.get(K(type,id));
     const want=Expected(ch,secret||'');
     let ok=false;
@@ -139,6 +147,7 @@ function Reset(type,id){
     const key=K(type,id),c=Online(type,id);
     if(!c)return {ok:false,reason:'OFFLINE'};
     if(!Capabilities(type,id).includes('DEVICE_HMAC'))return {ok:false,reason:'CAPABILITY_MISSING'};
+    if(type==='CLIENT'&&!require('./clientInstallation').Ready(c))return {ok:false,reason:'INSTALLATION_REQUIRED'};
     state.deviceSecrets.delete(key);state.deviceSecretMeta.delete(key);state.deviceAuthStatus.delete(key);
     c.deviceAuthVerified=false;
     require('../storage/database').SaveDatabase();

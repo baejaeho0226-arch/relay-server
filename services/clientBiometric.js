@@ -70,9 +70,12 @@ function NotifyAuthorized(connection, accessType) {
         SendLine(connection.socket, 'BIOMETRIC_ERROR|LICENSE_REQUIRED');
         return false;
     }
+    if (!require('./clientInstallation').Ready(connection)) return false;
     connection.biometricVerified = true;
     connection.accessType = NormalizeAccessType(accessType);
     state.clientBiometricChallenges.delete(connection.clientId);
+    require('./clientInstallation').MarkAuthorized(connection);
+    require('../storage/database').SaveDatabase();
     const groupGuid = require('./userDashboard').GroupGuid(connection.accessType);
     SendLine(connection.socket, `BIOMETRIC_OK|${connection.accessType}|${groupGuid}`);
     require('../relay/notifications').NotifyServerAuthorized(connection.clientId,

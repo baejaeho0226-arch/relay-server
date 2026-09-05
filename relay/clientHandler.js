@@ -111,6 +111,7 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
     deviceKey = String(deviceKey || '').trim();
     if (!deviceKey) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return; }
 
+    if (!require('../services/clientInstallation').CheckDeviceKey(connection, deviceKey)) return;
     let saved = clientIdentities.get(deviceKey);
     if (!saved) saved = MigrateLegacyClientIdentity(deviceKey);
     if (saved) {
@@ -328,8 +329,10 @@ function HandleClientBuild(connection, line) {
 function HandleClientLine(connection, line) {
     line = line.trim();
     if (!line) return;
+    if (connection.reinstallBlocked) { SendLine(connection.socket, 'ERROR|REINSTALL_NOT_ALLOWED'); return; }
 
     if (connection.clientId) {
+        if (line.startsWith('CLIENT_INSTALLATION|')) { require('../services/clientInstallation').HandleToken(connection, line.substring('CLIENT_INSTALLATION|'.length)); return; }
         if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('CLIENT', connection.clientId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('CLIENT', connection.clientId); require('../services/releaseManager').NotifyDevice('CLIENT', connection.clientId); require('../services/deviceAuth').SendEnrollmentSecret('CLIENT', connection.clientId, false); return; }
         if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('CLIENT', connection.clientId, line.split('|').slice(1)); return; }
         if (line.startsWith('PROTOCOL_PROFILE|')) { const p=line.split('|'); require('../services/protocolReadiness').RecordProfile('CLIENT', connection.clientId, p[1], p[2], p.slice(3).join('|')); return; }

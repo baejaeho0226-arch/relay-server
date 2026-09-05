@@ -158,7 +158,10 @@ function ImportDatabaseObject(data) {
                 lastIP: String(value.lastIP || ''),
                 authCount: Number(value.authCount) || 0,
                 sendCount: Number(value.sendCount) || 0,
-                reconnectCount: Number(value.reconnectCount) || 0
+                reconnectCount: Number(value.reconnectCount) || 0,
+                installationAuthorizedAt: Math.max(0, Number(value.installationAuthorizedAt) || 0),
+                installationToken: /^[0-9A-F]{32}$/.test(String(value.installationToken || '').toUpperCase())
+                    ? String(value.installationToken).toUpperCase() : ''
             });
             used.add(id);
         }
@@ -320,6 +323,7 @@ function ImportDatabaseObject(data) {
             });
         }
     }
+    require('../services/clientInstallation').Backfill();
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
 
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;

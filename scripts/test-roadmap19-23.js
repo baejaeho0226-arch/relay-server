@@ -36,7 +36,7 @@ function staticSourceChecks() {
     assert.ok(apk.includes('FBiometricFingerprint: TPath'));
     assert.ok(apk.includes('FBiometricProgressTimer.Interval := 400'));
     assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
-    assert.ok(apk.includes('FQrCornerH: array[0..3] of TRectangle'));
+    assert.ok(!apk.includes('FQrCornerH'));
     assert.ok(!apk.includes('FBrightness'));
     assert.ok(apk.includes('Result.StyledSettings := []'));
     assert.ok(apk.includes('FSupportButton: TRectangle'));

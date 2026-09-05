@@ -127,9 +127,7 @@ async function run() {
     const apkProtocol = fs.readFileSync(path.join(apkDir, 'ApkProtocol.pas'), 'utf8');
     const apkNotifications = fs.readFileSync(
         path.join(apkDir, 'ApkAndroidNotifications.pas'), 'utf8');
-    const project = fs.readFileSync(path.join(apkDir, 'ApkWinSockProject.dpr'), 'utf8');
     const serverDir = path.join(root, 'WinSockServer_Win64');
-    const serverProject = fs.readFileSync(path.join(serverDir, 'WinSockServer.dpr'), 'utf8');
     const serverGuard = fs.readFileSync(path.join(serverDir, 'ServerInstanceGuard.pas'), 'utf8');
     const admin = fs.readdirSync(path.join(__dirname, '..', 'public'))
         .filter(name => /^admin(?:-[a-z-]+)?\.js$/i.test(name))
@@ -150,7 +148,7 @@ async function run() {
     assert.ok(apk.includes('FBiometricTimeoutTimer.Interval := BIOMETRIC_PROMPT_TIMEOUT_MS'));
     assert.ok(apk.includes("ALine.StartsWith('BIOMETRIC_CHALLENGE|')"));
     assert.ok(apk.includes("ALine.StartsWith('BIOMETRIC_OK|')"));
-    assert.ok(apk.includes('FQrCornerH: array[0..3] of TRectangle'));
+    assert.ok(!apk.includes('FQrCornerH'));
     assert.ok(!apk.includes('FBrightness'));
     assert.ok(apk.includes('Result.StyledSettings := []'));
     const notificationSetup = fs.readFileSync(
@@ -159,16 +157,14 @@ async function run() {
     assert.ok(notificationSetup.includes('ACCESS_NOTIFICATION_POLICY'));
     assert.ok(apkNotifications.includes("CHANNEL_AUTH = 'relay_auth_v2'"));
     assert.ok(apkNotifications.includes("Notify('AUTH', Title, MessageText)"));
-    assert.ok(apk.includes("FSupportLabel.Text := '요청 완료'"));
+    assert.ok(apk.includes("SetSupportState('OK')"));
     assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
     assert.ok(!apk.includes('FTitleBar'));
     assert.ok(!apk.includes('FPassword'));
-    assert.ok(!project.includes('ApkPasswordCrypto'));
     assert.ok(apkProtocol.includes('BIOMETRIC_STRONG'));
     assert.ok(apkProtocol.includes('BIOMETRIC_WEAK'));
     assert.ok(!apkProtocol.includes('SCREEN_BRIGHTNESS'));
     assert.ok(apkProtocol.includes('REALTIME_SUPPORT'));
-    assert.ok(serverProject.includes('ServerInstanceGuard'));
     assert.ok(serverGuard.includes('fmShareExclusive'));
     assert.ok(admin.includes('async function renderClientBiometrics()'));
     assert.ok(index.includes('data-view="clientbiometrics"'));

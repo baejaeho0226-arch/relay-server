@@ -85,6 +85,7 @@ function QrMatrix(payload) {
 
 function RequireQrSecurity(connection) {
     if (!connection || !connection.connected || !connection.clientId) return { ok: false, reason: 'CLIENT_NOT_CONNECTED' };
+    if (!require('./clientInstallation').Ready(connection)) return { ok: false, reason: 'INSTALLATION_REQUIRED' };
     const deviceAuth = require('./deviceAuth');
     const capabilities = require('./deviceControl').Capabilities('CLIENT', connection.clientId);
     if (!capabilities.includes('QR_DEVICE_APPROVAL') || !capabilities.includes('DEVICE_HMAC')) {
