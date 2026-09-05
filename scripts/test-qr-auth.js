@@ -125,6 +125,8 @@ async function run() {
         .sort().map(name => fs.readFileSync(path.join(apkDir, name), 'utf8'))
         .join('\n');
     const apkProtocol = fs.readFileSync(path.join(apkDir, 'ApkProtocol.pas'), 'utf8');
+    const apkNotifications = fs.readFileSync(
+        path.join(apkDir, 'ApkAndroidNotifications.pas'), 'utf8');
     const project = fs.readFileSync(path.join(apkDir, 'ApkWinSockProject.dpr'), 'utf8');
     const serverDir = path.join(root, 'WinSockServer_Win64');
     const serverProject = fs.readFileSync(path.join(serverDir, 'WinSockServer.dpr'), 'utf8');
@@ -136,9 +138,14 @@ async function run() {
     const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 
     assert.ok(apk.includes('FMX.BiometricAuth'));
-    assert.ok(apk.includes('TBiometricStrength.Strong'));
     assert.ok(apk.includes('TBiometricStrength.Weak'));
     assert.ok(!apk.includes('TBiometricStrength.DeviceCredential'));
+    assert.ok(apk.includes('FBiometricLaunchTimer.Interval := 350'));
+    assert.ok(apk.includes('procedure TForm1.QueueBiometricAuthentication'));
+    assert.ok(apk.includes('FBiometricFingerprint: TPath'));
+    assert.ok(!apk.includes('FBiometricIcon: TLabel'));
+    assert.ok(apk.includes('FBiometricProgressTimer.Interval := 400'));
+    assert.ok(apk.includes('SetBiometricProgress(100)'));
     assert.ok(apk.includes('procedure TForm1.CancelBiometricPrompt'));
     assert.ok(apk.includes('FBiometricTimeoutTimer.Interval := BIOMETRIC_PROMPT_TIMEOUT_MS'));
     assert.ok(apk.includes("ALine.StartsWith('BIOMETRIC_CHALLENGE|')"));
@@ -146,6 +153,12 @@ async function run() {
     assert.ok(apk.includes('FQrCornerH: array[0..3] of TRectangle'));
     assert.ok(!apk.includes('FBrightness'));
     assert.ok(apk.includes('Result.StyledSettings := []'));
+    const notificationSetup = fs.readFileSync(
+        path.join(apkDir, 'ANDROID_NOTIFICATION_SETUP.txt'), 'utf8');
+    assert.ok(notificationSetup.includes('android.permission.POST_NOTIFICATIONS'));
+    assert.ok(notificationSetup.includes('ACCESS_NOTIFICATION_POLICY'));
+    assert.ok(apkNotifications.includes("CHANNEL_AUTH = 'relay_auth_v2'"));
+    assert.ok(apkNotifications.includes("Notify('AUTH', Title, MessageText)"));
     assert.ok(apk.includes("FSupportLabel.Text := '요청 완료'"));
     assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
     assert.ok(!apk.includes('FTitleBar'));
@@ -162,7 +175,7 @@ async function run() {
 
     console.log('QR + BIOMETRIC END-TO-END PASS');
     console.log('- Signed one-minute QR approval: PASS');
-    console.log('- Strong/Weak biometric challenge and device HMAC proof: PASS');
+    console.log('- Class 2/3 biometric challenge and device HMAC proof: PASS');
     console.log('- No biometric template storage: PASS');
     console.log('- Duplicate WinSockServer local guard source: PASS');
 }
