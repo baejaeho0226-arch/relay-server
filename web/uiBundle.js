@@ -39,7 +39,7 @@ function Check(directory = PUBLIC_DIR) {
 }
 function Unavailable(res, isHead = false) {
   // This fallback is independent of public/index.html and its obsolete JS.
-  const html = '<!doctype html><html lang="ko"><meta charset="utf-8"><title>웹 화면 업데이트 확인</title><h1>웹 화면 파일을 확인해주세요.</h1><p>서버와 웹 화면 파일의 버전이 일치하지 않습니다. FIX7A의 public 폴더 전체를 교체하고 재배포해주세요.</p><p>APK 및 기존 데이터는 교체할 필요가 없습니다.</p><a href="/ui-refresh">웹 화면 새로 불러오기</a></html>';
+  const html = '<!doctype html><html lang="ko"><meta charset="utf-8"><title>웹 화면 업데이트 확인</title><h1>웹 화면 파일을 확인해주세요.</h1><p>서버와 웹 화면 파일의 버전이 일치하지 않습니다. FIX8의 public 폴더 전체를 교체하고 재배포해주세요.</p><p>APK 및 기존 데이터는 교체할 필요가 없습니다.</p><a href="/ui-refresh">웹 화면 새로 불러오기</a></html>';
   res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '30' });
   res.end(isHead ? undefined : html);
 }

@@ -18,7 +18,7 @@ function testBundle() {
     assert.equal(bundle.Check(temp).ready, true);
     fs.writeFileSync(path.join(temp, 'index.html'), source('public/index.html').replace(/\r?\n/g, '\r\n'));
     assert.equal(bundle.Check(temp).ready, true, 'Windows line endings are compatible');
-    fs.writeFileSync(path.join(temp, 'admin.js'), source('public/admin.js').replace("'fix7a'", "'biometric1'"));
+    fs.writeFileSync(path.join(temp, 'admin.js'), source('public/admin.js').replace("'fix8'", "'biometric1'"));
     assert.deepEqual(bundle.Check(temp).issues, ['public/admin.js']);
     fs.unlinkSync(path.join(temp, 'admin-pages-support.js'));
     assert.deepEqual(bundle.Check(temp).issues, ['public/admin.js', 'public/admin-pages-support.js']);
@@ -58,7 +58,7 @@ async function testRefresh(ready) {
     fetch: async (_, options) => {
       assert.equal(options.cache, 'no-store');
       assert.equal(options.credentials, 'same-origin');
-      return { ok: true, json: async () => ({ ready, uiRevision: 'fix7a', issues: ['public/admin.js'] }) };
+      return { ok: true, json: async () => ({ ready, uiRevision: 'fix8', issues: ['public/admin.js'] }) };
     }
   };
   vm.runInNewContext(source('public/ui-refresh.js'), context);
@@ -66,7 +66,7 @@ async function testRefresh(ready) {
   if (ready) {
     assert.deepEqual(removed, ['relay-admin-shell-old']);
     assert.equal(updates, 1);
-    assert.match(redirected, /^\/\?ui-refresh=fix7a-/);
+    assert.match(redirected, /^\/\?ui-refresh=fix8-/);
   } else {
     assert.deepEqual(removed, []);
     assert.equal(updates, 0);
@@ -99,7 +99,7 @@ async function testWorker() {
   };
   vm.runInNewContext(source('public/service-worker.js'), {
     self: worker, URL, Request: BrowserRequest, Response,
-    caches: { open: async () => cache, keys: async () => ['relay-admin-shell-old', 'relay-admin-shell-v3.5.2-fix7a', 'another-app-cache'], delete: async name => { removed.push(name); } },
+    caches: { open: async () => cache, keys: async () => ['relay-admin-shell-old', 'relay-admin-shell-v3.5.3-fix8', 'another-app-cache'], delete: async name => { removed.push(name); } },
     fetch: async request => {
       network.push(request);
       if (failNetwork) throw new Error('OFFLINE');
@@ -120,7 +120,7 @@ async function testWorker() {
     await Promise.all(work);
     return result;
   }
-  await request('/admin.js?v=3.5.2-fix7a');
+  await request('/admin.js?v=3.5.3-fix8');
   assert.equal(puts.length, 1);
   responseStatus = 503;
   assert.equal((await request('/')).status, 503);

@@ -329,10 +329,13 @@ function HandleClientBuild(connection, line) {
 function HandleClientLine(connection, line) {
     line = line.trim();
     if (!line) return;
+    // Ignore late frames from a socket replaced by a newer connection.
+    if(connection.superseded || (connection.clientId && GetOnlineClient(connection.clientId)!==connection))return;
     if (connection.reinstallBlocked || require('../services/clientInstallation').IsBlocked(connection)) { require('../services/clientInstallation').Reject(connection); return; }
     if (line.startsWith('SUPPORT_OPEN|') || line.startsWith('SUPPORT_SEND|')) { require('../services/supportCenter').Handle(connection, line); return; }
 
     if (connection.clientId) {
+        if (line.startsWith('DEVICE_RECOVERY_PROOF|')) { require('../services/clientAuthRecovery').Handle(connection,line.split('|')); return; }
         if (line.startsWith('CLIENT_INSTALLATION|')) { require('../services/clientInstallation').HandleToken(connection, line.substring('CLIENT_INSTALLATION|'.length)); return; }
         if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('CLIENT', connection.clientId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('CLIENT', connection.clientId); require('../services/releaseManager').NotifyDevice('CLIENT', connection.clientId); require('../services/deviceAuth').SendEnrollmentSecret('CLIENT', connection.clientId, false); return; }
         if (line.startsWith('DEVICE_INFO|')) { require('../services/deviceControl').RecordDeviceInfo('CLIENT', connection.clientId, line.split('|').slice(1)); return; }

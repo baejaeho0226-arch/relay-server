@@ -165,10 +165,14 @@ try {
     const authLine = lostSecret.writes.filter(line => line.startsWith('AUTH_CHALLENGE|')).pop().split('|');
     const result = auth.HandleDeviceAuthError('CLIENT', clientId,
         ['DEVICE_AUTH_ERROR', authLine[1], 'NO_SECRET']);
-    assert.strictEqual(result.reason, 'REINSTALL_NOT_ALLOWED');
+    assert.strictEqual(result.reason, 'RECOVERY_ADMIN_REQUIRED');
+    assert.ok(!lostSecret.reinstallBlocked);
     assert.strictEqual(state.deviceSecrets.get(`CLIENT:${clientId}`), secret);
     assert.ok(!lostSecret.writes.some(line => line.startsWith('DEVICE_SECRET|')));
 
+    // A different installation token still creates a real block.
+    handler.HandleClientLine(lostSecret, `CLIENT_INSTALLATION|${'D'.repeat(32)}`);
+    assert.strictEqual(lostSecret.reinstallBlocked, true);
     assert.strictEqual(policy.Release(registryKey, 'TEST_ADMIN').ok, true);
     assert.strictEqual(state.clientIdentities.has(key), false);
     assert.strictEqual(state.deviceSecrets.has(`CLIENT:${clientId}`), false);
