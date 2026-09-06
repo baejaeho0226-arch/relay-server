@@ -163,6 +163,7 @@ function ImportDatabaseObject(data) {
                 sendCount: Number(value.sendCount) || 0,
                 reconnectCount: Number(value.reconnectCount) || 0,
                 installationAuthorizedAt: Math.max(0, Number(value.installationAuthorizedAt) || 0),
+                installationObservedAt: Math.max(0, Number(value.installationObservedAt) || 0),
                 installationToken: /^[0-9A-F]{32}$/.test(String(value.installationToken || '').toUpperCase())
                     ? String(value.installationToken).toUpperCase() : ''
             });

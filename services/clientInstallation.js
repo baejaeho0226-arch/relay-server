@@ -31,7 +31,8 @@ function WasAuthorized(saved) {
         Number(profile && profile.verifiedAt || 0) > 0 || state.clientBuildBindings.has(saved.id);
 }
 function Remember(deviceKey, saved) {
-    if (!WasAuthorized(saved)) return;
+    if (!WasAuthorized(saved) && !Number(saved && saved.installationObservedAt || 0) &&
+        !Number(saved && saved.lastAuthAt || 0)) return;
     const record = Record(deviceKey, true);
     if (!record) return;
     const previous = record.authorized.find(x => x.deviceKey === deviceKey);
@@ -97,6 +98,25 @@ function CheckDeviceKey(connection, deviceKey) {
     if (r.authorized.some(x => !x.deviceKey.startsWith('ANDROID-'))) return Reject(connection);
     return true; // Legacy migration must still prove the retained secret.
 }
+function CheckConnectToken(connection, deviceKey, token) {
+    // FIX10 sends the no-backup token with CONNECT, before attaching a socket
+    // or allowing maintenance/disabled-PC gates to hide a restored-key reinstall.
+    // Older APKs still send CLIENT_INSTALLATION after CONNECTED.
+    if (token === '') return true;
+    token = String(token).trim().toUpperCase();
+    if (!/^[0-9A-F]{32}$/.test(token)) {
+        SendLine(connection.socket, 'ERROR|INSTALLATION_TOKEN_INVALID');
+        return false;
+    }
+    const legacyKey = `ANDROID-${AndroidBase(deviceKey)}`;
+    const saved = state.clientIdentities.get(deviceKey) || state.clientIdentities.get(legacyKey);
+    const r = Record(deviceKey);
+    const entry = r && r.authorized.find(x => x.deviceKey === deviceKey || x.deviceKey === legacyKey);
+    const expected = entry && entry.token || saved && saved.installationToken;
+    if (expected && expected !== token) return Reject(connection);
+    connection.installationToken = token;
+    return true;
+}
 function HandleToken(connection, token) {
     token = String(token || '').trim().toUpperCase();
     if (!/^[0-9A-F]{32}$/.test(token)) {
@@ -136,6 +156,26 @@ function MarkAuthorized(connection) {
     Remember(DeviceKey(connection), saved);
     return true;
 }
+function MarkObserved(connection) {
+    const saved = identity.GetSavedClientByID(connection.clientId);
+    if (!saved || !connection.deviceAuthVerified || !Ready(connection)) return false;
+    // Legacy clients without an installation token are migrated at biometric
+    // approval. Never register an unverified raw CONNECT as a trusted install.
+    if (!/^[0-9A-F]{32}$/.test(connection.installationToken || '')) return true;
+    if (saved.installationObservedAt && saved.installationToken === connection.installationToken) return true;
+    const old = { ...saved };
+    const key = RegistryKey(DeviceKey(connection));
+    const oldRecord = state.clientInstallations.has(key) ? structuredClone(state.clientInstallations.get(key)) : null;
+    saved.installationObservedAt = Now();
+    saved.installationToken = connection.installationToken;
+    Remember(DeviceKey(connection), saved);
+    if (Save()) return true;
+    delete saved.installationObservedAt;
+    delete saved.installationToken;
+    Object.assign(saved, old);
+    if (oldRecord) state.clientInstallations.set(key, oldRecord); else state.clientInstallations.delete(key);
+    return false;
+}
 function Backfill() {
     for (const [key, saved] of state.clientIdentities) {
         if (!saved.installationAuthorizedAt && WasAuthorized(saved)) {
@@ -163,6 +203,7 @@ function Release(key, actor) {
         if (RegistryKey(deviceKey) !== r.key) continue;
         ids.add(saved.id);
         saved.installationAuthorizedAt = 0;
+        saved.installationObservedAt = 0;
         saved.installationToken = '';
         const live = identity.GetOnlineClient(saved.id);
         if (live) Disconnect(live, 'INSTALLATION_RESET');
@@ -193,5 +234,5 @@ function ImportPersisted(data) {
             attemptKey: RegistryKey(raw.attemptKey) === key ? raw.attemptKey : '', releasedAt: Math.max(0, Number(raw.releasedAt) || 0), releasedBy: String(raw.releasedBy || '').slice(0, 64) });
     }
 }
-module.exports = { AndroidBase, RegistryKey, WasAuthorized, CheckDeviceKey, HandleToken, Ready,
-    MarkAuthorized, Backfill, Reject, IsBlocked, List, Release, ImportPersisted };
+module.exports = { AndroidBase, RegistryKey, WasAuthorized, CheckDeviceKey, CheckConnectToken, HandleToken, Ready,
+    MarkAuthorized, MarkObserved, Backfill, Reject, IsBlocked, List, Release, ImportPersisted };

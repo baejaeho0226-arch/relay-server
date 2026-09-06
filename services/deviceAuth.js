@@ -139,6 +139,11 @@ function HandleAuth(type,id,challengeId,hex){
     state.deviceAuthChallenges.delete(challengeId);
     if(ok){
         c.deviceAuthVerified=true;
+        if(type==='CLIENT'&&!require('./clientInstallation').MarkObserved(c)){
+            c.deviceAuthVerified=false;
+            SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|STORAGE_SAVE_FAILED`);
+            return false;
+        }
         Status(type,id,'VERIFIED',{enrolledAt:(state.deviceAuthStatus.get(K(type,id))||{}).enrolledAt||Now(),verifiedAt:Now()});
         SendLine(c.socket,`DEVICE_AUTH_OK|${challengeId}`);
         if(type==='SERVER') require('./buildGate').TryDispatchServer(id);

@@ -11,6 +11,7 @@ async function Handle({ method, pathname, body, url, res, session, RequireAdmin,
     if (method === 'GET' && pathname === '/api/support') { send({ threads: support.List(), settings: support.Info() }); return true; }
     if (method === 'GET' && pathname === '/api/reinstall-blocks') { send({ blocks: installation.List() }); return true; }
     if (method === 'POST' && pathname === '/api/support/presence') { send(support.Presence(session, body.active === true)); return true; }
+    if (method === 'POST' && pathname === '/api/support/availability') { send(support.Availability(session, body.mode)); return true; }
     if (method === 'POST' && pathname === '/api/support/settings') { send(support.Settings(body)); return true; }
     let m = pathname.match(/^\/api\/support\/([0-9A-F]{16})(?:\/(reply|read|close|delete|reopen))?$/i);
     if (m) {

@@ -8,7 +8,7 @@ const Save = () => require('../storage/database').SaveDatabase();
 const encode = value => Buffer.from(JSON.stringify(value), 'utf8').toString('base64');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex').toUpperCase();
 const validId = id => /^[A-Za-z0-9_-]{8,64}$/.test(String(id || ''));
-const heartbeats = new Map();
+const CLOSE_MESSAGE = '관리자에 의해 상담이 종료되었습니다. 추가 문의가 있으시면 메시지를 남겨주세요. 새로운 상담으로 이어서 도와드리겠습니다.';
 const DEFAULT_SETTINGS = Object.freeze({ hours: '상담시간 미설정', greeting: '궁금한 내용을 남겨주세요.', responseGuide: '오프라인 문의도 보관됩니다. 관리자가 확인 후 답변합니다.' });
 function ValidateText(text) {
     return typeof text === 'string' && text.trim().length > 0 && text.length <= 1000 &&
@@ -94,20 +94,27 @@ function Live(t) {
 }
 function Presence(session, active) {
     if (!session || session.role !== 'admin' || !session.id) return { ok: false, reason: 'ADMIN_REQUIRED' };
-    if (active) heartbeats.set(session.id, Now()); else heartbeats.delete(session.id);
+    // Compatibility for older tabs: page heartbeats never change availability.
     return { ok: true, ...Info() };
 }
+function Availability(session, mode) {
+    if (!session || session.role !== 'admin' || !session.id) return { ok: false, reason: 'ADMIN_REQUIRED' };
+    if (!['ONLINE', 'OFFLINE'].includes(mode)) return { ok: false, reason: 'INVALID_SUPPORT_AVAILABILITY' };
+    const old = state.supportSettings;
+    state.supportSettings = { ...old, adminOnline: mode === 'ONLINE' };
+    if (!Save()) { state.supportSettings = old; return { ok: false, reason: 'STORAGE_SAVE_FAILED' }; }
+    for (const t of state.supportThreads.values()) for (const c of Live(t)) PushInfo(c, t);
+    return { ok: true, settings: Info() };
+}
 function Info(t) {
-    const sessions = new Set(require('../web/webAuth').ListSessions(null).filter(s => s.role === 'admin').map(s => s.id));
-    for (const [id, at] of heartbeats) if (!sessions.has(id) || Now() - at >= 45000) heartbeats.delete(id);
-    return { ...DEFAULT_SETTINGS, ...state.supportSettings, adminOnline: heartbeats.size > 0,
+    return { ...DEFAULT_SETTINGS, ...state.supportSettings, adminOnline: state.supportSettings.adminOnline === true,
         baseSeq: t && t.messages.length ? t.messages[0].seq - 1 : 0, roomId: t && t.clientId || '', status: t && t.status || 'OPEN', epoch: t && t.epoch || '', revision: t && t.revision || 1 };
 }
 function Settings(value) {
     if (!value || !['hours', 'greeting', 'responseGuide'].every(k => typeof value[k] === 'string' && value[k].trim() && value[k].length <= 160 && !/[\x00-\x1F]/.test(value[k])))
         return { ok: false, reason: 'INVALID_SUPPORT_SETTINGS' };
     const old = state.supportSettings;
-    state.supportSettings = Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map(k => [k, value[k].trim()]));
+    state.supportSettings = { ...old, ...Object.fromEntries(Object.keys(DEFAULT_SETTINGS).map(k => [k, value[k].trim()])) };
     if (!Save()) { state.supportSettings = old; return { ok: false, reason: 'STORAGE_SAVE_FAILED' }; }
     return { ok: true, settings: Info() };
 }
@@ -186,6 +193,7 @@ function Handle(c, line) {
     const result = Append(t, 'CLIENT', p[1], text, v2 ? p[2] : c.supportLegacyRevision);
     if (!result.ok) { error(result.reason); return; }
     c.lastSupportSendAt = Now(); SendLine(c.socket, `SUPPORT_MESSAGE|${encode(result.message)}`);
+    PushInfo(c, t);
     if (!result.duplicate) {
         require('./notificationCenter').AddNotification({ severity: 'INFO', type: 'CUSTOMER_SUPPORT', title: '고객센터 새 문의', message: `상담 ${t.clientId}`, entityType: 'CLIENT', entityId: c.clientId });
         require('../storage/audit').LogEvent('CUSTOMER_SUPPORT_MESSAGE', t.clientId);
@@ -223,10 +231,19 @@ function Reply(id, text, requestId, revision) {
 function Change(id, action, revision) {
     const t = Room(id); if (!t) return { ok: false, reason: 'SUPPORT_NOT_FOUND' };
     if (Number(revision) !== t.revision) return { ok: false, reason: 'HISTORY_CHANGED' };
+    if (!['close', 'reopen', 'delete'].includes(action)) return { ok: false, reason: 'INVALID_ACTION' };
+    if ((action === 'close' && t.status === 'CLOSED') || (action === 'reopen' && t.status === 'OPEN') ||
+        (action === 'delete' && t.status === 'DELETED')) return { ok: true, thread: Read(id) };
+    if (t.status === 'DELETED') return { ok: false, reason: 'SUPPORT_DELETED' };
     const old = structuredClone(t);
+    let closingMessage;
     if (action === 'delete') {
         t.messages = []; t.unreadAdmin = 0; t.nextSeq = 1; t.epoch = crypto.randomUUID(); t.revision++; t.status = 'DELETED';
-    } else if (action === 'close') { t.status = 'CLOSED'; t.unreadAdmin = 0; }
+    } else if (action === 'close') {
+        closingMessage = { seq: t.nextSeq++, id: crypto.randomUUID(), role: 'SYSTEM', text: CLOSE_MESSAGE, at: Now(), epoch: t.epoch };
+        t.messages = [...t.messages, closingMessage];
+        t.status = 'CLOSED'; t.unreadAdmin = 0;
+    }
     else if (action === 'reopen') t.status = 'OPEN';
     else return { ok: false, reason: 'INVALID_ACTION' };
     t.updatedAt = Now();
@@ -234,6 +251,7 @@ function Change(id, action, revision) {
     for (const live of Live(t)) {
         live.supportLegacyRevision = null;
         if (action === 'delete') SendLine(live.socket, `SUPPORT_RESET|${encode(Info(t))}`);
+        if (closingMessage) SendLine(live.socket, `SUPPORT_MESSAGE|${encode(closingMessage)}`);
         PushInfo(live, t);
     }
     require('../storage/audit').LogEvent('CUSTOMER_SUPPORT_' + action.toUpperCase(), id);
@@ -242,11 +260,12 @@ function Change(id, action, revision) {
 function ImportPersisted(data) {
     state.supportThreads.clear();
     state.supportSettings = { ...DEFAULT_SETTINGS };
+    state.supportSettings.adminOnline = data.supportSettings && data.supportSettings.adminOnline === true;
     for (const k of Object.keys(DEFAULT_SETTINGS)) if (data.supportSettings && typeof data.supportSettings[k] === 'string' && data.supportSettings[k].length <= 160)
         state.supportSettings[k] = data.supportSettings[k];
     for (const [id, raw] of Object.entries(data.supportThreads || {}).slice(0, 5000)) {
         if (!/^[0-9A-F]{16}$/.test(id) || !raw || !Array.isArray(raw.messages)) continue;
-        const messages = raw.messages.filter(m => m && validId(m.id) && ValidateText(m.text) && ['CLIENT', 'ADMIN'].includes(m.role) && Number.isSafeInteger(m.seq) && m.seq > 0).sort((a, b) => a.seq - b.seq);
+        const messages = raw.messages.filter(m => m && validId(m.id) && ValidateText(m.text) && ['CLIENT', 'ADMIN', 'SYSTEM'].includes(m.role) && Number.isSafeInteger(m.seq) && m.seq > 0).sort((a, b) => a.seq - b.seq);
         const epoch = validId(raw.epoch) ? raw.epoch : crypto.randomUUID();
         state.supportThreads.set(id, { clientId: id, currentClientId: raw.currentClientId || id, aliases: Array.isArray(raw.aliases) ? raw.aliases : [id],
             createdAt: Number(raw.createdAt) || Number(raw.updatedAt) || Now(), deviceKey: raw.deviceKey || '', tokenHashes: Array.isArray(raw.tokenHashes) ? raw.tokenHashes : [],
@@ -257,4 +276,4 @@ function ImportPersisted(data) {
     }
     Backfill();
 }
-module.exports = { Handle, List, Read, Reply, MarkRead, Change, ImportPersisted, Backfill, Presence, Info, Settings };
+module.exports = { Handle, List, Read, Reply, MarkRead, Change, ImportPersisted, Backfill, Presence, Availability, Info, Settings };

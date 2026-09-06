@@ -1,6 +1,6 @@
 {
   "name": "pure-tcp-relay",
-  "version": "6.7.5",
+  "version": "6.7.6",
   "description": "Pure TCP Relay with signed QR approval, strong biometric proof, leased Build sessions, fixed device pairing, typed processors, SQLite storage and active/standby HA",
   "main": "server.js",
   "scripts": {
@@ -21,7 +21,8 @@
     "ui:manifest": "node scripts/check-web-ui.js --write",
     "test:uicache": "node scripts/test-web-ui-cache.js",
     "test:authrecovery": "node scripts/test-auth-recovery.js",
-    "test:support-persistence": "node scripts/test-support-persistence.js"
+    "test:support-persistence": "node scripts/test-support-persistence.js",
+    "test:fix10": "node scripts/test-fix10-support-installation.js"
   },
   "engines": {
     "node": ">=22.13"
