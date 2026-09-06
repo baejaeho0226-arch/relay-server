@@ -38,6 +38,7 @@ function latest(c, prefix) {
 function prove(c, secret) {
     const p = latest(c, 'AUTH_CHALLENGE');
     handler.HandleClientLine(c, `DEVICE_AUTH|${p[1]}|${hmac(secret, `CLIENT|${c.clientId}|${p[1]}|${p[2]}|${p[3]}`)}`);
+    if (c.deviceAuthVerified) handler.HandleClientLine(c, `CLIENT_PERMISSIONS|1|7|${hmac(secret, `PERMISSIONS|${c.clientId}|${p[1]}|1|7`)}`);
 }
 function finishRecovery(c) {
     const p = latest(c, 'DEVICE_RECOVERY_CHALLENGE');

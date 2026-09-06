@@ -80,6 +80,7 @@ function AttachClient(connection, saved) {
     connection.buildSessionId = '';
     connection.lastServerAuthState = '';
     connection.deviceAuthVerified = false;
+    require('../services/clientPermissions').Reset(connection);
     connection.lastSeen = Now();
     connection.lastIP = SafeIP(connection.socket);
     clients.set(saved.id, connection);
@@ -336,6 +337,7 @@ function HandleClientLine(connection, line) {
     if (/^SUPPORT_(OPEN|SEND|SEND_V2|SYNC|STATUS|DEVICE)\|/.test(line)) { require('../services/supportCenter').Handle(connection, line); return; }
 
     if (connection.clientId) {
+        if (line.startsWith('CLIENT_PERMISSIONS|')) { require('../services/clientPermissions').Handle(connection, line.split('|')); return; }
         if (line.startsWith('DEVICE_RECOVERY_PROOF|')) { require('../services/clientAuthRecovery').Handle(connection,line.split('|')); return; }
         if (line.startsWith('CLIENT_INSTALLATION|')) { require('../services/clientInstallation').HandleToken(connection, line.substring('CLIENT_INSTALLATION|'.length)); return; }
         if (line.startsWith('CAPABILITIES|')) { const dc=require('../services/deviceControl'); dc.RecordCapabilities('CLIENT', connection.clientId, line.substring('CAPABILITIES|'.length)); dc.PushDesiredConfig('CLIENT', connection.clientId); require('../services/releaseManager').NotifyDevice('CLIENT', connection.clientId); require('../services/deviceAuth').SendEnrollmentSecret('CLIENT', connection.clientId, false); return; }
@@ -376,6 +378,12 @@ function HandleClientLine(connection, line) {
         const token = String(line.split('|')[1] || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
         SendLine(connection.socket, token ? `LINK_PONG|${token}` : 'LINK_PONG');
         return;
+    }
+
+    if (/^(LICENSE_AUTH|QR_AUTH_RESUME|QR_AUTH_STATUS|BIOMETRIC_BEGIN|BIOMETRIC_PROOF|BUILD|SEND)\|/.test(line) &&
+        !require('../services/clientPermissions').Ready(connection)) {
+        const oldApk = connection.appVersion && !require('../core/utils').IsVersionAtLeast(connection.appVersion, '2.10.0');
+        SendLine(connection.socket, oldApk ? 'ERROR|CLIENT_UPDATE_REQUIRED|2.10.0' : 'ERROR|PERMISSIONS_REQUIRED'); return;
     }
 
     if (line.startsWith('LICENSE_AUTH|')) {

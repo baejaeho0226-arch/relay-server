@@ -25,7 +25,25 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'fix10';
+const WEB_UI_REVISION = 'fix11';
+const menuToggle = document.getElementById('menu-toggle');
+function closeMobileMenu() {
+  app.classList.remove('menu-open');
+  if (menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+}
+if (menuToggle) menuToggle.addEventListener('click', () => {
+  const open = app.classList.toggle('menu-open');
+  menuToggle.setAttribute('aria-expanded', String(open));
+  if (open) nav.querySelector('button.active')?.focus();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && app.classList.contains('menu-open')) {
+    closeMobileMenu(); menuToggle?.focus();
+  }
+});
+app.addEventListener('click', event => {
+  if (event.target === app && app.classList.contains('menu-open')) closeMobileMenu();
+});
 
 let session = null;
 let currentView = 'dashboard';
@@ -71,38 +89,38 @@ function clearQrSelectedFile() {
 const titles = {
   support: ['고객센터', 'APK 사용자와 대화합니다. 미접속 기기에는 다음 고객센터 연결 시 답변이 전달됩니다.'],
   reinstallblocks: ['재설치 차단', 'CLIENT 삭제·바인딩 변경과 관계없이 유지되는 재설치 차단을 관리합니다.'],
-  dashboard: ['Dashboard', 'Relay 전체 상태와 최근 이벤트를 확인합니다.'],
-  console: ['Live Console', 'Relay 이벤트가 실시간으로 스트리밍됩니다.'],
-  trace: ['Request Trace', 'Request ID 기준으로 전달/Retry/ACK 처리 과정을 추적합니다.'],
-  monitor: ['Health Monitor', 'Server / Client RTT와 연결 상태를 3초 단위로 감시합니다.'],
-  terminal: ['Command Terminal', '허용된 Relay 관리 명령만 실행합니다. OS Shell은 연결되지 않습니다.'],
-  distribution: ['Distribution', 'Server별 Live / Binding Client 분포와 Drain 진행률을 확인합니다.'],
-  failover: ['Emergency Failover', '기존 Primary 바인딩을 보존한 채 opt-in Client만 장애 시 임시 Server로 재배치합니다.'],
-  recovery: ['Request Recovery', 'Offline Queue, Request Replay, Dead Letter Queue를 관리합니다.'],
-  notifications: ['Notifications', '중요 운영 경고와 시스템 이벤트를 확인합니다.'],
-  processors: ['Number Processing', '숫자 허용 범위·차단값 정책과 Processor 처리 통계를 관리합니다.'],
-  reports: ['Push / Daily Report', 'PWA Push 구독과 날짜별 Relay Health 리포트를 관리합니다.'],
-  production: ['Production Hardening', '1:1 승인, 배포 무결성, 패스키, 감사 체인과 운영 복원력을 통합 관리합니다.'],
-  servers: ['Servers', 'WinSockServer 연결과 상태를 관리합니다.'],
-  clients: ['Clients', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
-  clientbiometrics: ['Client 생체인증', 'APK의 Android 시스템 생체인증 상태와 재등록을 관리합니다.'],
-  buildsessions: ['Build Sessions', 'Build Lease, APK↔Server 고정 바인딩, 즉시 Revoke를 관리합니다.'],
-  licenses: ['Licenses', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
+  dashboard: ['대시보드', 'Relay 전체 상태와 최근 이벤트를 확인합니다.'],
+  console: ['실시간 이벤트', 'Relay 이벤트가 실시간으로 스트리밍됩니다.'],
+  trace: ['요청 추적', 'Request ID 기준으로 전달/Retry/ACK 처리 과정을 추적합니다.'],
+  monitor: ['연결 상태', 'Server / Client RTT와 연결 상태를 3초 단위로 감시합니다.'],
+  terminal: ['관리 명령', '허용된 Relay 관리 명령만 실행합니다. OS Shell은 연결되지 않습니다.'],
+  distribution: ['기기 배정', 'Server별 Live / Binding Client 분포와 Drain 진행률을 확인합니다.'],
+  failover: ['장애 전환', '기존 Primary 바인딩을 보존한 채 opt-in Client만 장애 시 임시 Server로 재배치합니다.'],
+  recovery: ['요청 복구', 'Offline Queue, Request Replay, Dead Letter Queue를 관리합니다.'],
+  notifications: ['알림', '중요 운영 경고와 시스템 이벤트를 확인합니다.'],
+  processors: ['처리 정책', '숫자 허용 범위·차단값 정책과 Processor 처리 통계를 관리합니다.'],
+  reports: ['푸시 · 보고서', 'PWA Push 구독과 날짜별 Relay Health 리포트를 관리합니다.'],
+  production: ['운영 설정', '1:1 승인, 배포 무결성, 패스키, 감사 체인과 운영 복원력을 통합 관리합니다.'],
+  servers: ['서버 기기', 'WinSockServer 연결과 상태를 관리합니다.'],
+  clients: ['앱 기기', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
+  clientbiometrics: ['생체인증 관리', 'APK의 Android 시스템 생체인증 상태와 재등록을 관리합니다.'],
+  buildsessions: ['Build 세션', 'Build Lease, APK↔Server 고정 바인딩, 즉시 Revoke를 관리합니다.'],
+  licenses: ['라이선스', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
   qrauth: ['QR 인증', 'APK의 QR 사진을 서버에서 검증하고 해당 기기를 승인합니다.'],
-  releases: ['Releases / Updates', 'Auto Update, Release Channel, Canary Rollout을 관리합니다.'],
-  features: ['Feature Flags', '전역 기능과 Server / Client별 Override를 관리합니다.'],
-  confighistory: ['Config History', 'Runtime Config와 Feature Flag 변경 이력 및 Rollback을 관리합니다.'],
-  enrollment: ['Device Enrollment', '새 Server / Client의 최초 등록 승인 정책을 관리합니다.'],
-  protocol: ['Protocol / Security', 'Protocol v3 준비도, Device HMAC, Event Sequence 상태를 확인합니다.'],
-  security: ['Security Center', 'HMAC 검증, Enrollment, Device Secret 수명과 인증 이상을 한 화면에서 확인합니다.'],
-  audit: ['Audit Log', '최근 서버 이벤트와 관리 작업 기록입니다.'],
-  activity: ['Admin Activity', 'Web Admin에서 수행된 관리 작업과 결과를 추적합니다.'],
-  sessions: ['Sessions', '현재 Web Admin 로그인 세션을 확인하고 종료합니다.'],
-  backups: ['Backups', 'Relay 데이터베이스 백업과 복원을 관리합니다.'],
-  health: ['System Health', 'Node / DB / Backup / Audit / Relay 상태를 진단합니다.'],
-  loadlab: ['Load Simulator', '별도 프로세스에서 Relay 연결/프로토콜 부하 테스트 명령을 생성합니다.'],
-  ha: ['Relay HA', 'Relay A/B Active/Standby, 상태 복제 및 승격 상태를 확인합니다.'],
-  storage: ['SQLite Storage', '실제 SQLite 기본 저장소, JSON 자동 이관 및 복구 미러 상태를 확인합니다.'],
+  releases: ['앱 배포', 'Auto Update, Release Channel, Canary Rollout을 관리합니다.'],
+  features: ['기능 설정', '전역 기능과 Server / Client별 Override를 관리합니다.'],
+  confighistory: ['설정 이력', 'Runtime Config와 Feature Flag 변경 이력 및 Rollback을 관리합니다.'],
+  enrollment: ['기기 등록', '새 Server / Client의 최초 등록 승인 정책을 관리합니다.'],
+  protocol: ['프로토콜', 'Protocol v3 준비도, Device HMAC, Event Sequence 상태를 확인합니다.'],
+  security: ['보안 상태', 'HMAC 검증, Enrollment, Device Secret 수명과 인증 이상을 한 화면에서 확인합니다.'],
+  audit: ['감사 기록', '최근 서버 이벤트와 관리 작업 기록입니다.'],
+  activity: ['관리자 활동', 'Web Admin에서 수행된 관리 작업과 결과를 추적합니다.'],
+  sessions: ['로그인 세션', '현재 Web Admin 로그인 세션을 확인하고 종료합니다.'],
+  backups: ['백업 · 복원', 'Relay 데이터베이스 백업과 복원을 관리합니다.'],
+  health: ['시스템 상태', 'Node / DB / Backup / Audit / Relay 상태를 진단합니다.'],
+  loadlab: ['부하 테스트', '별도 프로세스에서 Relay 연결/프로토콜 부하 테스트 명령을 생성합니다.'],
+  ha: ['이중화 관리', 'Relay A/B Active/Standby, 상태 복제 및 승격 상태를 확인합니다.'],
+  storage: ['저장소', '실제 SQLite 기본 저장소, JSON 자동 이관 및 복구 미러 상태를 확인합니다.'],
   system: ['System', '서비스, 유지보수 및 최소 버전 정책을 관리합니다.'],
   danger: ['Danger Zone', '복구 영향이 큰 작업만 별도로 실행합니다.']
 };
@@ -177,6 +195,11 @@ function toast(message, error = false) {
   toastTimer = setTimeout(() => toastEl.classList.add('hidden'), 3200);
 }
 
+function readableApiError(code) {
+  if (code === 'PERMISSIONS_REQUIRED') return '기기의 필수 권한을 모두 허용한 뒤 다시 승인해주세요.';
+  if (code === 'QR_REQUEST_SUPERSEDED') return '이전 QR이 해제되었습니다. 앱에 새로 표시된 QR을 사용해주세요.';
+  return code;
+}
 async function api(url, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const headers = { Accept: 'application/json', ...(options.headers || {}) };
@@ -201,7 +224,7 @@ async function api(url, options = {}) {
   }
   if (!response.ok || (data && data.ok === false)) {
     const detail = data && data.detail ? ` [${data.detail}]` : '';
-    throw new Error(`${data && data.error || `HTTP_${response.status}`}${detail}`);
+    throw new Error(`${readableApiError(data && data.error || `HTTP_${response.status}`)}${detail}`);
   }
   if (!data || typeof data !== 'object') throw new Error(`EMPTY_API_RESPONSE [${method} ${url}]`);
   return data;
@@ -236,9 +259,9 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '3.5.5'} · UI ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '4.0.0'} · UI ${WEB_UI_REVISION}`;
   } catch (_) {
-    webVersionLabel.textContent = `WEB v3.5.5 · UI ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `WEB v4.0.0 · UI ${WEB_UI_REVISION}`;
   }
 }
 
@@ -327,6 +350,7 @@ refreshBtn.addEventListener('click', () => renderCurrent());
 
 nav.addEventListener('click', event => {
   const button = event.target.closest('button[data-view]');
+  if (button) closeMobileMenu();
   if (!button) return;
   currentView = button.dataset.view;
   nav.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === button));

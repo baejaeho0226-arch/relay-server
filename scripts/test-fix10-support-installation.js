@@ -25,7 +25,7 @@ function fixture(base, suffix, id, token, approved = true) {
   const key = `ANDROID2-${base}-${suffix.repeat(16)}`;
   const saved = { id, serverId:'', installationToken:token, installationAuthorizedAt:approved ? Date.now() : 0 };
   state.clientIdentities.set(key,saved);
-  const c = connection(); Object.assign(c,{ clientId:id, installationDeviceKey:key, installationToken:token, connected:true, deviceAuthVerified:true });
+  const c = connection(); Object.assign(c,{ clientId:id, installationDeviceKey:key, installationToken:token, connected:true, permissionsGranted: true, deviceAuthVerified: true });
   state.clients.set(id,c); installation.Backfill();
   return {key,saved,c};
 }
@@ -108,10 +108,10 @@ try {
     if(gate==='client')state.disabledClients.add(f.saved.id);
     if(gate==='server'){ f.saved.serverId='E123456789ABCDEF';state.serverIdentities.set('TEST-GATE-PC',f.saved.serverId);state.disabledServers.add(f.saved.serverId); }
     const matching=connection();
-    handler.HandleClientLine(matching,`CONNECT_INSTALLATION|2|2.9.9|${f.key}|${'C'.repeat(32)}`);
+    handler.HandleClientLine(matching,`CONNECT_INSTALLATION|2|2.10.0|${f.key}|${'C'.repeat(32)}`);
     assert.equal(installation.List().length,0,'same install is never classified as reinstall by a gate');
     const denied=connection();
-    handler.HandleClientLine(denied,`CONNECT_INSTALLATION|2|2.9.9|${f.key}|${'D'.repeat(32)}`);
+    handler.HandleClientLine(denied,`CONNECT_INSTALLATION|2|2.10.0|${f.key}|${'D'.repeat(32)}`);
     assert.equal(denied.reinstallBlocked,true,gate+' gate cannot hide token mismatch');
     assert.ok(denied.writes.includes('ERROR|REINSTALL_NOT_ALLOWED'));
     assert.ok(!denied.writes.some(x=>x.startsWith('CONNECTED|')));
@@ -136,11 +136,11 @@ try {
   assert.ok(mid.saved.installationObservedAt);
   assert.equal(installation.WasAuthorized(mid.saved),false,'observed installation never grants QR/biometric authority');
   const reinstalled=connection();
-  handler.HandleClientLine(reinstalled,`CONNECT_INSTALLATION|2|2.9.9|ANDROID2-445566778899AABB-${'E'.repeat(16)}|${'F'.repeat(32)}`);
+  handler.HandleClientLine(reinstalled,`CONNECT_INSTALLATION|2|2.10.0|ANDROID2-445566778899AABB-${'E'.repeat(16)}|${'F'.repeat(32)}`);
   assert.equal(reinstalled.reinstallBlocked,true,'reinstall is recorded even before first biometric approval');
   assert.equal(installation.Release(installation.RegistryKey(mid.key),'TEST').ok,true);
   const released=connection();
-  handler.HandleClientLine(released,`CONNECT_INSTALLATION|2|2.9.9|ANDROID2-445566778899AABB-${'E'.repeat(16)}|${'F'.repeat(32)}`);
+  handler.HandleClientLine(released,`CONNECT_INSTALLATION|2|2.10.0|ANDROID2-445566778899AABB-${'E'.repeat(16)}|${'F'.repeat(32)}`);
   assert.equal(released.connected,true); assert.equal(released.deviceAuthVerified,false);assert.equal(released.licenseAuthorized,false);assert.equal(released.biometricVerified,false);
   const net=require('node:net');
   const terminal=fixture('5566778899AABBCC','A','F123456789ABCDEF','1'.repeat(32));
@@ -153,7 +153,7 @@ try {
       socket.on('data',data=>{received+=data;});socket.on('error',reject);
       socket.on('end',()=>{socket.end();resolve(received);});
       socket.on('connect',()=>{
-        socket.write('CONNECT_INSTALLATION|2|2.9.9|'+terminal.key+'|');
+        socket.write('CONNECT_INSTALLATION|2|2.10.0|'+terminal.key+'|');
         socket.write('2'.repeat(32)+'\n');
       });
     });

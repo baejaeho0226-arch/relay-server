@@ -51,6 +51,10 @@ try {
             .update(`CLIENT|${c.clientId}|${parts[1]}|${parts[2]}|${parts[3]}`).digest('hex').toUpperCase();
         handler.HandleClientLine(c, `DEVICE_AUTH|${parts[1]}|${hmac}`);
         assert.strictEqual(c.deviceAuthVerified, true);
+        const permissionProof = crypto.createHmac('sha256', secret).update(
+            `PERMISSIONS|${c.clientId}|${parts[1]}|1|7`).digest('hex');
+        handler.HandleClientLine(c, `CLIENT_PERMISSIONS|1|7|${permissionProof}`);
+        assert.strictEqual(c.permissionsGranted, true);
         return secret;
     };
 

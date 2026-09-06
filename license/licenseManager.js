@@ -64,6 +64,10 @@ function GetUsableLicenseForConnection(connection) {
 }
 
 function CompleteAuthorization(connection, licenseKey, license, source = 'LICENSE', requestId = '') {
+    if (!require('../services/clientPermissions').Ready(connection) ||
+        require('../services/clientPermissions').NeedsApproval(connection)) {
+        SendLine(connection.socket, 'ERROR|PERMISSIONS_REQUIRED'); return false;
+    }
     const eventSource = source === 'QR' || source === 'QR_RESUME' ? source : 'LICENSE';
     const accessType = require('../services/accessType').NormalizeAccessType(license.accessType);
     license.accessType = accessType;

@@ -40,13 +40,13 @@ async function run() {
     };
     const client = {
         socket: clientSocket, type: 'client', connected: true, clientId,
-        serverId, deviceAuthVerified: true, biometricVerified: true,
+        serverId, permissionsGranted: true, deviceAuthVerified: true, biometricVerified: true,
         accessType: 'TYPE3', licenseAuthorized: true, licenseKey,
         buildCompleted: false, buildSessionId: ''
     };
     const server = {
         socket: serverSocket, type: 'server', connected: true, registered: true,
-        serverId, deviceAuthVerified: true, buildGateCapable: true,
+        serverId, permissionsGranted: true, deviceAuthVerified: true, buildGateCapable: true,
         buildUnlocked: false, buildClients: new Set(), buildSessions: new Map(),
         clients: new Set([clientId])
     };
@@ -111,10 +111,11 @@ async function run() {
     state.clientIdentities.set('ANDROID-SECOND-PAIR-TEST', secondSaved);
     const secondClient = {
         clientId: secondClientId, serverId, connected: true,
-        accessType: 'TYPE1', biometricVerified: true, deviceAuthVerified: true,
+        accessType: 'TYPE1', biometricVerified: true, permissionsGranted: true, deviceAuthVerified: true,
         licenseAuthorized: true, licenseKey: 'LICENSE-SECOND-DEFERRED',
         socket: { destroyed: false, write() { return true; } }
     };
+    state.clients.set(secondClientId, secondClient);
     assert.strictEqual(buildGate.Queue(secondClient, 'BUILD-SECOND-PAIR').reason,
         'SERVER_ALREADY_PAIRED');
     assert.strictEqual(buildGate.Rebind(secondClientId, serverId, 'TEST').reason,
@@ -133,7 +134,7 @@ async function run() {
     state.servers.set(secondServerId, {
         socket: { destroyed: false, write() { return true; } },
         type: 'server', connected: true, registered: true, serverId: secondServerId,
-        deviceAuthVerified: true, clients: new Set()
+        permissionsGranted: true, deviceAuthVerified: true, clients: new Set()
     });
     deviceControl.RecordCapabilities('SERVER', secondServerId,
         'DEVICE_HMAC,BUILD_SESSION_LEASE,FIXED_BUILD_BINDING');
@@ -158,7 +159,7 @@ async function run() {
     };
     const thirdClient = {
         clientId: thirdClientId, serverId: '', connected: true,
-        accessType: 'TYPE2', biometricVerified: true, deviceAuthVerified: true,
+        accessType: 'TYPE2', biometricVerified: true, permissionsGranted: true, deviceAuthVerified: true,
         licenseAuthorized: true, licenseKey: 'LICENSE-THIRD-DEFERRED',
         socket: { destroyed: false, write() { return true; } }
     };
@@ -193,7 +194,7 @@ async function run() {
     for (const item of waitingPairs) {
         const waitingClient = {
             clientId: item.clientId, serverId: '', connected: true,
-            accessType: 'TYPE1', biometricVerified: true, deviceAuthVerified: true,
+            accessType: 'TYPE1', biometricVerified: true, permissionsGranted: true, deviceAuthVerified: true,
             licenseAuthorized: true, licenseKey: item.licenseKey,
             socket: { destroyed: false, write() { return true; } }
         };
@@ -215,7 +216,7 @@ async function run() {
         state.servers.set(lateServerId, {
             socket: { destroyed: false, write() { return true; } },
             type: 'server', connected: true, registered: true,
-            serverId: lateServerId, deviceAuthVerified: true, clients: new Set()
+            serverId: lateServerId, permissionsGranted: true, deviceAuthVerified: true, clients: new Set()
         });
         state.deviceSecrets.set(`SERVER:${lateServerId}`, `late-server-secret-${lateServerId}`);
         deviceControl.RecordCapabilities('SERVER', lateServerId,

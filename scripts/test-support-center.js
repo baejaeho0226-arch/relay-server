@@ -26,7 +26,7 @@ try {
   send('REQUEST01', '안녕하세요');
   assert.strictEqual(state.supportThreads.size, 0);
   assert.strictEqual(writes.pop(), 'SUPPORT_ERROR|AUTH_REQUIRED');
-  c.deviceAuthVerified = true;
+  c.permissionsGranted = true; c.deviceAuthVerified = true;
   handler.HandleClientLine(c, `SUPPORT_OPEN|${other}`);
   assert.strictEqual(writes.pop(), 'SUPPORT_ERROR|CLIENT_NOT_OWNER');
   send('REQUEST01', '문의 | 한글\n둘째 줄 😀 <script>');

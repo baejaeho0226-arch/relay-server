@@ -33,7 +33,7 @@ function staticSourceChecks() {
     assert.ok(apk.includes('TBiometricStrength.Weak'));
     assert.ok(apk.includes('FBiometricLaunchTimer.Interval := 350'));
     assert.ok(apk.includes('procedure TForm1.CancelBiometricPrompt'));
-    assert.ok(apk.includes('FBiometricFingerprint: TPath'));
+    assert.ok(apk.includes('FBiometricFingerprint: TImage'));
     assert.ok(apk.includes('FBiometricProgressTimer.Interval := 400'));
     assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
     assert.ok(!apk.includes('FQrCornerH'));

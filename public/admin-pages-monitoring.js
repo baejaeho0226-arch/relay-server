@@ -4,33 +4,33 @@
 
 function renderStatsPanel(stats) {
   const rows = stats.buckets || [];
-  return `<div class="section-card stats-panel"><div class="section-head"><h3>Traffic Statistics</h3><div class="actions"><button data-stats-range="1H" class="${statsRange==='1H'?'primary':''}">1H</button><button data-stats-range="6H" class="${statsRange==='6H'?'primary':''}">6H</button><button data-stats-range="24H" class="${statsRange==='24H'?'primary':''}">24H</button><button data-stats-range="7D" class="${statsRange==='7D'?'primary':''}">7D</button></div></div><div class="stats-grid"><div class="chart-box"><div class="chart-title">CONNECTION / SEND</div>${svgLineChart(rows,[{key:'connections',label:'Connections'},{key:'sends',label:'SEND'}])}</div><div class="chart-box"><div class="chart-title">ACK RESULT</div>${svgLineChart(rows,[{key:'ackOk',label:'ACK OK'},{key:'ackError',label:'ACK ERROR'},{key:'ackTimeout',label:'TIMEOUT'}])}</div></div><div class="stats-summary"><span>Connections <strong>${stats.totals.connections}</strong></span><span>SEND <strong>${stats.totals.sends}</strong></span><span>ACK OK <strong>${stats.totals.ackOk}</strong></span><span>Error <strong>${stats.totals.ackError}</strong></span><span>Timeout <strong>${stats.totals.ackTimeout}</strong></span><span>Success <strong>${stats.totals.ackSuccessRate}%</strong></span></div></div>`;
+  return `<div class="section-card stats-panel"><div class="section-head"><h3>트래픽 추이</h3><div class="actions"><button data-stats-range="1H" class="${statsRange==='1H'?'primary':''}">1H</button><button data-stats-range="6H" class="${statsRange==='6H'?'primary':''}">6H</button><button data-stats-range="24H" class="${statsRange==='24H'?'primary':''}">24H</button><button data-stats-range="7D" class="${statsRange==='7D'?'primary':''}">7D</button></div></div><div class="stats-grid"><div class="chart-box"><div class="chart-title">연결 · 전송</div>${svgLineChart(rows,[{key:'connections',label:'Connections'},{key:'sends',label:'SEND'}])}</div><div class="chart-box"><div class="chart-title">ACK RESULT</div>${svgLineChart(rows,[{key:'ackOk',label:'ACK OK'},{key:'ackError',label:'ACK ERROR'},{key:'ackTimeout',label:'TIMEOUT'}])}</div></div><div class="stats-summary"><span>Connections <strong>${stats.totals.connections}</strong></span><span>SEND <strong>${stats.totals.sends}</strong></span><span>ACK OK <strong>${stats.totals.ackOk}</strong></span><span>Error <strong>${stats.totals.ackError}</strong></span><span>Timeout <strong>${stats.totals.ackTimeout}</strong></span><span>Success <strong>${stats.totals.ackSuccessRate}%</strong></span></div></div>`;
 }
 
 async function renderDashboard() {
   const [{ dashboard: d }, { statistics: stats }] = await Promise.all([api('/api/dashboard'), api(`/api/statistics?range=${encodeURIComponent(statsRange)}`)]);
   content.innerHTML = `
     <div class="cards">
-      <div class="card"><div class="stat-label">SERVERS</div><div class="stat-value">${d.servers.online} / ${d.servers.total}</div><div class="stat-sub">Disabled ${d.servers.disabled} · Draining ${d.servers.draining}</div></div>
-      <div class="card"><div class="stat-label">CLIENTS</div><div class="stat-value">${d.clients.online} / ${d.clients.total}</div><div class="stat-sub">Disabled ${d.clients.disabled}</div></div>
-      <div class="card"><div class="stat-label">QR AUTH PENDING</div><div class="stat-value">${d.qrAuth.pending}</div><div class="stat-sub">Approved ${d.qrAuth.approved} · Rejected ${d.qrAuth.rejected}</div></div>
-      <div class="card"><div class="stat-label">QR LICENSES</div><div class="stat-value">${d.licenses.bound}</div><div class="stat-sub">Available ${d.licenses.available} · Expired ${d.licenses.expired}</div></div>
-      <div class="card"><div class="stat-label">ACK SUCCESS</div><div class="stat-value">${d.ack.successRate}%</div><div class="stat-sub">Pending ${d.ack.pending} · Timeout ${d.ack.timeout}</div></div>
-      <div class="card"><div class="stat-label">ALERTS</div><div class="stat-value">${d.notifications.unread}</div><div class="stat-sub">Critical ${d.notifications.critical} · Warning ${d.notifications.warning}</div></div>
-      <div class="card"><div class="stat-label">SERVICE</div><div class="stat-value">${d.serviceEnabled ? 'ONLINE' : 'OFFLINE'}</div><div class="stat-sub">Maintenance ${d.maintenanceMode ? 'ON' : 'OFF'}</div></div>
-      <div class="card"><div class="stat-label">UPTIME</div><div class="stat-value">${esc(fmtDuration(d.uptimeMs))}</div><div class="stat-sub">Connections ${d.totalConnections}</div></div>
-      <div class="card"><div class="stat-label">VERSION</div><div class="stat-value">P${d.versions.protocol}</div><div class="stat-sub">Server ${esc(d.versions.server)} · Client ${esc(d.versions.client)}</div></div>
-      <div class="card"><div class="stat-label">RECOVERY</div><div class="stat-value">${d.recovery.queued} / ${d.recovery.deadLetters}</div><div class="stat-sub">Queue / Active DLQ · Replay ${d.recovery.replayed}</div></div>
-      <div class="card"><div class="stat-label">RELAY HA</div><div class="stat-value">${esc(d.ha.role)}</div><div class="stat-sub">${esc(d.ha.instanceId)} · ${d.ha.acceptsTraffic ? 'TRAFFIC ON' : 'READ ONLY'}</div></div>
+      <div class="card"><div class="stat-label">서버 연결</div><div class="stat-value">${d.servers.online} / ${d.servers.total}</div><div class="stat-sub">Disabled ${d.servers.disabled} · Draining ${d.servers.draining}</div></div>
+      <div class="card"><div class="stat-label">앱 연결</div><div class="stat-value">${d.clients.online} / ${d.clients.total}</div><div class="stat-sub">Disabled ${d.clients.disabled}</div></div>
+      <div class="card"><div class="stat-label">QR 승인 대기</div><div class="stat-value">${d.qrAuth.pending}</div><div class="stat-sub">Approved ${d.qrAuth.approved} · Rejected ${d.qrAuth.rejected}</div></div>
+      <div class="card"><div class="stat-label">사용 중인 라이선스</div><div class="stat-value">${d.licenses.bound}</div><div class="stat-sub">Available ${d.licenses.available} · Expired ${d.licenses.expired}</div></div>
+      <div class="card"><div class="stat-label">처리 성공률</div><div class="stat-value">${d.ack.successRate}%</div><div class="stat-sub">Pending ${d.ack.pending} · Timeout ${d.ack.timeout}</div></div>
+      <div class="card"><div class="stat-label">확인할 알림</div><div class="stat-value">${d.notifications.unread}</div><div class="stat-sub">Critical ${d.notifications.critical} · Warning ${d.notifications.warning}</div></div>
+      <div class="card"><div class="stat-label">서비스 상태</div><div class="stat-value">${d.serviceEnabled ? 'ONLINE' : 'OFFLINE'}</div><div class="stat-sub">Maintenance ${d.maintenanceMode ? 'ON' : 'OFF'}</div></div>
+      <div class="card"><div class="stat-label">연속 운영 시간</div><div class="stat-value">${esc(fmtDuration(d.uptimeMs))}</div><div class="stat-sub">Connections ${d.totalConnections}</div></div>
+      <div class="card"><div class="stat-label">프로토콜 버전</div><div class="stat-value">P${d.versions.protocol}</div><div class="stat-sub">Server ${esc(d.versions.server)} · Client ${esc(d.versions.client)}</div></div>
+      <div class="card"><div class="stat-label">복구 대기</div><div class="stat-value">${d.recovery.queued} / ${d.recovery.deadLetters}</div><div class="stat-sub">Queue / Active DLQ · Replay ${d.recovery.replayed}</div></div>
+      <div class="card"><div class="stat-label">이중화 상태</div><div class="stat-value">${esc(d.ha.role)}</div><div class="stat-sub">${esc(d.ha.instanceId)} · ${d.ha.acceptsTraffic ? 'TRAFFIC ON' : 'READ ONLY'}</div></div>
     </div>
     ${renderStatsPanel(stats)}
-    <div class="section-card"><div class="section-head"><h3>Server Distribution</h3><button data-open-view="distribution">OPEN DISTRIBUTION</button></div><div class="section-body"><p class="muted">Server별 Live/Binding Client 부하와 Graceful Drain 진행률을 확인합니다.</p></div></div>
-    <div class="section-card"><div class="section-head"><h3>License Expiry Radar</h3><span class="small-note">CLICK TO FILTER</span></div><div class="section-body"><div class="expiry-grid">
-      <button class="expiry-card critical" data-license-expiry="EXPIRED"><span>EXPIRED</span><strong>${d.licenseExpiry.expired}</strong></button>
-      <button class="expiry-card critical" data-license-expiry="1D"><span>≤ 24 HOURS</span><strong>${d.licenseExpiry.within1d}</strong></button>
-      <button class="expiry-card warning" data-license-expiry="3D"><span>≤ 3 DAYS</span><strong>${d.licenseExpiry.within3d}</strong></button>
-      <button class="expiry-card warning" data-license-expiry="7D"><span>≤ 7 DAYS</span><strong>${d.licenseExpiry.within7d}</strong></button>
-      <button class="expiry-card" data-license-expiry="30D"><span>≤ 30 DAYS</span><strong>${d.licenseExpiry.within30d}</strong></button>
+    <div class="section-card"><div class="section-head"><h3>서버별 기기 배정</h3><button data-open-view="distribution">배정 확인</button></div><div class="section-body"><p class="muted">Server별 Live/Binding Client 부하와 Graceful Drain 진행률을 확인합니다.</p></div></div>
+    <div class="section-card"><div class="section-head"><h3>라이선스 만료 일정</h3><span class="small-note">선택하여 목록 보기</span></div><div class="section-body"><div class="expiry-grid">
+      <button class="expiry-card critical" data-license-expiry="EXPIRED"><span>만료됨</span><strong>${d.licenseExpiry.expired}</strong></button>
+      <button class="expiry-card critical" data-license-expiry="1D"><span>24시간 이내</span><strong>${d.licenseExpiry.within1d}</strong></button>
+      <button class="expiry-card warning" data-license-expiry="3D"><span>3일 이내</span><strong>${d.licenseExpiry.within3d}</strong></button>
+      <button class="expiry-card warning" data-license-expiry="7D"><span>7일 이내</span><strong>${d.licenseExpiry.within7d}</strong></button>
+      <button class="expiry-card" data-license-expiry="30D"><span>30일 이내</span><strong>${d.licenseExpiry.within30d}</strong></button>
     </div></div></div>
     <div class="grid-2">
       <div class="section-card"><div class="section-head"><h3>최근 이벤트</h3><span class="small-note">최근 30건</span></div><div class="section-body"><div class="event-list">

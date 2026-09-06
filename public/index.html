@@ -3,32 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#04110a">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#20232a">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <title>RELAY // Operations Console</title>
-  <link rel="stylesheet" href="/admin.css?v=3.5.5-fix10">
+  <title>Relay 관리자</title>
+  <link rel="stylesheet" href="/admin.css?v=4.0.0-fix11">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
     <div class="login-card">
-      <div class="brand-mark">&gt;_</div>
-      <h1>Relay Control</h1>
-      <p class="muted">SECURE OPERATIONS CONSOLE</p>
+      <div class="brand-mark">R</div>
+      <h1>Relay 관리자</h1>
+      <p class="muted">기기와 상담을 한곳에서 관리하세요.</p>
       <form id="login-form" autocomplete="off">
-        <label>Role
+        <label>접근 역할
           <select id="login-role">
-            <option value="admin">Admin</option>
-            <option value="operator">Operator</option>
-            <option value="viewer">Viewer</option>
+            <option value="admin">관리자</option>
+            <option value="operator">운영자</option>
+            <option value="viewer">조회 전용</option>
           </select>
         </label>
-        <label>Password
+        <label>비밀번호
           <input id="login-password" type="password" autocomplete="current-password" required>
         </label>
         <button class="primary wide" type="submit">로그인</button>
@@ -39,91 +39,92 @@
   </section>
 
   <div id="app" class="app hidden">
-    <aside class="sidebar">
+    <aside class="sidebar" id="main-menu">
       <div class="sidebar-brand">
-        <div class="brand-mark small">&gt;_</div>
-        <div><strong>RELAY // OPS</strong><span>WEB CONTROL NODE</span></div>
+        <div class="brand-mark small">R</div>
+        <div><strong>Relay</strong><span>MANAGEMENT</span></div>
       </div>
       <div class="nav-search"><input id="nav-filter" type="search" placeholder="기능 검색" autocomplete="off"></div>
       <nav id="nav">
         <details class="nav-group" open>
           <summary>관제</summary>
           <div class="nav-items">
-            <button data-view="dashboard" class="active">Dashboard</button>
-            <button data-view="console">Live Console</button>
+            <button data-view="dashboard" class="active">대시보드</button>
+            <button data-view="console">실시간 이벤트</button>
             <button data-view="support" data-admin-only>고객센터</button>
             <button data-view="reinstallblocks" data-admin-only>재설치 차단</button>
-            <button data-view="monitor">Health Monitor</button>
-            <button data-view="notifications">Notifications <span id="notification-badge" class="nav-count hidden">0</span></button>
+            <button data-view="monitor">연결 상태</button>
+            <button data-view="notifications">알림 <span id="notification-badge" class="nav-count hidden">0</span></button>
           </div>
         </details>
         <details class="nav-group">
           <summary>트래픽 · 처리</summary>
           <div class="nav-items">
-            <button data-view="trace">Request Trace</button>
-            <button data-view="recovery">Request Recovery</button>
-            <button data-view="processors">Number Processing</button>
-            <button data-view="distribution">Distribution</button>
-            <button data-view="failover" data-admin-only>Emergency Failover</button>
-            <button data-view="terminal">Command Terminal</button>
+            <button data-view="trace">요청 추적</button>
+            <button data-view="recovery">요청 복구</button>
+            <button data-view="processors">처리 정책</button>
+            <button data-view="distribution">기기 배정</button>
+            <button data-view="failover" data-admin-only>장애 전환</button>
+            <button data-view="terminal">관리 명령</button>
           </div>
         </details>
         <details class="nav-group" open>
           <summary>기기 · QR 인증</summary>
           <div class="nav-items">
             <button data-view="qrauth" data-admin-only class="qr-nav">QR 인증 <span id="qr-auth-badge" class="nav-count hidden">0</span></button>
-            <button data-view="servers">Servers</button>
-            <button data-view="clients">Clients</button>
-            <button data-view="clientbiometrics" data-admin-only class="biometric-nav">Client 생체인증</button>
-            <button data-view="buildsessions" data-admin-only>Build Sessions</button>
-            <button data-view="licenses">QR Licenses</button>
-            <button data-view="enrollment" data-admin-only>Device Enrollment</button>
-            <button data-view="protocol">Protocol / Security</button>
-            <button data-view="security">Security Center</button>
+            <button data-view="servers">서버 기기</button>
+            <button data-view="clients">앱 기기</button>
+            <button data-view="clientbiometrics" data-admin-only class="biometric-nav">생체인증 관리</button>
+            <button data-view="buildsessions" data-admin-only>Build 세션</button>
+            <button data-view="licenses">QR 라이선스</button>
+            <button data-view="enrollment" data-admin-only>기기 등록</button>
+            <button data-view="protocol">프로토콜</button>
+            <button data-view="security">보안 상태</button>
           </div>
         </details>
         <details class="nav-group">
           <summary>배포 · 정책</summary>
           <div class="nav-items">
-            <button data-view="production" data-admin-only>Production Hardening</button>
-            <button data-view="releases" data-admin-only>Releases / Updates</button>
-            <button data-view="features" data-admin-only>Feature Flags</button>
-            <button data-view="confighistory" data-admin-only>Config History</button>
-            <button data-view="reports">Push / Daily Report</button>
+            <button data-view="production" data-admin-only>운영 설정</button>
+            <button data-view="releases" data-admin-only>앱 배포</button>
+            <button data-view="features" data-admin-only>기능 설정</button>
+            <button data-view="confighistory" data-admin-only>설정 이력</button>
+            <button data-view="reports">푸시 · 보고서</button>
           </div>
         </details>
         <details class="nav-group">
           <summary>관리 · 시스템</summary>
           <div class="nav-items">
-            <button data-view="audit">Audit Log</button>
-            <button data-view="activity" data-admin-only>Admin Activity</button>
-            <button data-view="sessions" data-admin-only>Sessions</button>
-            <button data-view="backups">Backups</button>
-            <button data-view="health">System Health</button>
-            <button data-view="ha">Relay HA</button>
-            <button data-view="loadlab" data-admin-only>Load Simulator</button>
-            <button data-view="storage" data-admin-only>SQLite Storage</button>
+            <button data-view="audit">감사 기록</button>
+            <button data-view="activity" data-admin-only>관리자 활동</button>
+            <button data-view="sessions" data-admin-only>로그인 세션</button>
+            <button data-view="backups">백업 · 복원</button>
+            <button data-view="health">시스템 상태</button>
+            <button data-view="ha">이중화 관리</button>
+            <button data-view="loadlab" data-admin-only>부하 테스트</button>
+            <button data-view="storage" data-admin-only>저장소</button>
             <button data-view="system">System</button>
             <button data-view="danger" data-admin-only class="danger-nav">Danger Zone</button>
           </div>
         </details>
       </nav>
       <div class="sidebar-footer">
-        <div><span class="muted">Version</span><strong id="web-version-label">WEB v3.5.5 · UI fix10</strong></div>
-        <div><span class="muted">Role</span><strong id="role-label">-</strong></div>
+        <div><span class="muted">버전</span><strong id="web-version-label">WEB v4.0.0 · UI fix11</strong></div>
+        <div><span class="muted">역할</span><strong id="role-label">-</strong></div>
         <button id="logout-btn" class="ghost">로그아웃</button>
       </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
+        <button id="menu-toggle" type="button" aria-controls="main-menu" aria-expanded="false" aria-label="메뉴 열기">메뉴</button>
         <div>
-          <h2 id="page-title">Dashboard</h2>
-          <p id="page-subtitle" class="muted">NODE STATUS / TRAFFIC / CONTROL</p>
+          <h2 id="page-title">대시보드</h2>
+          <p id="page-subtitle" class="muted">기기 연결과 최근 활동을 확인하세요.</p>
         </div>
         <div class="topbar-actions">
           <span id="live-state" class="live-pill">LIVE</span>
-          <button id="install-pwa-btn" class="ghost hidden">INSTALL APP</button>
+          <button id="install-pwa-btn" class="ghost hidden">앱 설치</button>
           <button id="refresh-btn" class="ghost">새로고침</button>
         </div>
       </header>
@@ -131,14 +132,14 @@
     </main>
   </div>
 
-  <div id="toast" class="toast hidden"></div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <div id="modal" class="modal hidden" aria-hidden="true">
     <div class="modal-backdrop" data-modal-close></div>
-    <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div class="modal-head">
         <h3 id="modal-title">확인</h3>
-        <button class="icon-btn" data-modal-close>×</button>
+        <button class="icon-btn" aria-label="닫기" data-modal-close>×</button>
       </div>
       <div id="modal-body" class="modal-body"></div>
       <div class="modal-actions">
@@ -149,12 +150,12 @@
   </div>
 
   <a class="ui-refresh-link" href="/ui-refresh">웹 화면 새로 불러오기</a>
-  <script src="/admin.js?v=3.5.5-fix10" defer></script>
-  <script src="/admin-pages-monitoring.js?v=3.5.5-fix10" defer></script>
-  <script src="/admin-pages-access.js?v=3.5.5-fix10" defer></script>
-  <script src="/admin-pages-operations.js?v=3.5.5-fix10" defer></script>
-  <script src="/admin-pages-support.js?v=3.5.5-fix10" defer></script>
-  <script src="/admin-actions.js?v=3.5.5-fix10" defer></script>
-  <script src="/admin-pages-production.js?v=3.5.5-fix10" defer></script>
+  <script src="/admin.js?v=4.0.0-fix11" defer></script>
+  <script src="/admin-pages-monitoring.js?v=4.0.0-fix11" defer></script>
+  <script src="/admin-pages-access.js?v=4.0.0-fix11" defer></script>
+  <script src="/admin-pages-operations.js?v=4.0.0-fix11" defer></script>
+  <script src="/admin-pages-support.js?v=4.0.0-fix11" defer></script>
+  <script src="/admin-actions.js?v=4.0.0-fix11" defer></script>
+  <script src="/admin-pages-production.js?v=4.0.0-fix11" defer></script>
 </body>
 </html>

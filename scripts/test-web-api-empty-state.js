@@ -113,11 +113,11 @@ async function run() {
     assert.match(page.headers.get('cache-control'), /no-store/);
     const html = await page.text();
     assert.match(html, /data-view="console"[\s\S]*data-view="support"[\s\S]*data-view="reinstallblocks"[\s\S]*data-view="monitor"/);
-    assert.ok(html.includes('/admin-pages-support.js?v=3.5.5-fix10'));
+    assert.ok(html.includes('/admin-pages-support.js?v=4.0.0-fix11'));
     const ui = await fetch(`${base}/ui-version.json`);
     assert.strictEqual(ui.status, 200);
     assert.strictEqual(ui.headers.get('cache-control'), 'no-store');
-    assert.deepStrictEqual(await ui.json(), { ready: true, webAdminVersion: '3.5.5', uiRevision: 'fix10', issues: [] });
+    assert.deepStrictEqual(await ui.json(), { ready: true, webAdminVersion: '4.0.0', uiRevision: 'fix11', issues: [] });
     const recovery = await fetch(`${base}/ui-refresh`);
     assert.strictEqual(recovery.status, 200);
     assert.ok((await recovery.text()).includes('id="ui-refresh-button"'));
@@ -158,7 +158,7 @@ async function run() {
         assert.strictEqual((await denied.json()).error, 'CSRF_FAILED');
     }
     for (const file of ['admin-pages-support.js', 'admin.css', 'service-worker.js']) {
-        const asset = await fetch(`http://127.0.0.1:${webPort}/${file}?v=3.5.5-fix10`);
+        const asset = await fetch(`http://127.0.0.1:${webPort}/${file}?v=4.0.0-fix11`);
         assert.strictEqual(asset.status, 200, file);
         assert.ok((await asset.text()).length > 100);
     }

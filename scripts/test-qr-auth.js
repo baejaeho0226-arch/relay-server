@@ -48,14 +48,8 @@ async function run() {
     const scan = qr.ScanImage(dataUrl);
     assert.strictEqual(scan.request.requestId, requestId);
     assert.strictEqual(scan.request.clientId, clientId);
-    const approved = qr.Approve(requestId, scan.approvalToken,
-        { days: 30, accessType: 'TYPE2' }, 'admin');
-    assert.strictEqual(approved.ok, true);
-    assert.strictEqual(approved.pairing.deferred, true);
-    const bound = Array.from(state.licenses.entries())
-        .find(([, license]) => license.boundClient === clientId);
-    assert.ok(bound);
-    assert.strictEqual(bound[1].accessType, 'TYPE2');
+    assert.strictEqual(qr.Approve(requestId, scan.approvalToken,
+        { days:30, accessType:'TYPE2' }, 'admin').reason, 'PERMISSIONS_REQUIRED');
 
     const writes = [];
     const socket = {
@@ -66,7 +60,7 @@ async function run() {
     const connection = {
         socket, type: 'client', connected: true, clientId, serverId: '',
         licenseAuthorized: false, licenseKey: '', licenseExpiresAt: 0,
-        biometricVerified: false, accessType: '', deviceAuthVerified: true,
+        biometricVerified: false, accessType: '', permissionsGranted: true, deviceAuthVerified: true,
         lastServerAuthState: '', sequenceStats: SequenceStats()
     };
     socket.__relayConnection = connection;
@@ -76,8 +70,17 @@ async function run() {
     require('../services/deviceControl').RecordCapabilities('CLIENT', clientId,
         'DEVICE_HMAC,QR_DEVICE_APPROVAL,BIOMETRIC_AUTH,BIOMETRIC_STRONG,BUILD_SESSION_LEASE');
 
-    assert.strictEqual(require('../license/licenseManager')
-        .AuthorizeClientByQr(connection, bound[0], requestId), true);
+    const approved = qr.Approve(requestId, scan.approvalToken,
+        { days: 30, accessType: 'TYPE2' }, 'admin');
+    assert.strictEqual(approved.ok, true);
+    assert.strictEqual(approved.pairing.deferred, true);
+    const bound = Array.from(state.licenses.entries())
+        .find(([, license]) => license.boundClient === clientId);
+    assert.ok(bound);
+    assert.strictEqual(bound[1].accessType, 'TYPE2');
+
+
+    assert.strictEqual(connection.licenseAuthorized, true);
     assert.ok(writes.some(line => line.startsWith(`QR_AUTH_OK|${requestId}|`)));
     const enrollmentLine = writes.find(line =>
         line.startsWith('BIOMETRIC_CHALLENGE|ENROLL|'));
@@ -140,7 +143,7 @@ async function run() {
     assert.ok(!apk.includes('TBiometricStrength.DeviceCredential'));
     assert.ok(apk.includes('FBiometricLaunchTimer.Interval := 350'));
     assert.ok(apk.includes('procedure TForm1.QueueBiometricAuthentication'));
-    assert.ok(apk.includes('FBiometricFingerprint: TPath'));
+    assert.ok(apk.includes('FBiometricFingerprint: TImage'));
     assert.ok(!apk.includes('FBiometricIcon: TLabel'));
     assert.ok(apk.includes('FBiometricProgressTimer.Interval := 400'));
     assert.ok(apk.includes('SetBiometricProgress(100)'));
@@ -152,9 +155,9 @@ async function run() {
     assert.ok(!apk.includes('FBrightness'));
     assert.ok(apk.includes('Result.StyledSettings := []'));
     const notificationSetup = fs.readFileSync(
-        path.join(apkDir, 'ANDROID_NOTIFICATION_SETUP.txt'), 'utf8');
+        path.join(apkDir, 'AndroidManifest.full.xml'), 'utf8');
     assert.ok(notificationSetup.includes('android.permission.POST_NOTIFICATIONS'));
-    assert.ok(notificationSetup.includes('ACCESS_NOTIFICATION_POLICY'));
+    assert.ok(!notificationSetup.includes('android.permission.ACCESS_NOTIFICATION_POLICY'));
     assert.ok(apkNotifications.includes("CHANNEL_AUTH = 'relay_auth_v2'"));
     assert.ok(apkNotifications.includes("Notify('AUTH', Title, MessageText)"));
     assert.ok(apk.includes("SetSupportState('OK')"));

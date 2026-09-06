@@ -19,7 +19,7 @@ const key1 = `ANDROID2-${base}-${'1'.repeat(16)}`, key2 = `ANDROID2-${base}-${'2
 const token1 = '1'.repeat(32), token2 = '2'.repeat(32);
 function connection(key, id, token, approved = false) {
     state.clientIdentities.set(key, { id, serverId: '', installationToken: token, installationAuthorizedAt: approved ? Date.now() : 0 });
-    const c = { clientId: id, type: 'client', connected: true, deviceAuthVerified: true,
+    const c = { clientId: id, type: 'client', connected: true, permissionsGranted: true, deviceAuthVerified: true,
         installationToken: token, installationDeviceKey: key, writes: [] };
     c.socket = { destroyed: false, write: t => { c.writes.push(t.trim()); return true; }, end() {}, destroy() { this.destroyed = true; } };
     c.socket.__relayConnection = c; state.clients.set(id, c); installation.Backfill(); return c;
@@ -62,7 +62,7 @@ try {
     assert.equal(frames(c2,'SUPPORT_MESSAGE').at(-1).text,'새 CLIENT로 전달');
     // Wrong CLIENT claims and superseded/unauthenticated sockets never read rooms.
     c2.writes=[]; send(c2,`SUPPORT_SYNC|${id1}|${epoch}|0`); assert.equal(c2.writes.at(-1),'SUPPORT_ERROR|CLIENT_NOT_OWNER');
-    c2.deviceAuthVerified=false; send(c2,`SUPPORT_SYNC|${id2}||0`); assert.equal(c2.writes.at(-1),'SUPPORT_ERROR|AUTH_REQUIRED'); c2.deviceAuthVerified=true;
+    c2.deviceAuthVerified=false; send(c2,`SUPPORT_SYNC|${id2}||0`); assert.equal(c2.writes.at(-1),'SUPPORT_ERROR|AUTH_REQUIRED'); c2.permissionsGranted = true; c2.deviceAuthVerified = true;
     // Real registry release deletes routing identities, but not chat ownership.
     installation.Reject(c2);
     assert.equal(installation.Release(installation.RegistryKey(key1),'TEST_ADMIN').ok,true);
