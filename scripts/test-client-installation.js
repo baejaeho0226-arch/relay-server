@@ -61,7 +61,7 @@ try {
     const saved = state.clientIdentities.get(key);
     const clientId = first.clientId;
     const secret = authenticate(first);
-    assert.ok(!saved.installationToken);
+    assert.strictEqual(saved.installationToken, token, 'verified installation is recorded before biometric completion');
     const license = licenses.CreateLicense(30, 'installation test', [], 'QR');
     state.licenses.get(license.key).boundClient = clientId;
     assert.strictEqual(licenses.AuthorizeClientByQr(first, license.key, 'TEST'), true);

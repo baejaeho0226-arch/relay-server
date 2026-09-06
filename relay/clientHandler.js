@@ -100,7 +100,12 @@ function AttachClient(connection, saved) {
     LogEvent('CLIENT_ONLINE', `${saved.id} v${connection.appVersion}`);
 }
 
-function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion) {
+function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion, installationToken = '') {
+    deviceKey = String(deviceKey || '').trim();
+    if (!deviceKey || deviceKey.includes('|')) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return; }
+    const installation = require('../services/clientInstallation');
+    if (!installation.CheckDeviceKey(connection, deviceKey) ||
+        !installation.CheckConnectToken(connection, deviceKey, installationToken)) return;
     if (!ValidateProtocolAndVersion(connection, 'client', protocolVersion, appVersion)) {
         setTimeout(() => { try { connection.socket.destroy(); } catch (_) {} }, 150);
         return;
@@ -108,10 +113,6 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion)
     if (!state.serviceEnabled) { SendLine(connection.socket, 'SERVICE_STATE|DISABLED'); return; }
     if (state.maintenanceMode) { SendLine(connection.socket, 'SERVICE_STATE|MAINTENANCE'); return; }
 
-    deviceKey = String(deviceKey || '').trim();
-    if (!deviceKey) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return; }
-
-    if (!require('../services/clientInstallation').CheckDeviceKey(connection, deviceKey)) return;
     let saved = clientIdentities.get(deviceKey);
     if (!saved) saved = MigrateLegacyClientIdentity(deviceKey);
     if (saved) {
@@ -351,17 +352,22 @@ function HandleClientLine(connection, line) {
         if (line.startsWith('UI_STATE|')) { const p=line.split('|'); require('../services/deviceControl').RecordUiState(connection.clientId,p[1],p.slice(2).join('|')); return; }
     }
 
-    if (line === 'CONNECT' || line.startsWith('CONNECT|')) {
+    if (line === 'CONNECT' || line.startsWith('CONNECT|') || line.startsWith('CONNECT_INSTALLATION|')) {
         const parts = line.split('|');
-        let protocolVersion = 1, appVersion = '1.0.0', deviceKey = '';
+        let protocolVersion = 1, appVersion = '1.0.0', deviceKey = '', installationToken = '';
+        const installationConnect = parts[0] === 'CONNECT_INSTALLATION';
+        if (installationConnect ? parts.length !== 5 || !parts[4] : parts.length > 4) {
+            SendLine(connection.socket, 'ERROR|INVALID_CONNECT'); return;
+        }
         if (parts.length >= 4) {
             protocolVersion = Number(parts[1]);
             appVersion = String(parts[2] || '').trim();
-            deviceKey = parts.slice(3).join('|').trim();
+            deviceKey = parts[3].trim();
+            installationToken = parts[4] || '';
         } else if (parts.length >= 2) {
             deviceKey = parts[1].trim();
         }
-        HandleClientConnect(connection, deviceKey, protocolVersion, appVersion);
+        HandleClientConnect(connection, deviceKey, protocolVersion, appVersion, installationToken);
         return;
     }
 

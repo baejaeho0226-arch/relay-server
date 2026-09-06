@@ -10,28 +10,50 @@ function resetSupportUiState() {
   supportRequestIds.clear();
   supportRenderSerial++;
   supportHistory.clear();
-  supportPresenceAt = 0;
+  supportAvailabilitySending = false;
 }
 const supportHistory = new Map();
-let supportPresenceAt = 0;
+let supportAvailabilitySending = false;
 function supportStatusText(status) { return status === 'CLOSED' ? '상담 종료' : status === 'DELETED' ? '대화 삭제됨' : '상담 중'; }
-async function supportPresence(active) {
-  supportPresenceAt = Date.now();
-  try { await api('/api/support/presence', { method: 'POST', body: { active } }); } catch (_) {}
+function renderSupportAvailability(settings) {
+  const group = document.getElementById('support-availability');
+  if (!group) return;
+  for (const button of group.querySelectorAll('[data-support-availability]')) {
+    const selected = (button.dataset.supportAvailability === 'ONLINE') === (settings.adminOnline === true);
+    button.setAttribute('aria-pressed', String(selected));
+    button.disabled = supportAvailabilitySending;
+  }
+  document.getElementById('support-availability-status').textContent = settings.adminOnline
+    ? '온라인 · 모든 APK에 상담 가능으로 표시됩니다.'
+    : '오프라인 · 모든 APK에서 문의를 남길 수 있습니다.';
 }
-document.addEventListener('visibilitychange', () => {
-  if (currentView === 'support') supportPresence(!document.hidden);
-});
+async function setSupportAvailability(mode) {
+  if (supportAvailabilitySending) return;
+  supportAvailabilitySending = true;
+  supportRenderSerial++; // Discard a GET that started before this choice.
+  const buttons = content.querySelectorAll('[data-support-availability]');
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    const { settings } = await api('/api/support/availability', { method: 'POST', body: { mode } });
+    supportRenderSerial++;
+    if (currentView === 'support') renderSupportAvailability(settings);
+    toast(mode === 'ONLINE' ? '전체 상담 상태를 온라인으로 변경했습니다.' : '전체 상담 상태를 오프라인으로 변경했습니다.');
+  } catch (error) { toast(error.message, true); }
+  finally {
+    supportAvailabilitySending = false;
+    buttons.forEach(button => { button.disabled = false; });
+    if (currentView === 'support') await renderSupportCenter();
+  }
+}
 function supportSettingsForm(settings) {
-  return `<details class="panel support-settings"><summary>상담 안내 설정 · 관리자 접속 상태</summary><p>고객센터를 보고 있는 관리자만 온라인으로 표시됩니다. 페이지를 닫으면 45초 안에 오프라인으로 전환됩니다.</p><form id="support-settings-form">${[['hours', '상담시간 (한국 시간 등 기준 포함)'], ['greeting', '인사말'], ['responseGuide', '답변 안내']].map(([key,label]) => `<label>${label}<input name="${key}" maxlength="160" required value="${esc(settings[key] || '')}"></label>`).join('')}<button type="submit">안내 저장</button><span id="support-settings-status" role="status"></span></form></details>`;
+  return `<details class="panel support-settings"><summary>상담 안내 설정</summary><form id="support-settings-form">${[['hours', '상담시간 (한국 시간 등 기준 포함)'], ['greeting', '인사말'], ['responseGuide', '답변 안내']].map(([key,label]) => `<label>${label}<input name="${key}" maxlength="160" required value="${esc(settings[key] || '')}"></label>`).join('')}<button type="submit">안내 저장</button><span id="support-settings-status" role="status"></span></form></details>`;
 }
 async function renderSupportCenter() {
   const serial = ++supportRenderSerial;
   const { threads, settings = {} } = await api('/api/support');
   if (currentView !== 'support' || serial !== supportRenderSerial) return;
-  if (Date.now() - supportPresenceAt > 15000) void supportPresence(!document.hidden);
   if (!content.querySelector('#support-workspace')) {
-    content.innerHTML = `${supportSettingsForm(settings)}<div id="support-workspace" class="support-workspace"><div id="support-threads" class="support-threads"></div><section class="support-conversation"><h3 id="support-heading">문의를 선택하세요</h3><div id="support-device-info" class="support-device-info"></div><div class="support-room-actions"><button id="support-close-room" type="button">상담 종료 / 나가기</button><button id="support-reopen-room" type="button">상담 다시 열기</button><button id="support-delete-room" type="button" class="danger">대화 영구 삭제</button></div><button id="support-history-more" type="button" hidden>이전 대화 불러오기</button><div id="support-transcript" class="support-transcript" aria-live="polite"></div><form id="support-reply-form"><label for="support-draft">관리자 답변</label><textarea id="support-draft" maxlength="1000" rows="3" placeholder="답변을 입력하세요"></textarea><button id="support-reply-send" type="submit" class="primary">답변 보내기</button><span id="support-reply-status" role="status"></span></form></section></div>`;
+    content.innerHTML = `<section id="support-availability" class="panel support-availability"><div><h3>전체 상담 상태</h3><p>선택한 상태가 모든 상담에 적용됩니다. 다른 메뉴로 이동하거나 웹을 닫아도 유지됩니다.</p></div><div class="support-availability-options" role="group" aria-label="전체 상담 상태"><button type="button" data-support-availability="ONLINE" aria-pressed="false">온라인</button><button type="button" data-support-availability="OFFLINE" aria-pressed="false">오프라인</button></div><p id="support-availability-status" role="status"></p></section>${supportSettingsForm(settings)}<div id="support-workspace" class="support-workspace"><div id="support-threads" class="support-threads"></div><section class="support-conversation"><h3 id="support-heading">문의를 선택하세요</h3><div id="support-device-info" class="support-device-info"></div><div class="support-room-actions"><button id="support-close-room" type="button">상담 종료 / 나가기</button><button id="support-reopen-room" type="button">상담 다시 열기</button><button id="support-delete-room" type="button" class="danger">대화 영구 삭제</button></div><button id="support-history-more" type="button" hidden>이전 대화 불러오기</button><div id="support-transcript" class="support-transcript" aria-live="polite"></div><form id="support-reply-form"><label for="support-draft">관리자 답변</label><textarea id="support-draft" maxlength="1000" rows="3" placeholder="답변을 입력하세요"></textarea><button id="support-reply-send" type="submit" class="primary">답변 보내기</button><span id="support-reply-status" role="status"></span></form></section></div>`;
     document.getElementById('support-draft').value = supportDrafts.get(supportSelectedClient) || '';
     document.getElementById('support-draft').addEventListener('input', e => {
       supportDrafts.set(supportSelectedClient, e.target.value); supportRequestIds.delete(supportSelectedClient);
@@ -43,9 +65,12 @@ async function renderSupportCenter() {
       try { await api('/api/support/settings', { method: 'POST', body }); document.getElementById('support-settings-status').textContent = 'APK 상담 안내에 반영했습니다.'; }
       catch (error) { toast(error.message, true); }
     });
+    for (const button of content.querySelectorAll('[data-support-availability]'))
+      button.addEventListener('click', () => setSupportAvailability(button.dataset.supportAvailability));
     for (const action of ['close', 'reopen', 'delete']) document.getElementById(`support-${action}-room`).addEventListener('click', () => changeSupportRoom(action));
     document.getElementById('support-history-more').addEventListener('click', loadOlderSupport);
   }
+  if (!supportAvailabilitySending) renderSupportAvailability(settings);
   document.getElementById('support-threads').innerHTML = threads.length ? threads.map(t => `<button class="support-thread ${t.clientId === supportSelectedClient ? 'selected' : ''}" data-support-client="${esc(t.clientId)}"><strong>상담 ${esc(t.clientId)}</strong><span>${esc(t.device && (t.device.model || t.device.product) || '기기 정보 대기')} · ${supportStatusText(t.status)}</span><span>${t.online ? '접속 중' : '미접속'}${t.unreadAdmin ? ` · 새 문의 ${t.unreadAdmin}` : ''}</span><small>${esc(t.lastMessage)}</small></button>`).join('') : '<div class="empty">접수된 문의가 없습니다.</div>';
   const draft = document.getElementById('support-draft');
   draft.disabled = !supportSelectedClient || supportReplySending;
@@ -85,7 +110,7 @@ function renderSupportMessages(selected, prepend = false) {
   const oldScroll = transcript.scrollTop, oldHeight = transcript.scrollHeight;
   const atBottom = oldHeight - oldScroll - transcript.clientHeight < 48;
   const changedClient = transcript.dataset.client !== selected;
-  transcript.innerHTML = cached.messages.map(m => `<article class="support-message ${m.role === 'ADMIN' ? 'from-admin' : 'from-client'}"><small>${m.role === 'ADMIN' ? '관리자' : '사용자'} · ${esc(new Date(m.at).toLocaleString())}</small><p>${esc(m.text)}</p></article>`).join('') || '<div class="empty">대화가 없습니다.</div>';
+  transcript.innerHTML = cached.messages.map(m => `<article class="support-message ${m.role === 'SYSTEM' ? 'from-system' : m.role === 'ADMIN' ? 'from-admin' : 'from-client'}"><small>${m.role === 'SYSTEM' ? '상담 안내' : m.role === 'ADMIN' ? '관리자' : '사용자'} · ${esc(new Date(m.at).toLocaleString())}</small><p>${esc(m.text)}</p></article>`).join('') || '<div class="empty">대화가 없습니다.</div>';
   transcript.dataset.signature = signature; transcript.dataset.client = selected;
   transcript.scrollTop = prepend ? oldScroll + transcript.scrollHeight - oldHeight : changedClient || atBottom ? transcript.scrollHeight : oldScroll;
 }

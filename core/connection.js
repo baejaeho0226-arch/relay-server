@@ -43,7 +43,7 @@ function CreateConnection(socket) {
             let line=connection.buffer.substring(0,pos).replace(/\r$/,'');connection.buffer=connection.buffer.substring(pos+1);
             if(!connection.type){
                 if(line==='REGISTER'||line.startsWith('REGISTER|'))connection.type='server';
-                else if(line==='CONNECT'||line.startsWith('CONNECT|')||line.startsWith('LICENSE_AUTH|')||line.startsWith('SEND|'))connection.type='client';
+                else if(line==='CONNECT'||line.startsWith('CONNECT|')||line.startsWith('CONNECT_INSTALLATION|')||line.startsWith('LICENSE_AUTH|')||line.startsWith('SEND|'))connection.type='client';
                 else if(line==='ADMIN_HELLO'||line.startsWith('ADMIN_HELLO|')||line.startsWith('ADMIN_AUTH|')) {
                     if (!ENABLE_LEGACY_TCP_ADMIN) {
                         SendLine(socket,'ERROR|ADMIN_TCP_DISABLED');

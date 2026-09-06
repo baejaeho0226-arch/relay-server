@@ -3,7 +3,7 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-support-fix9-'));
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-support-fix10-'));
 process.env.DATA_DIR = dir;
 process.env.STORAGE_ENGINE = process.env.STORAGE_ENGINE || 'json';
 const state = require('../core/state');
@@ -83,19 +83,22 @@ try {
     send(c3,`SUPPORT_DEVICE|${Buffer.from(JSON.stringify({model:'SM-A245N',product:'a24',phone:'010-0000-0000',imeiStatus:'Android 접근 제한'})).toString('base64')}`);
     assert.equal(support.Read(id1).device.model,'SM-A245N');
     const csrfSession=auth.CreateSession({headers:{},socket:{remoteAddress:'127.0.0.1'}},'admin');
-    assert.equal((await api('admin','POST','/api/support/presence',{active:true},csrfSession)).status,200);
+    assert.equal((await api('admin','POST','/api/support/availability',{mode:'ONLINE'},csrfSession)).status,200);
     assert.equal(support.Info().adminOnline,true);
     const realNow=Date.now;Date.now=()=>realNow()+46000;
-    assert.equal(support.Info().adminOnline,false,'presence TTL expires');Date.now=realNow;
-    support.Presence(csrfSession,true);auth.RevokeSession(csrfSession.id);
-    assert.equal(support.Info().adminOnline,false,'revoked admin is offline immediately');
+    assert.equal(support.Info().adminOnline,true,'explicit online status persists');Date.now=realNow;
+    support.Presence(csrfSession,false);auth.RevokeSession(csrfSession.id);
+    assert.equal(support.Info().adminOnline,true,'navigation/logout does not overwrite global selection');
+    const nextSession=auth.CreateSession({headers:{},socket:{remoteAddress:'127.0.0.1'}},'admin');
+    assert.equal((await api('admin','POST','/api/support/availability',{mode:'OFFLINE'},nextSession)).status,200);
+    assert.equal(support.Info().adminOnline,false);
     const settings={hours:'평일 10:00–18:00 (한국 시간)',greeting:'안녕하세요.',responseGuide:'순서대로 답변합니다.'};
     assert.equal((await api('admin','POST','/api/support/settings',settings)).status,200);
     assert.equal(support.Info().hours,settings.hours);
     assert.equal((await api('admin','POST','/api/support/settings',{...settings,hours:'x'.repeat(161)})).status,409);
     for(const action of ['close','reopen','delete','reply','read']) for(const role of ['viewer','operator'])
         assert.equal((await api(role,'POST',`/api/support/${id1}/${action}`,{revision:1,text:'forbidden'})).status,403);
-    for(const endpoint of ['settings','presence']) for(const role of ['viewer','operator'])
+    for(const endpoint of ['settings','presence','availability']) for(const role of ['viewer','operator'])
         assert.equal((await api(role,'POST',`/api/support/${endpoint}`,settings)).status,403);
     assert.equal((await api('admin','POST',`/api/support/${id1}/close`,{revision:1})).status,200);
     assert.equal(support.Read(id1).status,'CLOSED');
@@ -127,9 +130,9 @@ try {
     // Failed persistence must not erase messages or falsely report a change.
     const save=db.SaveDatabase; db.SaveDatabase=()=>false;
     assert.equal(support.Change(id1,'delete',revision).reason,'STORAGE_SAVE_FAILED');
-    assert.equal(support.Read(id1).total,2);
+    assert.equal(support.Read(id1).total,3);
     assert.equal(support.Reply(id1,'storage failure','FAIL_REPLY',revision).reason,'STORAGE_SAVE_FAILED');
-    assert.equal(support.Read(id1).total,2);db.SaveDatabase=save;
+    assert.equal(support.Read(id1).total,3);db.SaveDatabase=save;
     // FIX8 kept only the last 200 rows, whose first sequence need not be 1.
     // Communicate the retained base cursor so the APK can replay those rows.
     const retainedSnapshot = db.BuildDatabaseObject();
@@ -142,6 +145,6 @@ try {
     assert.equal(frames(c3,'SUPPORT_RESET').at(-1).baseSeq,200);
     assert.equal(frames(c3,'SUPPORT_MESSAGE')[0].seq,201);
     db.ImportDatabaseObject(retainedSnapshot);
-    console.log('FIX9 SUPPORT PERSISTENCE PASS: migration, 305+ messages, paging, ID change, release/reapproval, isolated ownership, device info, presence/TTL/revocation, settings, real close/delete, stale retry rejection, storage rollback, admin-only APIs');
+    console.log('FIX9 SUPPORT PERSISTENCE PASS: migration, 305+ messages, paging, ID change, release/reapproval, isolated ownership, device info, global availability, settings, real close/delete, stale retry rejection, storage rollback, admin-only APIs');
 } finally { if(process.env.STORAGE_ENGINE==='sqlite')require('../storage/sqliteDatabase').Close();fs.rmSync(dir,{recursive:true,force:true}); }
 })().catch(e=>{console.error(e);process.exitCode=1;});
