@@ -157,6 +157,7 @@ function ClearMaintenanceSchedule(reason = 'WEB') {
 }
 
 function ApplyMaintenanceSchedule() {
+    if (!state.serviceEnabled) return;
     let schedule = NormalizeSchedule(state.maintenanceSchedule);
     if (!schedule) return;
     // Keep normalized runtime fields in state so mutations below are persisted.

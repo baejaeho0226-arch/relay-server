@@ -89,7 +89,13 @@ function RecordUpdateAck(type,id,parts){
 }
 function GetUpdateStatus(type,id){ return state.deviceUpdateStatus.get(DeviceKey(type,id)) || null; }
 
-function NotifyAll(){ const out=[]; for(const id of state.serverIdentities.values())out.push({type:'SERVER',id,...NotifyDevice('SERVER',id)}); for(const saved of state.clientIdentities.values())out.push({type:'CLIENT',id:saved.id,...NotifyDevice('CLIENT',saved.id)}); return out; }
+function NotifyAll(filter = {}) {
+    const out = [], type = NormalizeType(filter.type), channel = NormalizeChannel(filter.channel);
+    const notify = (kind, id) => { if ((!type || type === kind) && (!channel || channel === ChannelFor(kind, id))) out.push({type:kind,id,...NotifyDevice(kind,id)}); };
+    for (const id of state.serverIdentities.values()) notify('SERVER', id);
+    for (const saved of state.clientIdentities.values()) notify('CLIENT', saved.id);
+    return out;
+}
 function ReleaseOverview(){
     const releases=[]; for(const r of state.releaseCatalog.values())releases.push({...r}); releases.sort((a,b)=>`${a.type}:${a.channel}`.localeCompare(`${b.type}:${b.channel}`));
     const assignments=[];

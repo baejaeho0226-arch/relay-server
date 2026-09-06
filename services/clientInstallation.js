@@ -86,7 +86,7 @@ function Reject(connection) {
     Disconnect(connection);
     return false;
 }
-function CheckDeviceKey(connection, deviceKey) {
+function CheckDeviceKey(connection, deviceKey, token = '') {
     connection.installationDeviceKey = deviceKey;
     Backfill();
     const r = Record(deviceKey);
@@ -94,7 +94,11 @@ function CheckDeviceKey(connection, deviceKey) {
     if (r.blockedAt) return Reject(connection);
     const exact = r.authorized.find(x => x.deviceKey === deviceKey);
     // Deleting a registered CLIENT never grants a fresh installation/secret.
-    if (exact) return state.clientIdentities.has(deviceKey) ? true : Reject(connection);
+    if (exact) {
+        const resetProof = exact.serviceResetAt > 0 && /^[0-9A-F]{32}$/.test(exact.token) &&
+            String(token).trim().toUpperCase() === exact.token;
+        return state.clientIdentities.has(deviceKey) || resetProof ? true : Reject(connection);
+    }
     if (r.authorized.some(x => !x.deviceKey.startsWith('ANDROID-'))) return Reject(connection);
     return true; // Legacy migration must still prove the retained secret.
 }
@@ -224,15 +228,28 @@ function Release(key, actor) {
     require('../storage/audit').LogEvent('CLIENT_REINSTALL_RELEASED', `${r.key} BY ${r.releasedBy}`);
     return { ok: true, key: r.key, requiresQrApproval: true };
 }
+function PrepareServiceReset() {
+    Backfill();
+    for (const record of state.clientInstallations.values()) {
+        if (record.blockedAt) continue;
+        for (const entry of record.authorized)
+            if (state.clientIdentities.has(entry.deviceKey)) entry.serviceResetAt = Now();
+    }
+}
+function ClaimServiceReset(deviceKey) {
+    const record = Record(deviceKey);
+    const entry = record && record.authorized.find(x => x.deviceKey === deviceKey);
+    if (entry) entry.serviceResetAt = 0;
+}
 function ImportPersisted(data) {
     state.clientInstallations.clear();
     for (const [key, raw] of Object.entries(data.clientInstallations || {})) {
         if (!/^[0-9A-F]{64}$/.test(key) || !raw || !Array.isArray(raw.authorized)) continue;
         const authorized = raw.authorized.filter(x => x && RegistryKey(x.deviceKey) === key && /^[0-9A-F]{16}$/.test(x.clientId))
-            .map(x => ({ deviceKey: x.deviceKey, clientId: x.clientId, token: /^[0-9A-F]{32}$/.test(x.token) ? x.token : '', at: Number(x.at) || 0 }));
+            .map(x => ({ deviceKey: x.deviceKey, clientId: x.clientId, token: /^[0-9A-F]{32}$/.test(x.token) ? x.token : '', at: Number(x.at) || 0, serviceResetAt: Math.max(0, Number(x.serviceResetAt) || 0) }));
         state.clientInstallations.set(key, { key, authorized, blockedAt: Math.max(0, Number(raw.blockedAt) || 0),
             attemptKey: RegistryKey(raw.attemptKey) === key ? raw.attemptKey : '', releasedAt: Math.max(0, Number(raw.releasedAt) || 0), releasedBy: String(raw.releasedBy || '').slice(0, 64) });
     }
 }
 module.exports = { AndroidBase, RegistryKey, WasAuthorized, CheckDeviceKey, CheckConnectToken, HandleToken, Ready,
-    MarkAuthorized, MarkObserved, Backfill, Reject, IsBlocked, List, Release, ImportPersisted };
+    MarkAuthorized, MarkObserved, Backfill, PrepareServiceReset, ClaimServiceReset, Reject, IsBlocked, List, Release, ImportPersisted };
