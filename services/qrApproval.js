@@ -86,6 +86,7 @@ function QrMatrix(payload) {
 function RequireQrSecurity(connection) {
     if (!connection || !connection.connected || !connection.clientId) return { ok: false, reason: 'CLIENT_NOT_CONNECTED' };
     if (!require('./clientInstallation').Ready(connection)) return { ok: false, reason: 'INSTALLATION_REQUIRED' };
+    if (!require('./clientPermissions').Ready(connection)) return { ok: false, reason: 'PERMISSIONS_REQUIRED' };
     const deviceAuth = require('./deviceAuth');
     const capabilities = require('./deviceControl').Capabilities('CLIENT', connection.clientId);
     if (!capabilities.includes('QR_DEVICE_APPROVAL') || !capabilities.includes('DEVICE_HMAC')) {
@@ -156,7 +157,7 @@ function Resume(connection) {
     const gate = RequireQrSecurity(connection);
     if (!gate.ok) return gate;
     const bound = GetBoundLicenseEntry(connection.clientId);
-    if (bound && !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
+    if (!require('./clientPermissions').NeedsApproval(connection) && bound && !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
         return { ok: AuthorizeBoundClientByQr(connection, 'RESUME'), resumed: true };
     }
     return Issue(connection);
@@ -224,6 +225,9 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     }
     if (!VerifyApprovalToken(record, approvalToken)) return { ok: false, reason: 'QR_APPROVAL_TOKEN_INVALID' };
 
+    const permissionClient = GetOnlineClient(record.clientId);
+    if (!require('./clientPermissions').Ready(permissionClient)) return { ok: false, reason: 'PERMISSIONS_REQUIRED' };
+
     // QR/biometric enrollment belongs to the APK and never depends on a running
     // WinSockServer. A returning client keeps its fixed server identity; a new
     // client remains unassigned until an authenticated WinSockServer claims
@@ -260,7 +264,13 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     record.licenseRef = `QR-${String(bound.key).slice(-8)}`;
     record.accessType = accessType;
     record.reason = '';
-    require('../storage/database').SaveDatabase();
+    const previousPermissionReset = existingSaved && existingSaved.permissionsReapprovalRequired;
+    if (existingSaved) existingSaved.permissionsReapprovalRequired = false;
+    if (!require('../storage/database').SaveDatabase()) {
+        if (existingSaved) existingSaved.permissionsReapprovalRequired = previousPermissionReset;
+        record.status = 'PENDING'; record.approvedAt = 0;
+        return { ok: false, reason: 'STORAGE_SAVE_FAILED' };
+    }
 
     const connection = GetOnlineClient(record.clientId);
     let delivered = false;

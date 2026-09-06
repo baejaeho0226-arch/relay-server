@@ -110,6 +110,7 @@ function BindingForServer(serverId) {
 }
 
 function Queue(connection, requestId) {
+    if (!require('./clientPermissions').Ready(connection) || require('./clientPermissions').NeedsApproval(connection)) return { ok: false, reason: 'PERMISSIONS_REQUIRED' };
     const clientId = NormalizeID(connection && connection.clientId);
     requestId = String(requestId || '').trim();
     if (!clientId || !requestId) return { ok: false, reason: 'INVALID_BUILD' };
@@ -201,6 +202,7 @@ function TryDispatchClient(clientId) {
     const client = OnlineClient(clientId);
     if (!client || !client.connected) return { delivered: false, waiting: true, reason: 'CLIENT_OFFLINE' };
     if (!require('./deviceAuth').Verified('CLIENT', clientId)) return { delivered: false, waiting: true, reason: 'CLIENT_AUTH_REQUIRED' };
+    if (!require('./clientPermissions').Ready(client)) return { delivered: false, waiting: true, reason: 'PERMISSIONS_REQUIRED' };
     if (!client.biometricVerified) return { delivered: false, waiting: true, reason: 'BIOMETRIC_AUTH_REQUIRED' };
     const active = require('../license/licenseManager').GetUsableLicenseForConnection(client);
     if (!active) return { delivered: false, waiting: true, reason: 'LICENSE_REQUIRED' };

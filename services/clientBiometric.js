@@ -30,6 +30,7 @@ function SendChallenge(connection, challenge) {
 }
 
 function Begin(connection, requestedType = '') {
+    if (!require('./clientPermissions').Ready(connection) || require('./clientPermissions').NeedsApproval(connection)) return { ok: false, reason: 'PERMISSIONS_REQUIRED' };
     if (!connection || !connection.connected || !connection.clientId ||
         !connection.licenseAuthorized) return { ok: false, reason: 'LICENSE_REQUIRED' };
     const clientId = NormalizeID(connection.clientId);
@@ -63,6 +64,7 @@ function Begin(connection, requestedType = '') {
 }
 
 function NotifyAuthorized(connection, accessType) {
+    if (!require('./clientPermissions').Ready(connection) || require('./clientPermissions').NeedsApproval(connection)) return false;
     const active = require('../license/licenseManager')
         .GetUsableLicenseForConnection(connection);
     if (!active) {
@@ -85,6 +87,7 @@ function NotifyAuthorized(connection, accessType) {
 }
 
 function HandleProof(connection, parts) {
+    if (!require('./clientPermissions').Ready(connection) || require('./clientPermissions').NeedsApproval(connection)) return false;
     if (!Array.isArray(parts) || parts.length !== 4) {
         if (connection && connection.socket)
             SendLine(connection.socket, 'BIOMETRIC_ERROR|FORMAT_INVALID');

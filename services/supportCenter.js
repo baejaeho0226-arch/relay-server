@@ -22,7 +22,7 @@ function Decode(text) {
 }
 function Allowed(c) {
     return c && c.clientId && identity.GetOnlineClient(c.clientId) === c &&
-        c.deviceAuthVerified && !c.reinstallBlocked && installation.Ready(c);
+        require('./clientPermissions').Ready(c) && c.deviceAuthVerified && !c.reinstallBlocked && installation.Ready(c);
 }
 function Binding(deviceKey, saved, c) {
     const key = installation.RegistryKey(deviceKey);

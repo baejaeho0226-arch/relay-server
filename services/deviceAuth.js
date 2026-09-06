@@ -42,6 +42,7 @@ function SendEnrollmentSecret(type,id,force=false){
         return {ok:false,reason:'STORAGE_SAVE_FAILED'};
     }
     c.deviceAuthVerified=false;
+    if(type==='CLIENT') require('./clientPermissions').Reset(c);
     SendLine(c.socket,`DEVICE_SECRET|${secret}`);
     Status(type,id,'ENROLLING',{enrolledAt:Now(),verifiedAt:0});
     return {ok:true,enrolling:true};
@@ -68,6 +69,7 @@ function IssueChallenge(type,id){
         else require('./buildGate').RevokeForClient(id,'CLIENT_HMAC_REFRESH');
     }
     c.deviceAuthVerified=false;
+    if(type==='CLIENT') require('./clientPermissions').Reset(c);
     state.deviceAuthChallenges.set(challengeId,{challengeId,type,id,nonce,issuedAt,expiresAt:issuedAt+30000,connection:c});
     c.deviceAuthChallengeId=challengeId;
     Status(type,id,'CHALLENGED',{lastChallengeAt:issuedAt});
@@ -103,6 +105,7 @@ function HandleDeviceAuthError(type,id,parts){
     }
     c.deviceSecretRecoveryAt=Now();
     c.deviceAuthVerified=false;
+    if(type==='CLIENT') require('./clientPermissions').Reset(c);
     state.deviceAuthChallenges.delete(challengeId);
     require('../storage/audit').LogEvent('DEVICE_SECRET_RECOVERY',`${type} ${id} / LOCAL_SECRET_MISSING`);
     try{require('./notificationCenter').AddNotification({severity:'WARNING',type:'DEVICE_SECRET_RECOVERY',title:'Device secret recovered',message:`${type} ${id} re-enrolled after local secret loss.`,entityType:type,entityId:id,dedupeKey:`DEVICE_SECRET_RECOVERY|${type}|${id}`});}catch(_){}
@@ -126,6 +129,7 @@ function HandleAuth(type,id,challengeId,hex){
     if(!secret){
         state.deviceAuthChallenges.delete(challengeId);
         c.deviceAuthVerified=false;
+    if(type==='CLIENT') require('./clientPermissions').Reset(c);
         SendEnrollmentSecret(type,id,false);
         return false;
     }
@@ -141,6 +145,7 @@ function HandleAuth(type,id,challengeId,hex){
         c.deviceAuthVerified=true;
         if(type==='CLIENT'&&!require('./clientInstallation').MarkObserved(c)){
             c.deviceAuthVerified=false;
+    if(type==='CLIENT') require('./clientPermissions').Reset(c);
             SendLine(c.socket,`DEVICE_AUTH_ERROR|${challengeId}|STORAGE_SAVE_FAILED`);
             return false;
         }
@@ -151,6 +156,7 @@ function HandleAuth(type,id,challengeId,hex){
         return true;
     }
     c.deviceAuthVerified=false;
+    if(type==='CLIENT') require('./clientPermissions').Reset(c);
     if(type==='CLIENT'){
         c.biometricVerified=false;c.licenseAuthorized=false;
         state.clientBiometricChallenges.delete(id);
