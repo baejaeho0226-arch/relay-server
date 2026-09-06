@@ -4,9 +4,44 @@ const path = require('path');
 const crypto = require('crypto');
 const config = require('../config/config');
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
-const FILES = ['index.html', 'admin.css', 'admin.js', 'admin-pages-monitoring.js',
-  'admin-pages-access.js', 'admin-pages-operations.js', 'admin-pages-support.js',
-  'admin-actions.js', 'admin-pages-production.js', 'service-worker.js', 'ui-refresh.html', 'ui-refresh.js'];
+const FILES = [
+  "index.html",
+  "admin.css",
+  "admin-theme.css",
+  "admin-navigation.css",
+  "admin-i18n.js",
+  "admin.js",
+  "admin-navigation.js",
+  "admin-pages-monitoring.js",
+  "admin-terminal.js",
+  "admin-pages-traffic.js",
+  "admin-pages-danger.js",
+  "admin-pages-access.js",
+  "admin-pages-sessions.js",
+  "admin-pages-reports.js",
+  "admin-pages-devices.js",
+  "admin-pages-qr.js",
+  "admin-pages-licenses.js",
+  "admin-pages-deployment.js",
+  "admin-pages-security.js",
+  "admin-pages-operations.js",
+  "admin-pages-support.js",
+  "admin-actions-access.js",
+  "admin-actions-operations.js",
+  "admin-actions-traffic.js",
+  "admin-actions-devices.js",
+  "admin-actions-policy.js",
+  "admin-actions-system.js",
+  "admin-modal.js",
+  "admin-device-actions.js",
+  "admin-license-actions.js",
+  "admin-actions.js",
+  "admin-palette.js",
+  "admin-pages-production.js",
+  "service-worker.js",
+  "ui-refresh.html",
+  "ui-refresh.js"
+];
 const ManifestPath = path.join(__dirname, 'ui-bundle.json');
 function Hash(name, directory = PUBLIC_DIR) {
   // Git on Windows may convert text line endings without changing the UI.
