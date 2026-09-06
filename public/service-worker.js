@@ -1,21 +1,45 @@
 'use strict';
 
-const CACHE = 'relay-admin-shell-v4.0.0-fix11';
+const CACHE = 'relay-admin-shell-v4.1.0-fix12';
 const SHELL = [
-  '/index.html',
-  '/admin.css?v=4.0.0-fix11',
-  '/admin.js?v=4.0.0-fix11',
-  '/admin-pages-monitoring.js?v=4.0.0-fix11',
-  '/admin-pages-access.js?v=4.0.0-fix11',
-  '/admin-pages-operations.js?v=4.0.0-fix11',
-  '/admin-pages-support.js?v=4.0.0-fix11',
-  '/admin-actions.js?v=4.0.0-fix11',
-  '/admin-pages-production.js?v=4.0.0-fix11',
-  '/ui-refresh.html',
-  '/ui-refresh.js?v=4.0.0-fix11',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  "/index.html",
+  "/admin.css?v=4.1.0-fix12",
+  "/admin-theme.css?v=4.1.0-fix12",
+  "/admin-navigation.css?v=4.1.0-fix12",
+  "/admin-i18n.js?v=4.1.0-fix12",
+  "/admin.js?v=4.1.0-fix12",
+  "/admin-navigation.js?v=4.1.0-fix12",
+  "/admin-pages-monitoring.js?v=4.1.0-fix12",
+  "/admin-terminal.js?v=4.1.0-fix12",
+  "/admin-pages-traffic.js?v=4.1.0-fix12",
+  "/admin-pages-danger.js?v=4.1.0-fix12",
+  "/admin-pages-access.js?v=4.1.0-fix12",
+  "/admin-pages-sessions.js?v=4.1.0-fix12",
+  "/admin-pages-reports.js?v=4.1.0-fix12",
+  "/admin-pages-devices.js?v=4.1.0-fix12",
+  "/admin-pages-qr.js?v=4.1.0-fix12",
+  "/admin-pages-licenses.js?v=4.1.0-fix12",
+  "/admin-pages-deployment.js?v=4.1.0-fix12",
+  "/admin-pages-security.js?v=4.1.0-fix12",
+  "/admin-pages-operations.js?v=4.1.0-fix12",
+  "/admin-pages-support.js?v=4.1.0-fix12",
+  "/admin-actions-access.js?v=4.1.0-fix12",
+  "/admin-actions-operations.js?v=4.1.0-fix12",
+  "/admin-actions-traffic.js?v=4.1.0-fix12",
+  "/admin-actions-devices.js?v=4.1.0-fix12",
+  "/admin-actions-policy.js?v=4.1.0-fix12",
+  "/admin-actions-system.js?v=4.1.0-fix12",
+  "/admin-modal.js?v=4.1.0-fix12",
+  "/admin-device-actions.js?v=4.1.0-fix12",
+  "/admin-license-actions.js?v=4.1.0-fix12",
+  "/admin-actions.js?v=4.1.0-fix12",
+  "/admin-palette.js?v=4.1.0-fix12",
+  "/admin-pages-production.js?v=4.1.0-fix12",
+  "/ui-refresh.html",
+  "/ui-refresh.js?v=4.1.0-fix12",
+  "/manifest.json",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png"
 ];
 
 self.addEventListener('install', event => {
@@ -49,7 +73,7 @@ self.addEventListener('fetch', event => {
       const cache = await caches.open(CACHE);
       const hit = await cache.match(navigation ? '/index.html' : request);
       // A missing JavaScript/CSS file must never be replaced with HTML.
-      return hit || new Response('Offline: open this page with a network connection.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      return hit || new Response('인터넷 연결 후 이 화면을 다시 열어주세요.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     })
   );
 });
@@ -58,7 +82,7 @@ self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (_) { data = { body: event.data ? event.data.text() : '' }; }
   const severity = String(data.severity || 'INFO').toUpperCase();
-  event.waitUntil(self.registration.showNotification(data.title || 'Relay Operations', {
+  event.waitUntil(self.registration.showNotification(data.title || '중계 서버 운영 알림', {
     body: data.body || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',

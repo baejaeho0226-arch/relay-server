@@ -192,14 +192,14 @@ async function run() {
         .filter(name => /^admin(?:-[a-z-]+)?\.js$/i.test(name))
         .sort()
         .map(name => fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8'))
-        .join('\n');
-    const webApi = fs.readFileSync(path.join(__dirname, '..', 'web', 'webApi.js'), 'utf8');
+        .join('\n').replace(/\\"/g, '"');
+    const webApi = fs.readdirSync(path.join(__dirname, '..', 'web'), {recursive:true}).filter(x=>x.endsWith('.js')).map(x=>fs.readFileSync(path.join(__dirname, '..', 'web', x),'utf8')).join('\n');
     assert.ok(adminSource.includes('data-server-action="delete"'));
     assert.ok(adminSource.includes('data-client-action="delete"'));
     assert.ok(adminSource.includes('data-history-clean="ALL"'));
     assert.ok(adminSource.includes('data-history-clean="SERVER_HISTORY"'));
     assert.ok(adminSource.includes('data-history-clean="CLIENT_HISTORY"'));
-    assert.ok(adminSource.includes('1:1 MATCH REPAIR'));
+    assert.ok(adminSource.includes('pairing-repair-btn'));
     assert.ok(webApi.includes("method === 'DELETE'"));
     assert.ok(webApi.includes("pathname === '/api/history/clean'"));
     assert.ok(webApi.includes("pathname === '/api/pairing/repair'"));

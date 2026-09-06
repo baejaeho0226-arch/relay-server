@@ -158,6 +158,10 @@ async function authenticateDevice(socket, type, id, deviceKey) {
     const challenge = line.split('|');
     socket.send(`DEVICE_AUTH|${challenge[1]}|${hmac(secret, `${type}|${id}|${challenge[1]}|${challenge[2]}|${challenge[3]}`)}`);
     await socket.waitFor(x => x.startsWith(`DEVICE_AUTH_OK|${challenge[1]}`));
+    if (type === 'CLIENT') {
+        socket.send(`CLIENT_PERMISSIONS|1|7|${hmac(secret, `PERMISSIONS|${id}|${challenge[1]}|1|7`)}`);
+        await socket.waitFor(x => x === 'CLIENT_PERMISSIONS_OK|1|7');
+    }
 }
 
 async function completeBiometric(socket, clientId, deviceKey) {
@@ -183,7 +187,7 @@ async function registerServer(deviceKey) {
 
 async function connectClient(deviceKey, licenseKey) {
     const socket = await connectLineSocket();
-    socket.send(`CONNECT|2|2.0.0|${deviceKey}`);
+    socket.send(`CONNECT|2|2.10.0|${deviceKey}`);
     const connected = await socket.waitFor(x => x.startsWith('CONNECTED|'));
     const parts = connected.split('|');
     socket.send('CAPABILITIES|DEVICE_HMAC,BIOMETRIC_AUTH,BIOMETRIC_STRONG,BUILD_GATE,BUILD_SESSION_LEASE');

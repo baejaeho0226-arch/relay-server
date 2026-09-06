@@ -28,7 +28,7 @@ function NormalizeTags(value) {
     const items = Array.isArray(value) ? value : String(value || '').split(',');
     const out = [];
     for (const raw of items) {
-        const tag = SafeField(raw || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24);
+        const tag = SafeField(raw || '').trim().toUpperCase().replace(/[^A-Z0-9_가-힣-]/g, '').slice(0, 24);
         if (tag && !out.includes(tag)) out.push(tag);
         if (out.length >= 10) break;
     }
@@ -260,7 +260,7 @@ function ReissueLicense(oldKey) {
     licenses.set(newKey, copy);
     licenses.delete(oldKey);
     if (oldClient) RevokeLiveLicense(oldClient, 'REISSUED');
-    SaveDatabase();
+    PersistLicenseChange();
     LogEvent('LICENSE_REISSUE', `${oldKey} -> ${newKey}`);
     return { oldKey, newKey, expiresAt: copy.expiresAt };
 }

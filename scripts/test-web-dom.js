@@ -14,7 +14,7 @@ support.Handle(c,'SUPPORT_SEND_V2|DOM_MESSAGE_1|1|'+Buffer.from('첫 문의 <scr
 const virtualConsole=new VirtualConsole();const errors=[];virtualConsole.on('jsdomError',e=>errors.push(e.message));
 const html=fs.readFileSync(root+'/public/index.html','utf8').replace(/<script[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link[^>]*>/g,'');
 const dom=new JSDOM(html,{url:'https://fixture.invalid/',runScripts:'outside-only',virtualConsole});
-const style=dom.window.document.createElement('style');style.textContent=fs.readFileSync(root+'/public/admin.css','utf8');dom.window.document.head.appendChild(style);
+const style=dom.window.document.createElement('style');style.textContent=['admin.css','admin-theme.css','admin-navigation.css'].map(n=>fs.readFileSync(root+'/public/'+n,'utf8')).join('\n');dom.window.document.head.appendChild(style);
 const w=dom.window;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.matchMedia=()=>({matches:false,addListener(){}});
 w.EventSource=class {addEventListener(){}close(){}};
 w.fetch=async(url,options={})=>{
@@ -26,7 +26,7 @@ w.fetch=async(url,options={})=>{
  await api.HandleApiRequest(req,res,{role:'admin',id:'TEST',ip:'127.0.0.1'});
  return {status,ok:status>=200&&status<300,text:async()=>body};
 };
-for(const name of ['admin','admin-pages-monitoring','admin-pages-access','admin-pages-operations','admin-pages-support','admin-actions','admin-pages-production']) new (require('vm').Script)(fs.readFileSync(root+'/public/'+name+'.js','utf8')).runInContext(dom.getInternalVMContext());
+for(const name of [...fs.readFileSync(root+'/public/index.html','utf8').matchAll(/<script src="\/(admin[^?"]+)\?/g)].map(m=>m[1].slice(0,-3))) new (require('vm').Script)(fs.readFileSync(root+'/public/'+name+'.js','utf8')).runInContext(dom.getInternalVMContext());
 const settle=()=>new Promise(resolve=>setTimeout(resolve,30));
 (async()=>{try{
  await settle();

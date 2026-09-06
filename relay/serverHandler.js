@@ -192,6 +192,7 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
 }
 
 function HandleServerLine(connection, line) {
+    if (require('../services/serviceLifecycle').Gate(connection, line)) return;
     line = line.trim();
     if (!line) return;
 

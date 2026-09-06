@@ -332,7 +332,7 @@ async function run() {
         .join('\n');
     const processorSource = fs.readFileSync(path.join(__dirname, '..', 'services', 'processorCenter.js'), 'utf8');
     assert.ok(adminSource.includes('async function renderBuildSessions()'));
-    assert.ok(adminSource.includes('REVOKE NOW'));
+    assert.ok(adminSource.includes('data-build-revoke'));
     assert.ok(apiSource.includes("pathname === '/api/build-sessions'"));
     assert.ok(apiSource.includes('/api\\/build-bindings'));
     assert.ok(processorSource.includes("TYPE1: 'TYPE1/DEFAULT'"));

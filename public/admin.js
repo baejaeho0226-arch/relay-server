@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'fix11';
+const WEB_UI_REVISION = 'fix12';
 const menuToggle = document.getElementById('menu-toggle');
 function closeMobileMenu() {
   app.classList.remove('menu-open');
@@ -88,41 +88,41 @@ function clearQrSelectedFile() {
 
 const titles = {
   support: ['고객센터', 'APK 사용자와 대화합니다. 미접속 기기에는 다음 고객센터 연결 시 답변이 전달됩니다.'],
-  reinstallblocks: ['재설치 차단', 'CLIENT 삭제·바인딩 변경과 관계없이 유지되는 재설치 차단을 관리합니다.'],
-  dashboard: ['대시보드', 'Relay 전체 상태와 최근 이벤트를 확인합니다.'],
-  console: ['실시간 이벤트', 'Relay 이벤트가 실시간으로 스트리밍됩니다.'],
-  trace: ['요청 추적', 'Request ID 기준으로 전달/Retry/ACK 처리 과정을 추적합니다.'],
-  monitor: ['연결 상태', 'Server / Client RTT와 연결 상태를 3초 단위로 감시합니다.'],
-  terminal: ['관리 명령', '허용된 Relay 관리 명령만 실행합니다. OS Shell은 연결되지 않습니다.'],
-  distribution: ['기기 배정', 'Server별 Live / Binding Client 분포와 Drain 진행률을 확인합니다.'],
-  failover: ['장애 전환', '기존 Primary 바인딩을 보존한 채 opt-in Client만 장애 시 임시 Server로 재배치합니다.'],
-  recovery: ['요청 복구', 'Offline Queue, Request Replay, Dead Letter Queue를 관리합니다.'],
+  reinstallblocks: ['재설치 차단', "앱 기기 삭제·바인딩 변경과 관계없이 유지되는 재설치 차단을 관리합니다."],
+  dashboard: ['대시보드', "중계 서버 전체 상태와 최근 이벤트를 확인합니다."],
+  console: ['실시간 이벤트', "중계 서버 이벤트가 실시간으로 스트리밍됩니다."],
+  trace: ['요청 추적', "요청 식별자 기준으로 전달/다시 시도/처리 응답 처리 과정을 추적합니다."],
+  monitor: ['연결 상태', "서버 / 앱 기기 왕복 지연와 연결 상태를 3초 단위로 감시합니다."],
+  terminal: ['관리 명령', "허용된 중계 서버 관리 명령만 실행합니다. OS Shell은 연결되지 않습니다."],
+  distribution: ['기기 배정', "서버별 실시간 연결 / 배정 앱 기기 분포와 연결 정리 진행률을 확인합니다."],
+  failover: ['장애 전환', "기존 기본 바인딩을 보존한 채 개별 허용 앱 기기만 장애 시 임시 서버로 재배치합니다."],
+  recovery: ['요청 복구', "오프라인 대기열, 요청 재전송, 전송 실패 보관함를 관리합니다."],
   notifications: ['알림', '중요 운영 경고와 시스템 이벤트를 확인합니다.'],
-  processors: ['처리 정책', '숫자 허용 범위·차단값 정책과 Processor 처리 통계를 관리합니다.'],
-  reports: ['푸시 · 보고서', 'PWA Push 구독과 날짜별 Relay Health 리포트를 관리합니다.'],
+  processors: ['처리 정책', "숫자 허용 범위·차단값 정책과 처리기 처리 통계를 관리합니다."],
+  reports: ['푸시 · 보고서', "웹 앱 푸시 알림 구독과 날짜별 중계 서버 상태 리포트를 관리합니다."],
   production: ['운영 설정', '1:1 승인, 배포 무결성, 패스키, 감사 체인과 운영 복원력을 통합 관리합니다.'],
   servers: ['서버 기기', 'WinSockServer 연결과 상태를 관리합니다.'],
-  clients: ['앱 기기', 'APK Client 연결, 라이선스와 배정을 확인합니다.'],
+  clients: ['앱 기기', "APK 앱 기기 연결, 라이선스와 배정을 확인합니다."],
   clientbiometrics: ['생체인증 관리', 'APK의 Android 시스템 생체인증 상태와 재등록을 관리합니다.'],
-  buildsessions: ['Build 세션', 'Build Lease, APK↔Server 고정 바인딩, 즉시 Revoke를 관리합니다.'],
+  buildsessions: ["실행 세션", "실행 이용 권한, APK↔서버 고정 바인딩, 즉시 해제를 관리합니다."],
   licenses: ['라이선스', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
   qrauth: ['QR 인증', 'APK의 QR 사진을 서버에서 검증하고 해당 기기를 승인합니다.'],
-  releases: ['앱 배포', 'Auto Update, Release Channel, Canary Rollout을 관리합니다.'],
-  features: ['기능 설정', '전역 기능과 Server / Client별 Override를 관리합니다.'],
-  confighistory: ['설정 이력', 'Runtime Config와 Feature Flag 변경 이력 및 Rollback을 관리합니다.'],
-  enrollment: ['기기 등록', '새 Server / Client의 최초 등록 승인 정책을 관리합니다.'],
-  protocol: ['프로토콜', 'Protocol v3 준비도, Device HMAC, Event Sequence 상태를 확인합니다.'],
-  security: ['보안 상태', 'HMAC 검증, Enrollment, Device Secret 수명과 인증 이상을 한 화면에서 확인합니다.'],
+  releases: ['앱 배포', "자동 업데이트, 배포 채널, 단계별 배포을 관리합니다."],
+  features: ['기능 설정', "전역 기능과 서버 / 앱 기기별 개별 설정를 관리합니다."],
+  confighistory: ['설정 이력', "실행 설정와 Feature 기능 변경 이력 및 되돌리기을 관리합니다."],
+  enrollment: ['기기 등록', "새 서버 / 앱 기기의 최초 등록 승인 정책을 관리합니다."],
+  protocol: ['프로토콜', "프로토콜 v3 준비도, 기기 HMAC, 이벤트 이벤트 순서 상태를 확인합니다."],
+  security: ['보안 상태', "HMAC 검증, 기기 등록, 기기 인증키 수명과 인증 이상을 한 화면에서 확인합니다."],
   audit: ['감사 기록', '최근 서버 이벤트와 관리 작업 기록입니다.'],
-  activity: ['관리자 활동', 'Web Admin에서 수행된 관리 작업과 결과를 추적합니다.'],
-  sessions: ['로그인 세션', '현재 Web Admin 로그인 세션을 확인하고 종료합니다.'],
-  backups: ['백업 · 복원', 'Relay 데이터베이스 백업과 복원을 관리합니다.'],
-  health: ['시스템 상태', 'Node / DB / Backup / Audit / Relay 상태를 진단합니다.'],
-  loadlab: ['부하 테스트', '별도 프로세스에서 Relay 연결/프로토콜 부하 테스트 명령을 생성합니다.'],
-  ha: ['이중화 관리', 'Relay A/B Active/Standby, 상태 복제 및 승격 상태를 확인합니다.'],
+  activity: ['관리자 활동', "웹 관리자에서 수행된 관리 작업과 결과를 추적합니다."],
+  sessions: ['로그인 세션', "현재 웹 관리자 로그인 세션을 확인하고 종료합니다."],
+  backups: ['백업 · 복원', "중계 서버 데이터베이스 백업과 복원을 관리합니다."],
+  health: ['시스템 상태', "실행 환경 / 데이터베이스 / 백업 / 감사 기록 / 중계 서버 상태를 진단합니다."],
+  loadlab: ['부하 테스트', "별도 프로세스에서 중계 서버 연결/프로토콜 부하 테스트 명령을 생성합니다."],
+  ha: ['이중화 관리', "중계 서버 A/B 활성/대기, 상태 복제 및 승격 상태를 확인합니다."],
   storage: ['저장소', '실제 SQLite 기본 저장소, JSON 자동 이관 및 복구 미러 상태를 확인합니다.'],
   system: ['System', '서비스, 유지보수 및 최소 버전 정책을 관리합니다.'],
-  danger: ['Danger Zone', '복구 영향이 큰 작업만 별도로 실행합니다.']
+  danger: ["주의가 필요한 작업", '복구 영향이 큰 작업만 별도로 실행합니다.']
 };
 
 const requestedStartupView = new URLSearchParams(location.search).get('view');
@@ -162,9 +162,9 @@ function fmtBytes(value) {
 
 function accessTypeName(value) {
   const type = String(value || 'TYPE1').trim().toUpperCase();
-  if (type === 'TYPE2') return 'R2Beat';
-  if (type === 'TYPE3') return 'Lostsaga';
-  return 'TalesRunner';
+  if (type === 'TYPE2') return uiText('R2Beat');
+  if (type === 'TYPE3') return uiText('Lostsaga');
+  return uiText('TalesRunner');
 }
 
 function accessTypeBadge(value) {
@@ -173,9 +173,9 @@ function accessTypeBadge(value) {
 
 function processorDisplayName(value) {
   return String(value || '')
-    .replace(/^TYPE1(?=\/|$)/i, 'TalesRunner')
-    .replace(/^TYPE2(?=\/|$)/i, 'R2Beat')
-    .replace(/^TYPE3(?=\/|$)/i, 'Lostsaga');
+    .replace(/^TYPE1(?=\/|$)/i, '테일즈런너')
+    .replace(/^TYPE2(?=\/|$)/i, '알투비트')
+    .replace(/^TYPE3(?=\/|$)/i, '로스트사가').replace(/DEFAULT/g, '기본');
 }
 
 function badge(value) {
@@ -185,12 +185,12 @@ function badge(value) {
   else if (['SLOW', 'UNSTABLE', 'DRAINING', 'KICKED', 'FLAPPING', 'WARNING', 'STANDBY', 'CANDIDATE', 'PENDING', 'FULL'].includes(text)) cls = 'warn';
   else if (['OFFLINE', 'DISABLED', 'EXPIRED', 'SUSPENDED', 'CRITICAL', 'REJECTED', 'SUPERSEDED', 'LOCKED', 'REVOKED', 'FAILED', 'MISMATCH'].includes(text)) cls = 'bad';
   else if (text === 'NONE') cls = 'none';
-  return `<span class="badge ${esc(cls)}">${esc(text)}</span>`;
+  return `<span class="badge ${esc(cls)}">${esc(uiText(text))}</span>`;
 }
 
 function toast(message, error = false) {
   clearTimeout(toastTimer);
-  toastEl.textContent = message;
+  toastEl.textContent = uiText(message);
   toastEl.className = `toast${error ? ' error' : ''}`;
   toastTimer = setTimeout(() => toastEl.classList.add('hidden'), 3200);
 }
@@ -198,7 +198,7 @@ function toast(message, error = false) {
 function readableApiError(code) {
   if (code === 'PERMISSIONS_REQUIRED') return '기기의 필수 권한을 모두 허용한 뒤 다시 승인해주세요.';
   if (code === 'QR_REQUEST_SUPERSEDED') return '이전 QR이 해제되었습니다. 앱에 새로 표시된 QR을 사용해주세요.';
-  return code;
+  return uiError(code);
 }
 async function api(url, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
@@ -227,6 +227,7 @@ async function api(url, options = {}) {
     throw new Error(`${readableApiError(data && data.error || `HTTP_${response.status}`)}${detail}`);
   }
   if (!data || typeof data !== 'object') throw new Error(`EMPTY_API_RESPONSE [${method} ${url}]`);
+  if (!['GET', 'HEAD'].includes(method)) dirtyViews.delete(currentView);
   return data;
 }
 
@@ -245,7 +246,7 @@ function showLogin() {
 function showApp() {
   loginScreen.classList.add('hidden');
   app.classList.remove('hidden');
-  roleLabel.textContent = session.role.toUpperCase();
+  roleLabel.textContent = uiText(session.role.toUpperCase());
   document.querySelectorAll('[data-admin-only]').forEach(el => el.classList.toggle('hidden', session.role !== 'admin'));
   switchView(currentView);
   startEvents();
@@ -259,9 +260,9 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `WEB v${system.webAdminVersion || '4.0.0'} · UI ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.1.0'} · 화면 ${WEB_UI_REVISION}`;
   } catch (_) {
-    webVersionLabel.textContent = `WEB v4.0.0 · UI ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v4.1.0 · 화면 ${WEB_UI_REVISION}`;
   }
 }
 
@@ -276,7 +277,7 @@ function pushLiveEvent(event) {
   if (empty) empty.remove();
   const row = document.createElement('div');
   row.className = 'console-line';
-  row.innerHTML = `<span class="console-time">${esc(fmtTime(event.time))}</span><span class="console-type">${esc(event.type)}</span><span class="console-detail">${esc(event.detail)}</span>`;
+  row.innerHTML = `<span class="console-time">${esc(fmtTime(event.time))}</span><span class="console-type">${esc(uiText(event.type))}</span><span class="console-detail">${esc(event.detail)}</span>`;
   list.appendChild(row);
   while (list.children.length > 300) list.removeChild(list.firstChild);
   list.scrollTop = list.scrollHeight;
@@ -286,7 +287,7 @@ function startEvents() {
   if (eventSource) eventSource.close();
   eventSource = new EventSource('/api/events');
   eventSource.addEventListener('ready', () => {
-    liveState.textContent = 'LIVE';
+    liveState.textContent = "실시간 연결";
     liveState.classList.remove('off');
   });
   eventSource.addEventListener('relay-event', event => {
@@ -300,6 +301,9 @@ function startEvents() {
       if (currentView === 'notifications' && !rendering) renderNotifications(true);
     } catch (_) {}
   });
+  eventSource.addEventListener('service-state', event => {
+    try { const status = JSON.parse(event.data); if (!status.enabled) resetServiceUi(); renderCurrent(true); } catch (_) {}
+  });
   eventSource.addEventListener('tick', () => {
     if (document.hidden || rendering) return;
     const liveViews = ['support', 'reinstallblocks', 'dashboard', 'monitor', 'distribution', 'failover', 'recovery', 'servers', 'clients', 'clientbiometrics', 'buildsessions', 'qrauth', 'notifications', 'processors', 'reports', 'sessions', 'health', 'system', 'features', 'confighistory', 'enrollment', 'releases', 'security', 'protocol', 'loadlab', 'storage', 'danger'];
@@ -310,7 +314,7 @@ function startEvents() {
   });
   eventSource.addEventListener('session', () => showLogin());
   eventSource.onerror = () => {
-    liveState.textContent = 'RECONNECT';
+    liveState.textContent = "재연결 중";
     liveState.classList.add('off');
   };
 }
@@ -352,6 +356,7 @@ nav.addEventListener('click', event => {
   const button = event.target.closest('button[data-view]');
   if (button) closeMobileMenu();
   if (!button) return;
+  dirtyViews.delete(currentView);
   currentView = button.dataset.view;
   nav.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === button));
   renderCurrent();
@@ -416,6 +421,8 @@ function restoreScrollState(snapshot) {
 
 async function renderCurrent(silent = false) {
   if (!session || rendering) return;
+  if (silent && (dirtyViews.has(currentView) || content.contains(document.activeElement) && document.activeElement.matches('input,textarea,select'))) return;
+  if (!silent) dirtyViews.delete(currentView);
   const view = currentView;
   const scrollState = silent ? captureScrollState(view) : null;
   rendering = true;
@@ -462,7 +469,7 @@ async function renderCurrent(silent = false) {
     else if (currentView === 'danger') await renderDangerZone();
   } catch (error) {
     if (!silent) {
-      content.innerHTML = `<div class="api-error"><strong>REQUEST FAILED</strong><span>${esc(error.message)}</span><small>새로고침 후에도 반복되면 서버 로그의 REF 번호를 확인하세요.</small></div>`;
+      content.innerHTML = `<div class="api-error"><strong>요청을 처리하지 못했습니다.</strong><span>${esc(error.message)}</span><small>새로고침 후에도 반복되면 서버 로그의 참조 번호를 확인하세요.</small></div>`;
       toast(error.message, true);
     } else {
       console.warn(`[WEB AUTO REFRESH] ${view}:`, error.message);
@@ -470,11 +477,13 @@ async function renderCurrent(silent = false) {
   } finally {
     if (scrollState) restoreScrollState(scrollState);
     rendering = false;
+    if (view !== currentView) renderCurrent();
   }
 }
 
 
 function switchView(view) {
+  if (currentView !== view) dirtyViews.delete(currentView);
   currentView = view;
   nav.querySelectorAll('button[data-view]').forEach(x => x.classList.toggle('active', x.dataset.view === view));
 }

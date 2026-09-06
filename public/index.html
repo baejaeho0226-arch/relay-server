@@ -11,14 +11,16 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <title>Relay 관리자</title>
-  <link rel="stylesheet" href="/admin.css?v=4.0.0-fix11">
+  <title>중계 서버 관리자</title>
+  <link rel="stylesheet" href="/admin.css?v=4.1.0-fix12">
+  <link rel="stylesheet" href="/admin-theme.css?v=4.1.0-fix12">
+  <link rel="stylesheet" href="/admin-navigation.css?v=4.1.0-fix12">
 </head>
 <body>
   <section id="login-screen" class="login-screen">
     <div class="login-card">
       <div class="brand-mark">R</div>
-      <h1>Relay 관리자</h1>
+      <h1>중계 서버 관리자</h1>
       <p class="muted">기기와 상담을 한곳에서 관리하세요.</p>
       <form id="login-form" autocomplete="off">
         <label>접근 역할
@@ -42,7 +44,7 @@
     <aside class="sidebar" id="main-menu">
       <div class="sidebar-brand">
         <div class="brand-mark small">R</div>
-        <div><strong>Relay</strong><span>MANAGEMENT</span></div>
+        <div><strong>중계 서버</strong><span>통합 관리</span></div>
       </div>
       <div class="nav-search"><input id="nav-filter" type="search" placeholder="기능 검색" autocomplete="off"></div>
       <nav id="nav">
@@ -58,7 +60,7 @@
           </div>
         </details>
         <details class="nav-group">
-          <summary>트래픽 · 처리</summary>
+          <summary>트래픽/처리</summary>
           <div class="nav-items">
             <button data-view="trace">요청 추적</button>
             <button data-view="recovery">요청 복구</button>
@@ -69,13 +71,13 @@
           </div>
         </details>
         <details class="nav-group" open>
-          <summary>기기 · QR 인증</summary>
+          <summary>기기/QR 인증</summary>
           <div class="nav-items">
             <button data-view="qrauth" data-admin-only class="qr-nav">QR 인증 <span id="qr-auth-badge" class="nav-count hidden">0</span></button>
             <button data-view="servers">서버 기기</button>
             <button data-view="clients">앱 기기</button>
             <button data-view="clientbiometrics" data-admin-only class="biometric-nav">생체인증 관리</button>
-            <button data-view="buildsessions" data-admin-only>Build 세션</button>
+            <button data-view="buildsessions" data-admin-only>실행 세션</button>
             <button data-view="licenses">QR 라이선스</button>
             <button data-view="enrollment" data-admin-only>기기 등록</button>
             <button data-view="protocol">프로토콜</button>
@@ -83,7 +85,7 @@
           </div>
         </details>
         <details class="nav-group">
-          <summary>배포 · 정책</summary>
+          <summary>배포/정책</summary>
           <div class="nav-items">
             <button data-view="production" data-admin-only>운영 설정</button>
             <button data-view="releases" data-admin-only>앱 배포</button>
@@ -93,7 +95,7 @@
           </div>
         </details>
         <details class="nav-group">
-          <summary>관리 · 시스템</summary>
+          <summary>관리/시스템</summary>
           <div class="nav-items">
             <button data-view="audit">감사 기록</button>
             <button data-view="activity" data-admin-only>관리자 활동</button>
@@ -104,12 +106,12 @@
             <button data-view="loadlab" data-admin-only>부하 테스트</button>
             <button data-view="storage" data-admin-only>저장소</button>
             <button data-view="system">System</button>
-            <button data-view="danger" data-admin-only class="danger-nav">Danger Zone</button>
+            <button data-view="danger" data-admin-only class="danger-nav">주의가 필요한 작업</button>
           </div>
         </details>
       </nav>
       <div class="sidebar-footer">
-        <div><span class="muted">버전</span><strong id="web-version-label">WEB v4.0.0 · UI fix11</strong></div>
+        <div><span class="muted">버전</span><strong id="web-version-label">웹 v4.1.0 · 화면 fix12</strong></div>
         <div><span class="muted">역할</span><strong id="role-label">-</strong></div>
         <button id="logout-btn" class="ghost">로그아웃</button>
       </div>
@@ -123,7 +125,7 @@
           <p id="page-subtitle" class="muted">기기 연결과 최근 활동을 확인하세요.</p>
         </div>
         <div class="topbar-actions">
-          <span id="live-state" class="live-pill">LIVE</span>
+          <span id="live-state" class="live-pill">실시간 연결</span>
           <button id="install-pwa-btn" class="ghost hidden">앱 설치</button>
           <button id="refresh-btn" class="ghost">새로고침</button>
         </div>
@@ -150,12 +152,34 @@
   </div>
 
   <a class="ui-refresh-link" href="/ui-refresh">웹 화면 새로 불러오기</a>
-  <script src="/admin.js?v=4.0.0-fix11" defer></script>
-  <script src="/admin-pages-monitoring.js?v=4.0.0-fix11" defer></script>
-  <script src="/admin-pages-access.js?v=4.0.0-fix11" defer></script>
-  <script src="/admin-pages-operations.js?v=4.0.0-fix11" defer></script>
-  <script src="/admin-pages-support.js?v=4.0.0-fix11" defer></script>
-  <script src="/admin-actions.js?v=4.0.0-fix11" defer></script>
-  <script src="/admin-pages-production.js?v=4.0.0-fix11" defer></script>
+  <script src="/admin-i18n.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-navigation.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-monitoring.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-terminal.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-traffic.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-danger.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-access.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-sessions.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-reports.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-devices.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-qr.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-licenses.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-deployment.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-security.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-operations.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-support.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-actions-access.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-actions-operations.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-actions-traffic.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-actions-devices.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-actions-policy.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-actions-system.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-modal.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-device-actions.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-license-actions.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-actions.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-palette.js?v=4.1.0-fix12" defer></script>
+  <script src="/admin-pages-production.js?v=4.1.0-fix12" defer></script>
 </body>
 </html>

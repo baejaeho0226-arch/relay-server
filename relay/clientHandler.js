@@ -105,7 +105,7 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion,
     deviceKey = String(deviceKey || '').trim();
     if (!deviceKey || deviceKey.includes('|')) { SendLine(connection.socket, 'ERROR|DEVICE_KEY_REQUIRED'); return; }
     const installation = require('../services/clientInstallation');
-    if (!installation.CheckDeviceKey(connection, deviceKey) ||
+    if (!installation.CheckDeviceKey(connection, deviceKey, installationToken) ||
         !installation.CheckConnectToken(connection, deviceKey, installationToken)) return;
     if (!ValidateProtocolAndVersion(connection, 'client', protocolVersion, appVersion)) {
         setTimeout(() => { try { connection.socket.destroy(); } catch (_) {} }, 150);
@@ -150,6 +150,7 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion,
             LogEvent('CLIENT_LIVE_ONE_TO_ONE_BIND', `${saved.id} -> ${availableServerId}`);
         }
     }
+    installation.ClaimServiceReset(deviceKey);
     AttachClient(connection, saved);
 }
 
@@ -329,6 +330,7 @@ function HandleClientBuild(connection, line) {
 }
 
 function HandleClientLine(connection, line) {
+    if (require('../services/serviceLifecycle').Gate(connection, line)) return;
     line = line.trim();
     if (!line) return;
     // Ignore late frames from a socket replaced by a newer connection.
@@ -355,21 +357,9 @@ function HandleClientLine(connection, line) {
     }
 
     if (line === 'CONNECT' || line.startsWith('CONNECT|') || line.startsWith('CONNECT_INSTALLATION|')) {
-        const parts = line.split('|');
-        let protocolVersion = 1, appVersion = '1.0.0', deviceKey = '', installationToken = '';
-        const installationConnect = parts[0] === 'CONNECT_INSTALLATION';
-        if (installationConnect ? parts.length !== 5 || !parts[4] : parts.length > 4) {
-            SendLine(connection.socket, 'ERROR|INVALID_CONNECT'); return;
-        }
-        if (parts.length >= 4) {
-            protocolVersion = Number(parts[1]);
-            appVersion = String(parts[2] || '').trim();
-            deviceKey = parts[3].trim();
-            installationToken = parts[4] || '';
-        } else if (parts.length >= 2) {
-            deviceKey = parts[1].trim();
-        }
-        HandleClientConnect(connection, deviceKey, protocolVersion, appVersion, installationToken);
+        const packet = require('./clientConnectPacket').Parse(line);
+        if (!packet.ok) { SendLine(connection.socket, `ERROR|${packet.reason}`); return; }
+        HandleClientConnect(connection, packet.deviceKey, packet.protocolVersion, packet.appVersion, packet.installationToken);
         return;
     }
 

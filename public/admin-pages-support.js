@@ -168,7 +168,7 @@ async function sendSupportReply(event) {
 async function renderReinstallBlocks() {
   const { blocks } = await api('/api/reinstall-blocks');
   if (currentView !== 'reinstallblocks') return;
-  content.innerHTML = `<div class="panel"><p>차단 해제 시 이전 설치의 CLIENT 등록과 인증을 초기화합니다. APK를 켜두면 차단 해제를 자동으로 확인하고 알림을 보냅니다. 이후 QR 승인을 다시 진행하세요.</p><div class="table-wrap"><table><thead><tr><th>기존 CLIENT</th><th>차단 시각</th><th>상태</th><th>관리</th></tr></thead><tbody>${blocks.map(b => `<tr><td>${b.clientIds.map(esc).join('<br>') || '등록 삭제됨'}<small class="muted">${esc(b.key.slice(0, 12))}</small></td><td>${esc(new Date(b.blockedAt).toLocaleString())}</td><td>${badge('BLOCKED')}</td><td><button data-reinstall-release="${esc(b.key)}">재설치 차단 해제</button></td></tr>`).join('') || '<tr><td colspan="4">재설치 차단 기기가 없습니다.</td></tr>'}</tbody></table></div></div>`;
+  content.innerHTML = `<div class="panel"><p>차단 해제 시 이전 설치의 앱 기기 등록과 인증을 초기화합니다. APK를 켜두면 차단 해제를 자동으로 확인하고 알림을 보냅니다. 이후 QR 승인을 다시 진행하세요.</p><div class="table-wrap"><table><thead><tr><th>기존 앱 기기</th><th>차단 시각</th><th>상태</th><th>관리</th></tr></thead><tbody>${blocks.map(b => `<tr><td>${b.clientIds.map(esc).join('<br>') || '등록 삭제됨'}<small class="muted">${esc(b.key.slice(0, 12))}</small></td><td>${esc(new Date(b.blockedAt).toLocaleString())}</td><td>${badge('BLOCKED')}</td><td><button data-reinstall-release="${esc(b.key)}">재설치 차단 해제</button></td></tr>`).join('') || '<tr><td colspan="4">재설치 차단 기기가 없습니다.</td></tr>'}</tbody></table></div></div>`;
 }
 content.addEventListener('click', async event => {
   const selected = event.target.closest('[data-support-client]');
@@ -181,7 +181,7 @@ content.addEventListener('click', async event => {
   const release = event.target.closest('[data-reinstall-release]');
   if (!release) return;
   try {
-    const accepted = await openModal({ title: '재설치 차단 해제', message: '이 기기의 이전 CLIENT 등록·인증을 초기화하고 재설치를 허용합니다. 이후 새 QR 승인과 지문 인증이 필요합니다.', confirmLabel: '차단 해제' });
+    const accepted = await openModal({ title: '재설치 차단 해제', message: "이 기기의 이전 앱 기기 등록·인증을 초기화하고 재설치를 허용합니다. 이후 새 QR 승인과 지문 인증이 필요합니다.", confirmLabel: '차단 해제' });
     if (!accepted) return;
     await api(`/api/reinstall-blocks/${release.dataset.reinstallRelease}/release`, { method: 'POST', body: {} });
     toast('차단을 해제했습니다. APK가 자동 확인 후 알림을 보냅니다.');

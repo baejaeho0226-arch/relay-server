@@ -37,6 +37,8 @@ function CleanupTransient() {
 }
 
 function DisconnectConnection(connection) {
+    require('../services/serviceLifecycle').Forget(connection);
+    if (connection.serviceWaiting) { connection.disconnected = true; return; }
     if(connection.disconnected)return;connection.disconnected=true;
     if(connection.type==='server'){
         const currentServer=connection.serverId?servers.get(connection.serverId):null;

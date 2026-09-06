@@ -337,15 +337,14 @@ function ExecuteAdminCommand(connection, line, confirmed = false) {
 
     if (line === 'SERVICE_STOP') {
         if (connection.adminRole !== 'admin') { SendLine(connection.socket, 'ADMIN_ERROR|FORBIDDEN'); return; }
-        state.serviceEnabled=false; state.maintenanceMode=false; SaveDatabase();
-        for(const c of clients.values()){c.licenseAuthorized=false;c.licenseExpiresAt=0;c.lastServerAuthState='';SendLine(c.socket,'SERVICE_STATE|DISABLED');NotifyServerUnauthorized(c.clientId,'SERVICE_DISABLED');}
-        SendLine(connection.socket,'SERVICE_STOP_OK');LogEvent('SERVICE_STOP',SafeIP(connection.socket));return;
+        const result = require('../services/serviceLifecycle').Stop(`TCP ${SafeIP(connection.socket)}`);
+        SendLine(connection.socket,result.ok?'SERVICE_STOP_OK':`ADMIN_ERROR|${result.reason}`);return;
     }
 
     if (line === 'SERVICE_START') {
         if (connection.adminRole !== 'admin') { SendLine(connection.socket, 'ADMIN_ERROR|FORBIDDEN'); return; }
-        state.serviceEnabled=true; state.maintenanceMode=false; SaveDatabase(); for(const c of clients.values()) SendLine(c.socket,'SERVICE_STATE|ONLINE');
-        SendLine(connection.socket,'SERVICE_START_OK');LogEvent('SERVICE_START',SafeIP(connection.socket));return;
+        const result = require('../services/serviceLifecycle').Start(`TCP ${SafeIP(connection.socket)}`);
+        SendLine(connection.socket,result.ok?'SERVICE_START_OK':`ADMIN_ERROR|${result.reason}`);return;
     }
 
     if (line === 'MAINTENANCE_ON') {

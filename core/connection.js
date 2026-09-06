@@ -59,6 +59,7 @@ function CreateConnection(socket) {
                 if (!unwrapped.ok) { SendLine(socket, `ERROR|${unwrapped.reason}`); continue; }
                 line = unwrapped.line;
             }
+            if (require('../services/serviceLifecycle').Gate(connection, line)) continue;
             if(connection.type==='server')HandleServerLine(connection,line);else if(connection.type==='client')HandleClientLine(connection,line);else HandleAdminLine(connection,line);
         }
     });
