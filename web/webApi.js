@@ -75,6 +75,7 @@ async function HandleApiRequest(req, res, session) {
     })) return;
 
     const context = { method, pathname, url, body, req, res, session };
+    if (await require('./routes/memberRoutes').Handle(context)) return;
     if (await require('./routes/deviceRoutes').Handle(context)) return;
     if (await require('./routes/licenseRoutes').Handle(context)) return;
     if (await require('./routes/trafficRoutes').Handle(context)) return;

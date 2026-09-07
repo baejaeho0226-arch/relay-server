@@ -36,6 +36,7 @@ const FILES = [
   "admin-device-actions.js",
   "admin-license-actions.js",
   "admin-actions.js",
+  "admin-pages-member.js",
   "admin-palette.js",
   "admin-pages-production.js",
   "service-worker.js",
