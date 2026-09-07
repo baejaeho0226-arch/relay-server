@@ -4,7 +4,7 @@
 
 content.addEventListener('click', async event => {
   try {
-    for (const handle of [handleAccessAction, handleOperationsAction, handleTrafficAction, handleDevicesAction, handlePolicyAction, handleSystemAction]) if (await handle(event)) return;
+    for (const handle of [handleMemberAction, handleAccessAction, handleOperationsAction, handleTrafficAction, handleDevicesAction, handlePolicyAction, handleSystemAction]) if (await handle(event)) return;
   } catch (error) { toast(readableApiError(error.message), true); }
 });
 
