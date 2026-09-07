@@ -21,6 +21,7 @@ function BuildDatabaseObject() {
     return {
         version: 145,
         clientInstallations: Object.fromEntries(state.clientInstallations),
+        memberHub: require('../services/member/store').DB(),
         supportThreads: Object.fromEntries(state.supportThreads),
         supportSettings: state.supportSettings,
         serviceEnabled: state.serviceEnabled,
@@ -329,6 +330,7 @@ function ImportDatabaseObject(data) {
         }
     }
     require('../services/clientInstallation').ImportPersisted(data);
+    require('../services/member/store').Import(data);
     require('../services/supportCenter').ImportPersisted(data);
     require('../services/clientInstallation').Backfill();
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);

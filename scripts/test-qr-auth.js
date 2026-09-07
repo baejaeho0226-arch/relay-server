@@ -117,8 +117,7 @@ async function run() {
     assert.strictEqual(state.clientBiometricProfiles.has(clientId), false);
 
     assert.throws(() => qr.InspectPayload(payload), /QR_REQUEST_APPROVED/);
-    assert.throws(() => qr.ParsePayload(payload.replace(`c=${clientId}`,
-        'c=FFFFFFFFFFFFFFFF')), /QR_SIGNATURE_INVALID/);
+    assert.throws(() => qr.ParsePayload(payload.slice(0,30)+(payload[30]==='A'?'B':'A')+payload.slice(31)), /QR_SIGNATURE_INVALID/);
 
     const root = path.resolve(__dirname, '..', '..');
     const apkDir = path.join(root, 'ApkWinSock_Android64');

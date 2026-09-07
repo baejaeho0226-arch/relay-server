@@ -45,12 +45,12 @@ function PublicRecord(record) {
 }
 
 function BuildPayload(requestId, clientId, expiresAt, token) {
-    const base = `1|${requestId}|${clientId}|${expiresAt}|${token}`;
-    const signature = Sign(base);
-    return `relayqr://approve?v=1&r=${encodeURIComponent(requestId)}&c=${encodeURIComponent(clientId)}&e=${expiresAt}&t=${encodeURIComponent(token)}&s=${signature}`;
+    return require('./qrToken').Encode(SigningSecret(), requestId, clientId, expiresAt, token);
 }
 
 function ParsePayload(payload) {
+    if (String(payload).startsWith('RLY2.')) return require('./qrToken').Decode(SigningSecret(), String(payload));
+    // Retain validation for already-issued FIX12 tokens until they expire.
     let url;
     try { url = new URL(String(payload || '')); }
     catch (_) { throw new Error('QR_PAYLOAD_INVALID'); }
@@ -76,7 +76,7 @@ function VerifyApprovalToken(record, value) {
 }
 
 function QrMatrix(payload) {
-    const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
+    const qr = QRCode.create(payload, { errorCorrectionLevel: 'H' });
     const size = qr.modules.size;
     let bits = '';
     for (let i = 0; i < qr.modules.data.length; i++) bits += qr.modules.data[i] ? '1' : '0';
@@ -403,6 +403,7 @@ function ImportPersisted(data) {
 }
 
 module.exports = {
+    QrMatrix,
     BuildPayload,
     ParsePayload,
     Issue,

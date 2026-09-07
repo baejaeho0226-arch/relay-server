@@ -336,6 +336,7 @@ function HandleClientLine(connection, line) {
     // Ignore late frames from a socket replaced by a newer connection.
     if(connection.superseded || (connection.clientId && GetOnlineClient(connection.clientId)!==connection))return;
     if (connection.reinstallBlocked || require('../services/clientInstallation').IsBlocked(connection)) { require('../services/clientInstallation').Reject(connection); return; }
+    if (require('../services/member/service').Handle(connection, line)) return;
     if (/^SUPPORT_(OPEN|SEND|SEND_V2|SYNC|STATUS|DEVICE)\|/.test(line)) { require('../services/supportCenter').Handle(connection, line); return; }
 
     if (connection.clientId) {
