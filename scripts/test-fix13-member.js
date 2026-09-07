@@ -15,9 +15,11 @@ try{
  assert.equal(run(a,'catalog').items.length,1);
  assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:1}),/PRICE_CHANGED/);
  assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:5000}),/INSUFFICIENT_BALANCE/);
- const top=run(a,'topup.create',{amount:10000,depositor:'테스트',note:''}).topup;
+ const coin=service.AdminWrite('coin.save',{symbol:'BTC',name:'비트코인',network:'Bitcoin',address:'TEST_ONLY_ADDRESS_123456789',decimals:8,krwPerCoin:'100000000',confirmations:3,enabled:true},'ADMIN');
+ const quote=run(a,'topup.quote',{amount:10000,coinId:coin.id}).quote;
+ const top=run(a,'topup.create',{quoteId:quote.id,txHash:'ab'.repeat(32),note:''}).topup;
  assert.equal(run(a,'me').profile.balance,0);assert.throws(()=>run(b,'topup.cancel',{id:top.id}),/TOPUP_NOT_FOUND/);
- service.AdminWrite('topup.decide',{id:top.id,approve:true},'ADMIN');service.AdminWrite('topup.decide',{id:top.id,approve:true},'ADMIN');assert.equal(run(a,'me').profile.balance,10000);
+ service.AdminWrite('topup.decide',{id:top.id,approve:true,receivedAmount:top.coinAmount,confirmations:3,receiptVerified:true},'ADMIN');service.AdminWrite('topup.decide',{id:top.id,approve:true,receivedAmount:top.coinAmount,confirmations:3,receiptVerified:true},'ADMIN');assert.equal(run(a,'me').profile.balance,10000);
  const body={productId:product.id,expectedPrice:5000,amount:1,accountId:pb.id};
  const bought=run(a,'purchase',body,'PURCHASE-REPLAY');assert.equal(bought.balance,5000);assert.deepEqual(run(a,'purchase',body,'PURCHASE-REPLAY'),bought);assert.equal(run(b,'me').profile.balance,0);
  assert.throws(()=>run(a,'purchase',{...body,expectedPrice:4999},'PURCHASE-REPLAY'),/REQUEST_REUSED/);

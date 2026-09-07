@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const files = fs.readdirSync(__dirname).filter(name => /^test-.*\.js$/.test(name) &&
-  (!process.argv.includes('--fix12') || name.startsWith('test-fix12-')) && (!process.argv.includes('--fix13') || name.startsWith('test-fix13-'))).sort();
+  (!process.argv.includes('--fix12') || name.startsWith('test-fix12-')) && (!process.argv.includes('--fix13') || name.startsWith('test-fix13-')) && (!process.argv.includes('--fix14') || name.startsWith('test-fix14-'))).sort();
 let failed = 0;
 for (const name of files) {
   const result = spawnSync(process.execPath, [path.join(__dirname,name)], {

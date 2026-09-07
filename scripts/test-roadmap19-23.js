@@ -28,7 +28,7 @@ function staticSourceChecks() {
     assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
     assert.ok(apk.includes('BuildBuildLine(RequestID, FState.ClientID)'));
     assert.ok(apk.includes('FDashboardTabs: array[0..4] of TRectangle'));
-    assert.ok(apk.includes('FHubNavShape := TPath.Create(Self)'));
+    assert.ok(apk.includes('FHubNavShape := TSkSvg.Create(Self)'));
     assert.ok(apk.includes('FMX.BiometricAuth'));
     assert.ok(apk.includes('TBiometricStrength.Weak'));
     assert.ok(apk.includes('FBiometricLaunchTimer.Interval := 350'));
