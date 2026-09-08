@@ -81,10 +81,8 @@ async function Handle(context) {
     if (method === 'POST' && pathname === '/api/qr-auth/approve') {
         if (!RequireAdmin(res, session)) return true;
         const result = qrApproval.Approve(body.requestId, body.approvalToken, {
-            days: body.days,
             memo: body.memo,
-            tags: body.tags,
-            accessType: body.accessType
+            tags: body.tags
         }, session.role);
         if (!result.ok) {
             LogEvent('QR_AUTH_APPROVE_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);

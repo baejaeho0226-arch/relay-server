@@ -337,6 +337,7 @@ function BuildLicenseItem(key, license) {
         key,
         status: GetLicenseStatus(license),
         expiresAt: license.expiresAt,
+        entryPass:license.entryPass===true,
         boundClient: license.boundClient || '',
         memo: license.memo || '',
         createdAt: license.createdAt || 0,
@@ -347,7 +348,7 @@ function BuildLicenseItem(key, license) {
         authCount: license.authCount || 0,
         sendCount: license.sendCount || 0,
         suspended: !!license.suspended,
-        accessType: require('../services/accessType').NormalizeAccessType(license.accessType),
+        accessType: license.entryPass===true?'':require('../services/accessType').NormalizeAccessType(license.accessType),
         tags: NormalizeTags(license.tags || [])
     };
 }

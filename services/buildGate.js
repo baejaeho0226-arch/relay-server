@@ -126,9 +126,11 @@ function Queue(connection, requestId) {
     if (serverOwner && serverOwner.clientId !== clientId)
         return { ok: false, reason: 'SERVER_ALREADY_PAIRED' };
 
+    const gameAccess=require('./member/entryPass').ForClient(connection);
+    if(!gameAccess)return {ok:false,reason:'GAME_PASS_REQUIRED'};
     const now = Now();
     const sessionId = SessionId();
-    const accessType = NormalizeAccessType(connection.accessType);
+    const accessType = NormalizeAccessType(gameAccess.accessType);
     const grant = {
         requestId,
         sessionId,
@@ -206,6 +208,8 @@ function TryDispatchClient(clientId) {
     if (!client.biometricVerified) return { delivered: false, waiting: true, reason: 'BIOMETRIC_AUTH_REQUIRED' };
     const active = require('../license/licenseManager').GetUsableLicenseForConnection(client);
     if (!active) return { delivered: false, waiting: true, reason: 'LICENSE_REQUIRED' };
+    const gameAccess=require('./member/entryPass').ForClient(client);
+    if(!gameAccess){MarkFailed(clientId,grant,'GAME_PASS_REQUIRED');Save();return {delivered:false,waiting:false,reason:'GAME_PASS_REQUIRED'};}
 
     const saved = SavedClient(clientId);
     const serverId = saved ? NormalizeID(saved.serverId) : '';
@@ -231,11 +235,11 @@ function TryDispatchClient(clientId) {
     if (!require('./deviceAuth').Verified('SERVER', serverId)) return { delivered: false, waiting: true, reason: 'SERVER_AUTH_REQUIRED' };
 
     client.lastServerAuthState = '';
-    require('../relay/notifications').NotifyServerAuthorized(clientId, serverId, active.license.expiresAt, 'QR_PASSWORD');
+    require('../relay/notifications').NotifyServerAuthorized(clientId, serverId, gameAccess.expiresAt, 'QR_PASSWORD');
 
     const now = Now();
-    if (!grant.sessionExpiresAt || grant.sessionExpiresAt <= now + 5000) grant.sessionExpiresAt = now + SessionTtlMs();
-    grant.accessType = NormalizeAccessType(client.accessType);
+    if (!grant.sessionExpiresAt || grant.sessionExpiresAt <= now + 5000) grant.sessionExpiresAt = Math.min(now + SessionTtlMs(),gameAccess.expiresAt);
+    grant.accessType = NormalizeAccessType(gameAccess.accessType);
     const proof = GrantProof(serverId, grant);
     if (!proof) return { delivered: false, waiting: true, reason: 'SERVER_SECRET_REQUIRED' };
     const payload = `BUILD|${grant.requestId}|${clientId}|${grant.sessionId}|${grant.sessionExpiresAt}|${grant.accessType}|${proof}`;
@@ -552,6 +556,8 @@ function Cleanup() {
         else if (grant.status === 'PENDING') TryDispatchClient(clientId);
     }
     for (const session of state.buildSessions.values()) {
+        const client=OnlineClient(session.clientId);
+        if(session.status==='AUTHORIZED'&&client&&!require('./member/entryPass').ForClient(client)){if(EndSession(session,'EXPIRED','GAME_PASS_EXPIRED','SYSTEM'))changed=true;}
         if (session.status === 'AUTHORIZED' && Number(session.expiresAt) > 0 && Number(session.expiresAt) <= now) {
             if (EndSession(session, 'EXPIRED', 'LEASE_EXPIRED', 'SYSTEM')) changed = true;
         }

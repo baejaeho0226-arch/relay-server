@@ -74,7 +74,8 @@ function NotifyAuthorized(connection, accessType) {
     }
     if (!require('./clientInstallation').Ready(connection)) return false;
     connection.biometricVerified = true;
-    connection.accessType = NormalizeAccessType(accessType);
+    const game=require('./member/entryPass').ForClient(connection);
+    connection.accessType = game?NormalizeAccessType(game.accessType):'';
     state.clientBiometricChallenges.delete(connection.clientId);
     require('./clientInstallation').MarkAuthorized(connection);
     require('../storage/database').SaveDatabase();

@@ -1,20 +1,20 @@
 'use strict';
 const crypto = require('node:crypto');
 const state = require('../../core/state');
-const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits'];
+const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests'];
 const TABLES = ['profiles','products','news','orders','topups','ledger','posts','comments','reactions','reports','operations'];
 function Empty() {
- const db={schema:2,revision:0,settings:{topupInstructions:'충전 방식은 준비 중입니다.',topupEnabled:false}};
+ const db={schema:3,revision:0,settings:{topupInstructions:'충전 방식은 준비 중입니다.',topupEnabled:false}};
  for(const name of [...TABLES,...EXTRA_TABLES])db[name]={};
  return db;
 }
 function DB(){return state.memberHub || (state.memberHub=Empty());}
 function Import(data){
  const raw=data && data.memberHub;if(!raw)return void(state.memberHub=Empty());
- if(![1,2].includes(raw.schema) || TABLES.some(name=>!raw[name]||typeof raw[name]!=='object'||Array.isArray(raw[name])))throw Error('MEMBER_STORAGE_INVALID');
+ if(![1,2,3].includes(raw.schema) || TABLES.some(name=>!raw[name]||typeof raw[name]!=='object'||Array.isArray(raw[name])))throw Error('MEMBER_STORAGE_INVALID');
  const next=structuredClone(raw);
- for(const name of EXTRA_TABLES){if(raw.schema===1&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
- next.schema=2;state.memberHub=next;
+ for(const name of EXTRA_TABLES){if((raw.schema===1||name==='chargeRequests'&&raw.schema<3)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
+ next.schema=3;state.memberHub=next;
 }
 function Fail(reason){const e=Error(reason);e.memberError=true;throw e;}
 function Text(value,max,required=false){const v=String(value??'').trim().replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');if(v.length>max || required&&!v)Fail('INPUT_INVALID');return v;}
@@ -45,4 +45,4 @@ function Ledger(p,amount,kind,reference){
  const next=p.balance+amount;if(!Number.isSafeInteger(next)||next<0||next>100000000)Fail('BALANCE_INVALID');
  p.balance=next;const id=Id('PAY');const row={id,accountId:p.id,amount,balance:next,kind,reference,at:Date.now()};DB().ledger[id]=row;return row;
 }
-module.exports={DB,Empty,Import,Fail,Text,Money,Id,Account,ProfileById,PublicProfile,ViewCount,Page,Atomic,Operation,Ledger};
+module.exports={Subject,DB,Empty,Import,Fail,Text,Money,Id,Account,ProfileById,PublicProfile,ViewCount,Page,Atomic,Operation,Ledger};

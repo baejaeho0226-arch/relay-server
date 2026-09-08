@@ -21,7 +21,7 @@ function Counter(row){
 }
 function Read(body={}){
     const db=s.DB(),view=body.view||'overview';
-    const table={products:()=>Object.values(db.products),news:()=>Object.values(db.news),orders:()=>Object.values(db.orders).map(commerce.PublicOrder),ledger:()=>Object.values(db.ledger),profiles:()=>Object.values(db.profiles).map(p=>({...s.PublicProfile(p,true),blocked:p.blocked})),posts:()=>Object.values(db.posts).map(post=>({...post,author:social.Author(post.accountId)})),comments:()=>Object.values(db.comments).map(c=>({...c,author:social.Author(c.accountId)})),reports:()=>Object.values(db.reports),analytics:()=>Object.values(db.viewCounters).filter(x=>x.kind==='post').map(Counter)};
+    const table={charges:()=>Object.values(db.chargeRequests).map(require('./charges').Public),products:()=>Object.values(db.products).map(commerce.PublicGame),news:()=>Object.values(db.news),orders:()=>Object.values(db.orders).map(commerce.PublicOrder),ledger:()=>Object.values(db.ledger),profiles:()=>Object.values(db.profiles).map(p=>({...s.PublicProfile(p,true),blocked:p.blocked})),posts:()=>Object.values(db.posts).map(post=>({...post,author:social.Author(post.accountId)})),comments:()=>Object.values(db.comments).map(c=>({...c,author:social.Author(c.accountId)})),reports:()=>Object.values(db.reports),analytics:()=>Object.values(db.viewCounters).filter(x=>x.kind==='post').map(Counter)};
     if(['coins','topups'].includes(view))s.Fail('TOPUP_UNAVAILABLE');
     const settings={};
     if(table[view]){
@@ -55,6 +55,9 @@ function Content(body,actor){
     });
 }
 function Write(action,body,actor){
+    if(action==='charge.scan')return require('./charges').Scan(body);
+    if(action==='charge.approve')return require('./charges').Approve(body,actor);
+    if(action==='charge.reject')return require('./charges').Reject(body,actor);
     if(action==='product.save')return commerce.SaveProduct(body);
     if(action==='news.save')return social.SaveNews(body);
     if(action.startsWith('coin.')||action.startsWith('topup.')||action==='settings.save')s.Fail('TOPUP_UNAVAILABLE');

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const config = require('../config/config');
 const state = require('../core/state');
+const entryPass = require('./member/entryPass');
 const { NormalizeID, Now, SafeField, SafeIP, SendLine } = require('../core/utils');
 const { GetOnlineClient, FindClientDeviceKey } = require('../identity/identityManager');
 const { GetBoundLicenseEntry, CreateLicense, AuthorizeClientByQr, AuthorizeBoundClientByQr } = require('../license/licenseManager');
@@ -38,7 +39,6 @@ function PublicRecord(record) {
         reason: record.reason || '',
         licenseRef: record.licenseRef || (record.licenseKey ? `QR-${String(record.licenseKey).slice(-8)}` : ''),
         serverId: NormalizeID(record.serverId),
-        accessType: require('./accessType').NormalizeAccessType(record.accessType),
         lastIP: record.lastIP || '',
         scanCount: Number(record.scanCount || 0)
     };
@@ -137,7 +137,6 @@ function Issue(connection) {
         reason: '',
         licenseKey: '',
         licenseRef: '',
-        accessType: 'TYPE1',
         lastIP: SafeIP(connection.socket),
         scanCount: 0
     };
@@ -157,7 +156,8 @@ function Resume(connection) {
     const gate = RequireQrSecurity(connection);
     if (!gate.ok) return gate;
     const bound = GetBoundLicenseEntry(connection.clientId);
-    if (!require('./clientPermissions').NeedsApproval(connection) && bound && !bound.license.suspended && Now() < Number(bound.license.expiresAt || 0)) {
+    if(bound && !entryPass.IsEntry(bound.license)){entryPass.Convert(bound.license);require('../storage/database').SaveDatabase();}
+    if (!require('./clientPermissions').NeedsApproval(connection) && bound && !bound.license.suspended && !entryPass.Expired(bound.license)) {
         return { ok: AuthorizeBoundClientByQr(connection, 'RESUME'), resumed: true };
     }
     return Issue(connection);
@@ -235,18 +235,19 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     const existingSaved = require('../identity/identityManager').GetSavedClientByID(record.clientId);
     record.serverId = existingSaved ? NormalizeID(existingSaved.serverId) : '';
 
-    const days = Math.max(1, Math.min(3650, Number(options.days) || config.QR_AUTH_DEFAULT_DAYS));
+    const previousLicenses = structuredClone(state.licenses);
+    const previousRecord = structuredClone(record);
+    const previousRevision = state.licenseRevision;
     const memo = SafeField(options.memo || `QR 승인 ${record.clientId}`).slice(0, 200);
     const tags = require('../license/licenseManager').NormalizeTags([...(Array.isArray(options.tags) ? options.tags : []), 'QR']);
-    const accessType = require('./accessType').NormalizeAccessType(options.accessType);
     let bound = GetBoundLicenseEntry(record.clientId);
-    if (bound && (bound.license.suspended || Now() >= Number(bound.license.expiresAt || 0))) {
+    if (bound && (bound.license.suspended || entryPass.Expired(bound.license))) {
         bound.license.boundClient = '';
         bound.license.boundAt = 0;
         bound = null;
     }
     if (!bound) {
-        const created = CreateLicense(days, memo, tags, 'QR');
+        const created = CreateLicense(0, memo, tags, 'QR', false);
         if (!created) return { ok: false, reason: 'LICENSE_CREATE_FAILED' };
         const license = state.licenses.get(created.key);
         license.boundClient = record.clientId;
@@ -254,21 +255,20 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
         bound = { key: created.key, license };
     }
 
-    bound.license.accessType = accessType;
-    require('./clientBiometric').SetAccessType(record.clientId, accessType);
+    entryPass.Convert(bound.license);state.licenseRevision++;
 
     record.status = 'APPROVED';
     record.approvedAt = Now();
     record.approvedBy = SafeField(actor).slice(0, 32);
     record.licenseKey = '';
     record.licenseRef = `QR-${String(bound.key).slice(-8)}`;
-    record.accessType = accessType;
     record.reason = '';
     const previousPermissionReset = existingSaved && existingSaved.permissionsReapprovalRequired;
     if (existingSaved) existingSaved.permissionsReapprovalRequired = false;
     if (!require('../storage/database').SaveDatabase()) {
         if (existingSaved) existingSaved.permissionsReapprovalRequired = previousPermissionReset;
-        record.status = 'PENDING'; record.approvedAt = 0;
+        state.licenses.clear();for(const [key,value]of previousLicenses)state.licenses.set(key,value);
+        state.qrAuthRequests.set(requestId,previousRecord);state.licenseRevision=previousRevision;
         return { ok: false, reason: 'STORAGE_SAVE_FAILED' };
     }
 
@@ -329,7 +329,6 @@ function Summary() {
         ...counts,
         ttlMs: config.QR_AUTH_TTL_MS,
         maxImageBytes: config.QR_AUTH_MAX_IMAGE_BYTES,
-        defaultDays: config.QR_AUTH_DEFAULT_DAYS,
         durableSigningSecret: Boolean(config.QR_APPROVAL_SECRET)
     };
 }
@@ -392,7 +391,6 @@ function ImportPersisted(data) {
             reason: SafeField(raw.reason || '').slice(0, 80),
             licenseKey: '',
             licenseRef: String(raw.licenseRef || (raw.licenseKey ? `QR-${String(raw.licenseKey).slice(-8)}` : '')).slice(0, 16),
-            accessType: require('./accessType').NormalizeAccessType(raw.accessType),
             lastIP: String(raw.lastIP || '').slice(0, 64),
             scanCount: Math.max(0, Number(raw.scanCount) || 0),
             lastScannedAt: Number(raw.lastScannedAt) || 0

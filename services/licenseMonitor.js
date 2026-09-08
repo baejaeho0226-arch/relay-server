@@ -9,7 +9,7 @@ const DAY = 86400000;
 const alerted = new Map();
 
 function GetExpiryBucket(license, now = Now()) {
-    if (!license) return 'NONE';
+    if (!license || license.entryPass===true) return 'NONE';
     const status = GetLicenseStatus(license);
     if (status === 'EXPIRED') return 'EXPIRED';
     const remain = Number(license.expiresAt || 0) - now;
@@ -24,6 +24,7 @@ function GetExpirySummary() {
     const summary = { expired: 0, within1d: 0, within3d: 0, within7d: 0, within30d: 0 };
     const now = Now();
     for (const license of state.licenses.values()) {
+        if(license.entryPass===true)continue;
         const status = GetLicenseStatus(license);
         if (status === 'EXPIRED') { summary.expired++; continue; }
         const remain = Number(license.expiresAt || 0) - now;
@@ -38,6 +39,7 @@ function GetExpirySummary() {
 function MatchesExpiryFilter(license, filter) {
     filter = String(filter || 'ALL').toUpperCase();
     if (!filter || filter === 'ALL') return true;
+    if(license?.entryPass===true)return false;
     const status = GetLicenseStatus(license);
     if (filter === 'EXPIRED') return status === 'EXPIRED';
     if (status === 'EXPIRED') return false;

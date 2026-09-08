@@ -178,10 +178,11 @@ function ImportDatabaseObject(data) {
             if (!value || typeof value !== 'object') continue;
             const key = NormalizeLicenseKey(rawKey);
             const expiresAt = Number(value.expiresAt);
-            if (!key || !Number.isFinite(expiresAt) || expiresAt <= 0) continue;
+            if (!key || !Number.isFinite(expiresAt) || (expiresAt <= 0 && !(value.entryPass===true&&expiresAt===0))) continue;
             newLicenses.set(key, {
                 createdAt: Number(value.createdAt) || Now(),
                 expiresAt,
+                entryPass: value.entryPass===true,
                 boundClient: NormalizeID(value.boundClient || ''),
                 boundAt: Number(value.boundAt) || 0,
                 lastAuthAt: Number(value.lastAuthAt) || 0,
@@ -192,7 +193,7 @@ function ImportDatabaseObject(data) {
                 suspended: Boolean(value.suspended),
                 memo: SafeField(value.memo || ''),
                 tags: require('../license/licenseManager').NormalizeTags(value.tags || []),
-                accessType: require('../services/accessType').NormalizeAccessType(value.accessType)
+                accessType: value.entryPass===true?'':require('../services/accessType').NormalizeAccessType(value.accessType)
             });
         }
     }
@@ -334,6 +335,7 @@ function ImportDatabaseObject(data) {
     require('../services/supportCenter').ImportPersisted(data);
     require('../services/clientInstallation').Backfill();
     state.licenseRevision=Math.max(0,Number(data.licenseRevision)||0);
+    if(require('../services/member/entryPass').Migrate())state.licenseRevision++;
 
     if (typeof data.serviceEnabled === 'boolean') state.serviceEnabled = data.serviceEnabled;
     if (typeof data.maintenanceMode === 'boolean') state.maintenanceMode = data.maintenanceMode;
