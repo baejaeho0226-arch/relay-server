@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'fix17';
+const WEB_UI_REVISION = 'fix18';
 const menuToggle = document.getElementById('menu-toggle');
 function closeMobileMenu() {
   app.classList.remove('menu-open');
@@ -73,21 +73,35 @@ let terminalHistoryIndex = -1;
 let deferredInstallPrompt = null;
 let qrScanResult = null;
 let qrSelectedFile = null;
+let qrPhotoSerial = 0;
 let qrSelectedPreviewDataUrl = '';
 let buildSessionServers = [];
 
 async function setQrSelectedFile(file) {
-  qrSelectedFile = file || null;
-  qrSelectedPreviewDataUrl = qrSelectedFile ? await fileAsDataUrl(qrSelectedFile) : '';
+  const serial=++qrPhotoSerial;qrSelectedFile=null;qrSelectedPreviewDataUrl='';
+  if(!file)return;
+  if(!['image/png','image/jpeg'].includes(file.type)||file.size>8*1024*1024)throw Error('8MB 이하의 PNG 또는 JPEG 사진을 선택해주세요.');
+  qrSelectedFile=file;
+  try{const preview=await fileAsDataUrl(file);if(serial===qrPhotoSerial)qrSelectedPreviewDataUrl=preview;}
+  catch(e){if(serial!==qrPhotoSerial)return;qrSelectedFile=null;throw e;}
 }
 
 function clearQrSelectedFile() {
+  qrPhotoSerial++;
   qrSelectedFile = null;
   qrSelectedPreviewDataUrl = '';
 }
 
 const titles = {
-  member: ['앱 콘텐츠 운영', ''],
+  'member-overview': ['운영 요약', ''],
+  'member-news': ['소식', ''],
+  'member-products': ['게임', ''],
+  'member-profiles': ['회원', ''],
+  'member-posts': ['피드', ''],
+  'member-comments': ['댓글', ''],
+  'member-reports': ['신고', ''],
+  'member-orders': ['이용권 내역', ''],
+  'member-ledger': ['결제 원장', ''],
   support: ['고객센터', 'APK 사용자와 대화합니다. 미접속 기기에는 다음 고객센터 연결 시 답변이 전달됩니다.'],
   reinstallblocks: ['재설치 차단', "앱 기기 삭제·바인딩 변경과 관계없이 유지되는 재설치 차단을 관리합니다."],
   dashboard: ['대시보드', "중계 서버 전체 상태와 최근 이벤트를 확인합니다."],
@@ -261,9 +275,9 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.6.0'} · 화면 ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.7.0'} · 화면 ${WEB_UI_REVISION}`;
   } catch (_) {
-    webVersionLabel.textContent = `웹 v4.6.0 · 화면 ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v4.7.0 · 화면 ${WEB_UI_REVISION}`;
   }
 }
 
@@ -358,7 +372,7 @@ nav.addEventListener('click', event => {
   if (button) closeMobileMenu();
   if (!button) return;
   dirtyViews.delete(currentView);
-  currentView = button.dataset.view;
+  switchView(button.dataset.view);
   nav.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === button));
   renderCurrent();
 });
@@ -432,7 +446,7 @@ async function renderCurrent(silent = false) {
   pageSubtitle.textContent = meta[1];
   if (!silent) content.innerHTML = '<div class="empty">불러오는 중...</div>';
   try {
-    if (currentView === 'member') await renderMember();
+    if (isMemberPage()) await renderMember();
     else if (currentView === 'dashboard') await renderDashboard();
     else if (currentView === 'console') await renderConsole();
     else if (currentView === 'trace') await renderTrace();
@@ -484,7 +498,10 @@ async function renderCurrent(silent = false) {
 }
 
 
+function isMemberPage(view=currentView) { return view.startsWith('member-') && Object.hasOwn(memberTabs,view.slice(7)); }
 function switchView(view) {
+  if(view==='member')view='member-overview';
+  if(isMemberPage(view)&&currentView!==view){memberView=view.slice(7);memberOffset=0;memberFilter='';memberQuery='';memberSort='recent';memberSelected.clear();memberFingerprint='';memberRenderSerial++;}
   if (currentView !== view) dirtyViews.delete(currentView);
   currentView = view;
   nav.querySelectorAll('button[data-view]').forEach(x => x.classList.toggle('active', x.dataset.view === view));

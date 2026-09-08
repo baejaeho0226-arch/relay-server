@@ -1,0 +1,25 @@
+{
+  "revision": "FIX13.1",
+  "date": "2026-09-07T14:21:02.377064+00:00",
+  "modifiedRuntimeFiles": [
+    "ApkWinSock_Android64/ApkMemberClient.pas"
+  ],
+  "originalBugReproduced": [
+    "Invalid field type list: FRuntime",
+    "Undeclared member field: FSecurity",
+    "Undeclared member field: FClientID",
+    "Undeclared member field: FChallengeID",
+    "Undeclared member field: FRecoveryError"
+  ],
+  "checks": {
+    "correctedMemberDeclarations": "PASS",
+    "genericTypeCommaHandling": "PASS",
+    "verify_sources.js": "PASS",
+    "verify_encoding.js": "PASS",
+    "delphiBomFileCount": 99
+  },
+  "delphiBuildExecuted": false,
+  "backendRetested": false,
+  "backendUnchanged": true,
+  "memberClientSha256": "3a4eb9bcc914afe15cccf63bdc7f035adc08a4b4f9af185629ded7200e3e197c"
+}

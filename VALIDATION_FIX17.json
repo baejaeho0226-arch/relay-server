@@ -1,0 +1,117 @@
+{
+  "release": "FIX17",
+  "base": "FIX16",
+  "apkVersion": "2.16.0",
+  "relayPackageVersion": "6.13.0",
+  "webAdminVersion": "4.6.0",
+  "webUiRevision": "fix17",
+  "runtime": "Node.js 24.19.0",
+  "regressions": {
+    "passed": 26,
+    "total": 26,
+    "suites": [
+      "test-auth-recovery.js",
+      "test-build-sessions.js",
+      "test-client-installation.js",
+      "test-client-permissions.js",
+      "test-device-registry-history.js",
+      "test-fix10-support-installation.js",
+      "test-fix12-lifecycle-bulk.js",
+      "test-fix12-tcp.js",
+      "test-fix12-web.js",
+      "test-fix13-member.js",
+      "test-fix13-qr.js",
+      "test-fix13-tcp.js",
+      "test-fix13-web.js",
+      "test-fix15-member.js",
+      "test-fix17-member.js",
+      "test-fix17-web.js",
+      "test-production-hardening.js",
+      "test-qr-auth.js",
+      "test-roadmap11-14.js",
+      "test-roadmap15-18.js",
+      "test-roadmap19-23.js",
+      "test-support-center.js",
+      "test-support-persistence.js",
+      "test-web-api-empty-state.js",
+      "test-web-dom.js",
+      "test-web-ui-cache.js"
+    ]
+  },
+  "checks": {
+    "jsModules": 170,
+    "webBundleFiles": 39,
+    "delphiUtf8BomFiles": 106,
+    "svgDocuments": 40,
+    "nativeMemberDeclarationsAndSignatures": "passed",
+    "svgSourceAndEmbeddedDocuments": "passed",
+    "sourceCompatibilityGuards": "passed",
+    "androidManifestAndThemeXml": "passed"
+  },
+  "coveredBehavior": [
+    "Actual QR PNG photo decode and member-bound wallet credit without expiration",
+    "Approval idempotency, expired QR rejection, amount validation and stale FIX16 approval-form rejection",
+    "All four configured game periods: 1, 7, 15 and 30 days",
+    "Server-validated game price and revision, insufficient balance and invalid/unavailable period rejection",
+    "Atomic charge and purchase rollback on persistence failure",
+    "Purchase idempotency and cross-member order ownership",
+    "Unused purchase refund exactly once and active entitlement refund rejection",
+    "Wallet survives elapsed time and game expiry; permanent entry remains usable",
+    "Previously approved FIX16 entitlements do not become duplicate wallet credits",
+    "Build session lease limited to the activated game entitlement period",
+    "Actual TCP signed wallet purchase, duplicate retry, invalidation and biometric reauthentication",
+    "SQLite reopen and member schema 3 snapshot recovery",
+    "Web DOM/API game duration price editor, QR preview retention and real photo approval",
+    "Existing authorization, QR, biometric, permissions, support, lifecycle and cache regression suites"
+  ],
+  "nativeSourceGuards": [
+    "System bars shown with FullScreen false, light bar surfaces and dark system icons",
+    "Native Android UI-thread dispatch and API-gated insets handling",
+    "Rectangular edge-aligned 56-high title bar and 72-high five-tab bottom bar",
+    "Full rectangular tap hit testing and automatic input capture with drag cancellation",
+    "48-high feed reactions; distinct filled/outline SVG thumbs",
+    "Server reaction response updates cached state and visible SVG/count without recreating a focused editor",
+    "Purchase confirmation includes the selected game, duration, price and server revision"
+  ],
+  "expectationUpdates": [
+    "Replaced old static expectations for hidden system bars and cradle navigation with the requested visible bars and rectangular navigation",
+    "Changed retired-shopping expectations to reject incomplete requests while testing the restored period purchase flow",
+    "Changed QR charge tests from direct entitlement issuance to wallet credit plus a separate game purchase"
+  ],
+  "nativeCompilation": {
+    "performed": false,
+    "reason": "Delphi compiler, original DPR/DPROJ and Android device unavailable"
+  },
+  "visualValidation": {
+    "nativeDeviceUI": false,
+    "nativeTouchRuntime": false,
+    "androidSystemBarsRuntime": false,
+    "browserScreenshot": false,
+    "webDomAndApi": true,
+    "svgXmlAndEmbeddedSourceEquality": true
+  },
+  "preserved": {
+    "winSockServerSourcesUnchanged": true,
+    "winSockServerFilesCompared": 33,
+    "apkFilesUnchangedFromFix16": [
+      "ApkWinSock.QrAuth.inc",
+      "ApkWinSock.Ui.inc",
+      "ApkWinSock.Support.inc",
+      "ApkWinSock.Protocol.Qr.inc",
+      "ApkWinSock.Protocol.Biometric.inc",
+      "ApkWinSock.Lifecycle.Startup.inc",
+      "ApkUiText.pas",
+      "ApkQrRenderer.pas",
+      "ApkWinSock.BiometricBuild.inc"
+    ]
+  },
+  "limitations": [
+    "Delphi compilation and Android device verification are still required; source guards do not establish runtime correctness",
+    "System bar visibility, three-button/gesture navigation, insets, keyboard and rotation require Android runtime checks",
+    "Web checked through DOM/API and bundle validation without browser screenshots",
+    "Previously informational games require administrator-configured prices; zero means unavailable, not free",
+    "Wallet credit requires administrator payment confirmation; no new bank, coin or payment provider integration",
+    "Started game entitlements continue to elapse when another game is selected",
+    "APK, Android resources and Relay/web changes must be applied together"
+  ]
+}

@@ -37,9 +37,9 @@ function CreateConnection(socket) {
     socket.setNoDelay(true);socket.setKeepAlive(true,10000);
     socket.on('data',data=>{
         connection.buffer+=data.toString('utf8');
-        if(connection.buffer.length>MAX_INPUT_BUFFER){SendLine(socket,'ERROR|BUFFER_OVERFLOW');socket.destroy();return;}
         while(true){
             const pos=connection.buffer.indexOf('\n');if(pos<0)break;
+            if(pos>MAX_INPUT_BUFFER){SendLine(socket,'ERROR|BUFFER_OVERFLOW');socket.destroy();return;}
             let line=connection.buffer.substring(0,pos).replace(/\r$/,'');connection.buffer=connection.buffer.substring(pos+1);
             if(!connection.type){
                 if(line==='REGISTER'||line.startsWith('REGISTER|'))connection.type='server';
@@ -62,6 +62,7 @@ function CreateConnection(socket) {
             if (require('../services/serviceLifecycle').Gate(connection, line)) continue;
             if(connection.type==='server')HandleServerLine(connection,line);else if(connection.type==='client')HandleClientLine(connection,line);else HandleAdminLine(connection,line);
         }
+        if(connection.buffer.length>MAX_INPUT_BUFFER){SendLine(socket,'ERROR|BUFFER_OVERFLOW');socket.destroy();return;}
     });
     socket.on('close',()=>DisconnectConnection(connection));
     socket.on('error',error=>console.error('[SOCKET ERROR]',error.message));

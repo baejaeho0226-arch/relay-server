@@ -1,0 +1,120 @@
+{
+  "version": "FIX12",
+  "date": "2026-09-06",
+  "node": "24.19.0",
+  "suites": [
+    {
+      "test": "test-auth-recovery.js",
+      "exit": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test-build-sessions.js",
+      "exit": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test-client-installation.js",
+      "exit": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test-client-permissions.js",
+      "exit": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test-device-registry-history.js",
+      "exit": 0,
+      "seconds": 0.14
+    },
+    {
+      "test": "test-fix10-support-installation.js",
+      "exit": 0,
+      "seconds": 0.13
+    },
+    {
+      "test": "test-fix12-lifecycle-bulk.js",
+      "exit": 0,
+      "seconds": 0.15
+    },
+    {
+      "test": "test-fix12-tcp.js",
+      "exit": 0,
+      "seconds": 0.16
+    },
+    {
+      "test": "test-fix12-web.js",
+      "exit": 0,
+      "seconds": 1.2
+    },
+    {
+      "test": "test-production-hardening.js",
+      "exit": 0,
+      "seconds": 0.1
+    },
+    {
+      "test": "test-qr-auth.js",
+      "exit": 0,
+      "seconds": 0.27
+    },
+    {
+      "test": "test-roadmap11-14.js",
+      "exit": 0,
+      "seconds": 8.1
+    },
+    {
+      "test": "test-roadmap15-18.js",
+      "exit": 0,
+      "seconds": 4.62
+    },
+    {
+      "test": "test-roadmap19-23.js",
+      "exit": 0,
+      "seconds": 9.4
+    },
+    {
+      "test": "test-support-center.js",
+      "exit": 0,
+      "seconds": 0.14
+    },
+    {
+      "test": "test-support-persistence.js",
+      "exit": 0,
+      "seconds": 0.5
+    },
+    {
+      "test": "test-web-api-empty-state.js",
+      "exit": 0,
+      "seconds": 0.51
+    },
+    {
+      "test": "test-web-dom.js",
+      "exit": 0,
+      "seconds": 1.09
+    },
+    {
+      "test": "test-web-ui-cache.js",
+      "exit": 0,
+      "seconds": 0.1
+    }
+  ],
+  "additional_checks": {
+    "source_validation": "PASS",
+    "delphi_encoding_files": 90,
+    "delphi_encoding": "PASS",
+    "javascript_module_check": "147 files PASS before adding syntax-checked regression runner",
+    "ui_bundle_files": 36,
+    "ui_bundle": "PASS",
+    "authenticated_get_apis": 41,
+    "dom_screens": 36,
+    "latest_frontend_recheck": "test-fix12-web.js PASS after checkbox draft preservation adjustment"
+  },
+  "not_performed": [
+    "Delphi compilation",
+    "Android device execution",
+    "Windows executable execution",
+    "Browser visual/layout QA"
+  ],
+  "tcp_start_notification_ms": 1.4
+}

@@ -1,0 +1,93 @@
+{
+  "release": "FIX15",
+  "base": "FIX14",
+  "apkVersion": "2.14.0",
+  "relayPackageVersion": "6.11.0",
+  "webAdminVersion": "4.4.0",
+  "webUiRevision": "fix15",
+  "runtime": "Node.js 24.19.0",
+  "regressions": {
+    "passed": 25,
+    "total": 25,
+    "suites": [
+      "test-auth-recovery.js",
+      "test-build-sessions.js",
+      "test-client-installation.js",
+      "test-client-permissions.js",
+      "test-device-registry-history.js",
+      "test-fix10-support-installation.js",
+      "test-fix12-lifecycle-bulk.js",
+      "test-fix12-tcp.js",
+      "test-fix12-web.js",
+      "test-fix13-member.js",
+      "test-fix13-qr.js",
+      "test-fix13-tcp.js",
+      "test-fix13-web.js",
+      "test-fix15-member.js",
+      "test-fix15-web.js",
+      "test-production-hardening.js",
+      "test-qr-auth.js",
+      "test-roadmap11-14.js",
+      "test-roadmap15-18.js",
+      "test-roadmap19-23.js",
+      "test-support-center.js",
+      "test-support-persistence.js",
+      "test-web-api-empty-state.js",
+      "test-web-dom.js",
+      "test-web-ui-cache.js"
+    ]
+  },
+  "checks": {
+    "jsModules": 166,
+    "webBundleFiles": 39,
+    "delphiUtf8BomFiles": 103,
+    "svgDocuments": 40,
+    "nativeMemberDeclarationsAndSignatures": "passed",
+    "svgSourceAndEmbeddedDocuments": "passed",
+    "sourceCompatibilityGuards": "passed"
+  },
+  "coveredBehavior": [
+    "Per-article and per-revision read state with authorization checks",
+    "Feed-post-only views, one per authenticated member and UTC date",
+    "Own-post editing with revision conflicts, idempotent retries and atomic rollback",
+    "Retired coin and deposit actions blocked before operation replay",
+    "Existing balances, ledger and legacy storage retained",
+    "Nine responsive admin tabs; no empty pagination range",
+    "Web search, editing, archive, restore and role authorization",
+    "Automatic refresh guarded by interactions, focus, modal and selection",
+    "Unsubmitted search text, unchanged DOM and scroll position retained",
+    "Existing TCP HMAC, SQLite, QR, biometric, support and service lifecycle regression suites"
+  ],
+  "nativeCompilation": {
+    "performed": false,
+    "reason": "Delphi compiler, original DPR/DPROJ and Android device unavailable"
+  },
+  "visualValidation": {
+    "nativeDeviceUI": false,
+    "nativeTouchRuntime": false,
+    "browserScreenshot": false,
+    "webDomAndApi": true,
+    "svgXmlAndEmbeddedSourceEquality": true
+  },
+  "preserved": {
+    "winSockServerSourcesUnchanged": true,
+    "apkFilesUnchangedFromFix14": [
+      "ApkWinSock.QrAuth.inc",
+      "ApkWinSock.BiometricBuild.inc",
+      "ApkWinSock.Ui.inc",
+      "ApkWinSock.Support.inc",
+      "ApkWinSock.Protocol.Qr.inc",
+      "ApkWinSock.Protocol.Biometric.inc",
+      "ApkWinSock.Splash.inc",
+      "ApkWinSock.Lifecycle.Startup.inc",
+      "ApkUiText.pas",
+      "ApkQrRenderer.pas"
+    ]
+  },
+  "limitations": [
+    "Touch release/drag behavior and animation timing require Android device execution; source checks are not native compilation",
+    "Web layout tested through DOM/CSS checks without browser screenshot execution",
+    "Existing Skia configuration is required; no new project entry point or global renderer setting supplied",
+    "Funding method remains undecided; no deposit processing interface exists in this version"
+  ]
+}

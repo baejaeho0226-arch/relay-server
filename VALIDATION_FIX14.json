@@ -1,0 +1,76 @@
+{
+  "release": "FIX14",
+  "base": "FIX13.2",
+  "apkVersion": "2.13.0",
+  "relayPackageVersion": "6.10.0",
+  "webAdminVersion": "4.3.0",
+  "webUiRevision": "fix14",
+  "runtime": "Node.js 24.19.0",
+  "regressions": {
+    "passed": 25,
+    "total": 25,
+    "suites": [
+      "test-auth-recovery.js",
+      "test-build-sessions.js",
+      "test-client-installation.js",
+      "test-client-permissions.js",
+      "test-device-registry-history.js",
+      "test-fix10-support-installation.js",
+      "test-fix12-lifecycle-bulk.js",
+      "test-fix12-tcp.js",
+      "test-fix12-web.js",
+      "test-fix13-member.js",
+      "test-fix13-qr.js",
+      "test-fix13-tcp.js",
+      "test-fix13-web.js",
+      "test-fix14-member.js",
+      "test-fix14-web.js",
+      "test-production-hardening.js",
+      "test-qr-auth.js",
+      "test-roadmap11-14.js",
+      "test-roadmap15-18.js",
+      "test-roadmap19-23.js",
+      "test-support-center.js",
+      "test-support-persistence.js",
+      "test-web-api-empty-state.js",
+      "test-web-dom.js",
+      "test-web-ui-cache.js"
+    ]
+  },
+  "checks": {
+    "jsModules": 167,
+    "webBundleFiles": 39,
+    "delphiUtf8BomFiles": 102,
+    "svgDocuments": 42,
+    "nativeMemberDeclarationsAndSignatures": "passed",
+    "svgSourceAndEmbeddedDocuments": "passed",
+    "sourceCompatibilityGuards": "passed",
+    "finalSchemaValidationRegression": "passed",
+    "depositAddressQrLogoDecodeCases": 10,
+    "finalTargetedRegressions": [
+      "test-fix14-member.js",
+      "test-fix14-web.js",
+      "test-fix13-tcp.js",
+      "test-web-ui-cache.js"
+    ]
+  },
+  "nativeCompilation": {
+    "performed": false,
+    "reason": "Delphi compiler, original DPR/DPROJ and Android device unavailable"
+  },
+  "visualValidation": {
+    "svgRasterReview": true,
+    "nativeDeviceUI": false,
+    "browserScreenshot": false
+  },
+  "preserved": {
+    "winSockServerSourcesUnchanged": true,
+    "qrAndBiometricScreenLayoutSourcesUnchanged": true
+  },
+  "limitations": [
+    "Manual blockchain receipt review; no automatic chain watcher or market rate provider",
+    "Existing Delphi project must enable/configure Skia; global renderer is not changed by this source",
+    "Screen/item view counts are per authenticated member per UTC date",
+    "Phone execution is required to confirm the reported Access error is resolved"
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "version": "FIX13",
+  "date": "2026-09-07T13:38:48.445334+00:00",
+  "node": "v24.19.0",
+  "suites": [
+    {
+      "test": "test-auth-recovery.js",
+      "exit": 0,
+      "seconds": 0.67
+    },
+    {
+      "test": "test-build-sessions.js",
+      "exit": 0,
+      "seconds": 0.55
+    },
+    {
+      "test": "test-client-installation.js",
+      "exit": 0,
+      "seconds": 0.84
+    },
+    {
+      "test": "test-client-permissions.js",
+      "exit": 0,
+      "seconds": 0.78
+    },
+    {
+      "test": "test-device-registry-history.js",
+      "exit": 0,
+      "seconds": 0.68
+    },
+    {
+      "test": "test-fix10-support-installation.js",
+      "exit": 0,
+      "seconds": 0.49
+    },
+    {
+      "test": "test-fix12-lifecycle-bulk.js",
+      "exit": 0,
+      "seconds": 0.56
+    },
+    {
+      "test": "test-fix12-tcp.js",
+      "exit": 0,
+      "seconds": 0.56
+    },
+    {
+      "test": "test-fix12-web.js",
+      "exit": 0,
+      "seconds": 3.78
+    },
+    {
+      "test": "test-fix13-member.js",
+      "exit": 0,
+      "seconds": 0.47
+    },
+    {
+      "test": "test-fix13-qr.js",
+      "exit": 0,
+      "seconds": 1.26
+    },
+    {
+      "test": "test-fix13-tcp.js",
+      "exit": 0,
+      "seconds": 0.68
+    },
+    {
+      "test": "test-fix13-web.js",
+      "exit": 0,
+      "seconds": 3.47
+    },
+    {
+      "test": "test-production-hardening.js",
+      "exit": 0,
+      "seconds": 0.44
+    },
+    {
+      "test": "test-qr-auth.js",
+      "exit": 0,
+      "seconds": 0.86
+    },
+    {
+      "test": "test-roadmap11-14.js",
+      "exit": 0,
+      "seconds": 9.41
+    },
+    {
+      "test": "test-roadmap15-18.js",
+      "exit": 0,
+      "seconds": 5.72
+    },
+    {
+      "test": "test-roadmap19-23.js",
+      "exit": 0,
+      "seconds": 10.43
+    },
+    {
+      "test": "test-support-center.js",
+      "exit": 0,
+      "seconds": 0.49
+    },
+    {
+      "test": "test-support-persistence.js",
+      "exit": 0,
+      "seconds": 1.14
+    },
+    {
+      "test": "test-web-api-empty-state.js",
+      "exit": 0,
+      "seconds": 1.42
+    },
+    {
+      "test": "test-web-dom.js",
+      "exit": 0,
+      "seconds": 2.96
+    },
+    {
+      "test": "test-web-ui-cache.js",
+      "exit": 0,
+      "seconds": 0.35
+    }
+  ],
+  "checks": [
+    {
+      "check": "verify_sources.js",
+      "exit": 0,
+      "output": "SOURCE VALIDATION PASS\n- Missing units / banned APIs / FMX resource regressions: NONE\n- Build lease, revoke, fixed binding and TYPE routing tokens: PASS\n- APK module includes / Server modules / Web Admin modular routes and actions: PASS\n- Delphi UTF-8 BOM / APK Korean / Server ASCII encoding policy: PASS\n- Status vector operands / automatic probes / support protocol declarations: PASS\n"
+    },
+    {
+      "check": "verify_encoding.js",
+      "exit": 0,
+      "output": "DELPHI SOURCE ENCODING PASS\n- UTF-8 BOM and strict UTF-8 decode: 99 files\n- APK Korean Unicode literals: PASS\n- WinSockServer console ASCII policy: PASS\n- No Win32 console code-page API required: PASS\n"
+    },
+    {
+      "check": "scripts/check-web-ui.js",
+      "exit": 0,
+      "output": "WEB UI BUNDLE PASS: WEB v4.2.0 / UI fix13 / 37 files\n"
+    },
+    {
+      "check": "Android launch XML parsing",
+      "exit": 0,
+      "files": 4
+    },
+    {
+      "check": "scripts/check-modules.js",
+      "exit": 0,
+      "output": "MODULE CHECK OK: 160 JavaScript files"
+    },
+    {
+      "check": "verify_sources.js after keyboard/rotation layout adjustment",
+      "exit": 0,
+      "output": "SOURCE VALIDATION PASS"
+    }
+  ],
+  "limitations": [
+    "Delphi compiler and Android/Win64 device execution unavailable; no APK or EXE build is claimed.",
+    "Web UI exercised with jsdom plus actual HTTP APIs; no visual browser rendering was performed.",
+    "Android XML parsed, but aapt packaging and device launch theme require the existing RAD Studio project.",
+    "Payments use administrator-approved deposits and the internal wallet; no external payment gateway is integrated."
+  ],
+  "passed": 23,
+  "total": 23
+}
