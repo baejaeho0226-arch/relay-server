@@ -77,7 +77,7 @@ async function run() {
     const bound = Array.from(state.licenses.entries())
         .find(([, license]) => license.boundClient === clientId);
     assert.ok(bound);
-    assert.strictEqual(bound[1].accessType, 'TYPE2');
+    assert.strictEqual(bound[1].accessType, '');assert.equal(bound[1].expiresAt,0);assert.equal(bound[1].entryPass,true);
 
 
     assert.strictEqual(connection.licenseAuthorized, true);
@@ -91,7 +91,7 @@ async function run() {
     assert.strictEqual(biometric.HandleProof(connection,
         ['BIOMETRIC_PROOF', enrollment[1], enrollment[2], enrollmentProof]), true);
     assert.strictEqual(connection.biometricVerified, true);
-    assert.ok(writes.some(line => /^BIOMETRIC_OK\|TYPE2\|\{[0-9A-F-]{36}\}/.test(line)));
+    assert.ok(writes.some(line => /^BIOMETRIC_OK\|\|\{[0-9A-F-]{36}\}/.test(line)));
     assert.ok(state.clientBiometricProfiles.get(clientId));
     assert.strictEqual(Object.keys(state.clientBiometricProfiles.get(clientId))
         .some(key => /finger|template|password|pin/i.test(key)), false);

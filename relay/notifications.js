@@ -21,6 +21,7 @@ function NotifyServerAuthorized(clientId, serverId, expiresAt, source = 'LICENSE
     const server = GetOnlineServer(serverId);
     if (!server) return;
     const client = GetOnlineClient(clientId);
+    if(client){const game=require('../services/member/entryPass').ForClient(client);if(!game)return;expiresAt=game.expiresAt;}
     source = String(source || 'LICENSE').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 24) || 'LICENSE';
     const state = `AUTHORIZED|${expiresAt}|${source}`;
     if (client && client.lastServerAuthState === state) return;

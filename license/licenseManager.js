@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
 const state = require('../core/state');
+const entryPass = require('../services/member/entryPass');
 
 const { HOST, PORT, HEALTH_PORT, DATA_DIR, DB_FILE, DB_BAK_FILE, BACKUP_DIR, AUDIT_DIR, CURRENT_PROTOCOL_VERSION, DEFAULT_MIN_PROTOCOL_VERSION, DEFAULT_MIN_SERVER_VERSION, DEFAULT_MIN_CLIENT_VERSION, ADMIN_CREDENTIALS, ADMIN_AUTH_WINDOW_SECONDS, ADMIN_SESSION_TIMEOUT_MS, CONFIRM_TOKEN_TTL_MS, SERVER_KICK_BLOCK_MS, CLIENT_KICK_BLOCK_MS, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX, MAX_CLIENTS_PER_SERVER, REQUEST_HISTORY_TIMEOUT_MS, ACK_RETRY_MS, ACK_TIMEOUT_MS, ACK_MAX_RETRIES, MAX_INPUT_BUFFER, MAX_BULK_KEYS, MAX_SEARCH_RESULTS, MAX_EVENT_MEMORY, AUTO_BACKUP_INTERVAL_MS, MAX_BACKUPS, DANGEROUS_PREFIXES } = config;
 const { servers, clients, serverIdentities, clientIdentities, licenses, disabledServers, drainingServers, disabledClients, kickedServers, kickedClients, requestHistory, pendingRequests, rateLimits, events, confirmTokens, ipHistory, runtimeStats } = state;
@@ -50,7 +51,7 @@ function GetBoundLicenseEntry(clientId) {
 function GetLicenseStatus(license) {
     if (!license) return 'UNKNOWN';
     if (license.suspended) return 'SUSPENDED';
-    if (Now() >= license.expiresAt) return 'EXPIRED';
+    if (entryPass.Expired(license)) return 'EXPIRED';
     if (license.boundClient) return 'BOUND';
     return 'AVAILABLE';
 }
@@ -59,7 +60,7 @@ function GetUsableLicenseForConnection(connection) {
     if (!connection || !connection.clientId || !connection.licenseAuthorized || !state.serviceEnabled) return null;
     const license = FindLicense(connection.licenseKey);
     if (!license) return null;
-    if (license.boundClient !== connection.clientId || license.suspended || Now() >= license.expiresAt) return null;
+    if (license.boundClient !== connection.clientId || license.suspended || entryPass.Expired(license)) return null;
     return { key: connection.licenseKey, license };
 }
 
@@ -69,8 +70,9 @@ function CompleteAuthorization(connection, licenseKey, license, source = 'LICENS
         SendLine(connection.socket, 'ERROR|PERMISSIONS_REQUIRED'); return false;
     }
     const eventSource = source === 'QR' || source === 'QR_RESUME' ? source : 'LICENSE';
-    const accessType = require('../services/accessType').NormalizeAccessType(license.accessType);
-    license.accessType = accessType;
+    const game = entryPass.ForClient(connection);
+    const accessType = entryPass.IsEntry(license) ? (game?.accessType || '') : require('../services/accessType').NormalizeAccessType(license.accessType);
+    if (!entryPass.IsEntry(license)) license.accessType = accessType;
     if (!license.boundClient) {
         license.boundClient = connection.clientId;
         license.boundAt = Now();
@@ -104,7 +106,7 @@ function CompleteAuthorization(connection, licenseKey, license, source = 'LICENS
     require('../services/clientBiometric').Begin(connection, accessType);
 
     const remainingDays = Math.ceil((license.expiresAt - Now()) / 86400000);
-    if (remainingDays <= 7) SendLine(connection.socket, `LICENSE_WARNING|${remainingDays}|${license.expiresAt}`);
+    if (!entryPass.IsEntry(license) && remainingDays <= 7) SendLine(connection.socket, `LICENSE_WARNING|${remainingDays}|${license.expiresAt}`);
     const auditReference = eventSource === 'LICENSE' ? licenseKey : `QR-${String(licenseKey).slice(-8)}`;
     LogEvent(eventSource === 'LICENSE' ? 'LICENSE_AUTH' : 'QR_LICENSE_AUTH', `${auditReference} -> ${connection.clientId} / ${eventSource}`);
     return true;
@@ -119,7 +121,7 @@ function ValidateAuthorizationTarget(connection, licenseKey) {
     const license = FindLicense(licenseKey);
     if (!licenseKey || !license) { SendLine(connection.socket, 'LICENSE_ERROR|INVALID_KEY'); return null; }
     if (license.suspended) { SendLine(connection.socket, 'LICENSE_ERROR|SUSPENDED'); NotifyServerUnauthorized(connection.clientId, 'SUSPENDED'); return null; }
-    if (Now() >= license.expiresAt) { SendLine(connection.socket, 'LICENSE_ERROR|EXPIRED'); NotifyServerUnauthorized(connection.clientId, 'EXPIRED'); return null; }
+    if (entryPass.Expired(license)) { SendLine(connection.socket, 'LICENSE_ERROR|EXPIRED'); NotifyServerUnauthorized(connection.clientId, 'EXPIRED'); return null; }
     if (license.boundClient && license.boundClient !== connection.clientId) { SendLine(connection.socket, 'LICENSE_ERROR|BOUND_OTHER'); return null; }
 
     const already = GetBoundLicenseEntry(connection.clientId);
@@ -146,7 +148,7 @@ function AuthorizeBoundClientByQr(connection, requestId = 'RESUME') {
     return AuthorizeClientByQr(connection, bound.key, requestId);
 }
 
-function CreateLicense(days, memo, tags = [], source = 'LICENSE') {
+function CreateLicense(days, memo, tags = [], source = 'LICENSE', persist = true) {
     let key;
     do { key = RandomLicenseKey(); } while (licenses.has(key));
     const now = Now();
@@ -155,8 +157,9 @@ function CreateLicense(days, memo, tags = [], source = 'LICENSE') {
         boundClient: '', boundAt: 0, lastAuthAt: 0, lastSeenAt: 0, lastIP: '',
         authCount: 0, sendCount: 0, suspended: false, memo: SafeField(memo), tags: NormalizeTags(tags), accessType: 'TYPE1'
     };
+    if(source==='QR')entryPass.Convert(license);
     licenses.set(key, license);
-    if (!PersistLicenseChange()) { licenses.delete(key); return null; }
+    if (persist && !PersistLicenseChange()) { licenses.delete(key); return null; }
     LogEvent(source === 'QR' ? 'QR_LICENSE_CREATE' : 'LICENSE_CREATE', source === 'QR' ? `QR-${key.slice(-8)}` : key);
     setImmediate(() => { try { require('../services/licenseMonitor').ScanLicenseExpiryAlerts(); } catch (_) {} });
     return { key, expiresAt: license.expiresAt };
@@ -174,7 +177,7 @@ function SetLicenseTags(key, tags) {
 
 function ExtendLicense(key, days) {
     const license = FindLicense(key);
-    if (!license) return false;
+    if (!license || entryPass.IsEntry(license)) return false;
     license.expiresAt = Math.max(Now(), license.expiresAt) + days * 86400000;
     if (license.boundClient) {
         const client = GetOnlineClient(license.boundClient);
@@ -228,7 +231,7 @@ function SuspendLicense(key) {
 
 function ResumeLicense(key) {
     const license = FindLicense(key);
-    if (!license || Now() >= license.expiresAt) return false;
+    if (!license || entryPass.Expired(license)) return false;
     license.suspended = false;
     if (license.boundClient) {
         const client = GetOnlineClient(license.boundClient);
@@ -252,7 +255,7 @@ function DeleteLicense(key) {
 function ReissueLicense(oldKey) {
     oldKey = NormalizeLicenseKey(oldKey);
     const old = FindLicense(oldKey);
-    if (!old || old.expiresAt <= Now()) return null;
+    if (!old || entryPass.Expired(old)) return null;
     let newKey;
     do { newKey = RandomLicenseKey(); } while (licenses.has(newKey));
     const copy = { ...old, createdAt: Now(), lastAuthAt: 0, lastSeenAt: 0, lastIP: '', authCount: 0, sendCount: 0, suspended: false };
@@ -324,7 +327,7 @@ function ValidateClientLicense(connection) {
             SendLine(connection.socket, `LICENSE_UPDATED|${active.license.expiresAt}`);
         }
         const remainingDays = Math.ceil((active.license.expiresAt - Now()) / 86400000);
-        if (remainingDays <= 7 && connection.lastExpiryWarningDay !== remainingDays) {
+        if (!entryPass.IsEntry(active.license) && remainingDays <= 7 && connection.lastExpiryWarningDay !== remainingDays) {
             connection.lastExpiryWarningDay = remainingDays;
             SendLine(connection.socket, `LICENSE_WARNING|${remainingDays}|${active.license.expiresAt}`);
         }
@@ -334,7 +337,7 @@ function ValidateClientLicense(connection) {
     connection.licenseAuthorized=false;connection.licenseExpiresAt=0;connection.biometricVerified=false;connection.accessType='';connection.lastServerAuthState='';
     state.clientBiometricChallenges.delete(connection.clientId);
     if(bound&&bound.license.suspended){SendLine(connection.socket,'LICENSE_ERROR|SUSPENDED');NotifyServerUnauthorized(connection.clientId,'SUSPENDED');}
-    else if(bound&&Now()>=bound.license.expiresAt){SendLine(connection.socket,'LICENSE_ERROR|EXPIRED');NotifyServerUnauthorized(connection.clientId,'EXPIRED');}
+    else if(bound&&entryPass.Expired(bound.license)){SendLine(connection.socket,'LICENSE_ERROR|EXPIRED');NotifyServerUnauthorized(connection.clientId,'EXPIRED');}
     else {SendLine(connection.socket,'LICENSE_ERROR|LICENSE_REQUIRED');NotifyServerUnauthorized(connection.clientId,'LICENSE_REQUIRED');}
 }
 

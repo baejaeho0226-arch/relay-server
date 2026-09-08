@@ -6,9 +6,17 @@ async function handleMemberAction(event){
  if(action==='refresh'){await renderMember();return true;}
  if(action==='reset'){memberQuery='';memberFilter='';memberSort='recent';memberOffset=0;memberSelected.clear();await renderMember();return true;}
  let values,body;
- if(action==='product.new'||action==='product.edit'){
-  values=await openModal({title:row.id?'상품 수정':'상품 등록',fields:[{name:'title',label:'상품명',value:row.title},{name:'description',label:'설명',type:'textarea',value:row.description},{name:'accessType',label:'콘텐츠',type:'select',value:row.accessType||'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},{name:'price',label:'가격 (원)',type:'number',value:row.price},{name:'days',label:'이용 기간 (일)',type:'number',value:row.days||30},{name:'stock',label:'재고 (무제한은 -1)',type:'number',value:row.stock??-1},{name:'published',label:'판매 상태',type:'select',value:String(row.published||false),options:[{value:'false',label:'비공개'},{value:'true',label:'판매 중'}]}],confirmLabel:'저장'});
-  if(values)body={...values,action:'product.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),price:Number(values.price),days:Number(values.days),stock:Number(values.stock),published:values.published==='true'};
+ if(action==='charge.scan'){
+  const file=content.querySelector('#member-charge-file')?.files?.[0];if(!file)throw Error('충전 QR 사진을 먼저 선택해주세요.');
+  if(!['image/png','image/jpeg'].includes(file.type)||file.size>8*1024*1024)throw Error('8MB 이하의 PNG 또는 JPEG 사진을 선택해주세요.');
+  const result=(await api('/api/member/action',{method:'POST',body:{action:'charge.scan',imageData:await fileAsDataUrl(file)}})).result;
+  values=await openModal({title:'QR 충전 등록',message:`${result.member.nickname} · ${result.member.id}\n처음 이용하기를 누르면 기간이 시작됩니다.`,fields:[{name:'amount',label:'확인한 충전 금액 (원)',type:'number',value:''},{name:'days',label:'게임 이용 기간 (일)',type:'number',value:30},{name:'accessType',label:'게임',type:'select',value:'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},{name:'memo',label:'확인 메모',type:'textarea',value:''}],confirmLabel:'충전 등록'});
+  if(values)body={action:'charge.approve',id:result.request.id,approvalToken:result.approvalToken,amount:Number(values.amount),days:Number(values.days),accessType:values.accessType,memo:values.memo||''};
+ }else if(action==='charge.reject'){
+  values=await openModal({title:'충전 요청 반려',fields:[{name:'reason',label:'회원에게 전달할 사유',type:'textarea'}],confirmLabel:'반려'});if(values)body={action:'charge.reject',id:row.id,reason:values.reason};
+ }else if(action==='product.new'||action==='product.edit'){
+  values=await openModal({title:row.id?'게임 안내 수정':'게임 등록',fields:[{name:'title',label:'게임 이름',value:row.title},{name:'description',label:'게임 소개',type:'textarea',value:row.description},{name:'accessType',label:'게임 분류',type:'select',value:row.accessType||'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},{name:'published',label:'공개 상태',type:'select',value:String(row.published||false),options:[{value:'false',label:'비공개'},{value:'true',label:'공개'}]}],confirmLabel:'저장'});
+  if(values)body={...values,action:'product.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true'};
  }else if(action==='news.new'||action==='news.edit'){
   values=await openModal({title:'소식 작성',fields:[{name:'title',label:'제목',value:row.title},{name:'body',label:'내용',type:'textarea',value:row.body},{name:'category',label:'분류',type:'select',value:row.category||'NOTICE',options:['NOTICE','UPDATE','EVENT','ALERT'].map(value=>({value,label:memberStatus[value]}))},{name:'published',label:'공개',type:'select',value:String(row.published||false),options:[{value:'false',label:'임시 저장'},{value:'true',label:'공개'}]},{name:'pinned',label:'상단 고정',type:'select',value:String(row.pinned||false),options:[{value:'false',label:'사용 안 함'},{value:'true',label:'고정'}]}],confirmLabel:'저장'});
   if(values)body={...values,action:'news.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',pinned:values.pinned==='true'};
@@ -29,7 +37,7 @@ async function handleMemberAction(event){
   values=await openModal({title:b.textContent,message:label,danger:['order.refund','profile.block'].includes(action),fields:['order.refund'].includes(action)?[{name:'reason',label:'사유',type:'textarea'}]:[],confirmLabel:b.textContent});
   if(values)body={action,id:row.id,reason:values.reason||'',hidden:!row.hidden,blocked:!row.blocked};
  }
- if(body){await api('/api/member/action',{method:'POST',body});toast('반영되었습니다.');await renderMember();}return true;
+ if(body){await api('/api/member/action',{method:'POST',body});const file=content.querySelector('#member-charge-file');if(file)file.value='';toast('반영되었습니다.');await renderMember();}return true;
 }
 
 function updateMemberSelection(){

@@ -42,7 +42,7 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  assert.equal(w.document.getElementById('license-bulk-btn').disabled,false);
  assert.equal(w.document.getElementById('license-check-all').indeterminate,true);
  await click(w.document.getElementById('license-bulk-btn'));
- assert.equal(w.document.querySelector('[data-modal-field="action"]').options.length,8);
+ assert.equal(w.document.querySelector('[data-modal-field="action"]').options.length,7);
  w.document.querySelector('[data-modal-field="action"]').value='tags';
  await click(w.document.getElementById('modal-confirm'));
  w.document.querySelector('[data-modal-field="tags"]').value='한글,우수고객';

@@ -12,21 +12,20 @@ try{
  const pa=run(a,'me').profile,pb=run(b,'me').profile;assert.notEqual(pa.id,pb.id);
  const product=service.AdminWrite('product.save',{title:'테일즈런너 30일',accessType:'TYPE1',description:'서버 상품',price:5000,days:30,stock:2,published:true},'ADMIN');
  assert.equal(run(a,'catalog').items.length,1);
- assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:1}),/PRICE_CHANGED/);
- assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:5000}),/INSUFFICIENT_BALANCE/);
- store.Atomic(()=>store.Ledger(store.Account(a),10000,'TOPUP','EXISTING_BALANCE_FIXTURE'));
- assert.equal(run(a,'me').profile.balance,10000);
- const body={productId:product.id,expectedPrice:5000,amount:1,accountId:pb.id};
- const bought=run(a,'purchase',body,'PURCHASE-REPLAY');assert.equal(bought.balance,5000);assert.deepEqual(run(a,'purchase',body,'PURCHASE-REPLAY'),bought);assert.equal(run(b,'me').profile.balance,0);
- assert.throws(()=>run(a,'purchase',{...body,expectedPrice:4999},'PURCHASE-REPLAY'),/REQUEST_REUSED/);
- assert.throws(()=>run(b,'order.activate',{orderId:bought.order.id}),/ORDER_NOT_FOUND/);
- // Failed persistence rolls back wallet, stock, orders and idempotency record.
+ assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:5000}),/SHOP_RETIRED/);
+ // Existing purchases remain refundable/usable; new game purchases are disabled.
+ store.Atomic(()=>{
+  store.Ledger(store.Account(a),5000,'TOPUP','EXISTING_BALANCE_FIXTURE');
+  for(const id of ['OLD-ORDER-1','OLD-ORDER-2'])store.DB().orders[id]={id,accountId:pa.id,productId:product.id,title:'기존 이용권',accessType:'TYPE1',days:30,amount:5000,status:'PAID',at:Date.now(),activatedAt:0,expiresAt:0,licenseKey:''};
+ });
+ const key=require('../license/licenseManager').CreateLicense(0,'출입증',['QR'],'QR').key;state.licenses.get(key).boundClient=a.clientId;a.licenseKey=key;
+ assert.throws(()=>run(b,'order.activate',{orderId:'OLD-ORDER-1'}),/ORDER_NOT_FOUND/);
  const save=database.SaveDatabase;database.SaveDatabase=()=>false;
- assert.throws(()=>run(a,'purchase',body,'PURCHASE-FAILED'),/STORAGE_SAVE_FAILED/);database.SaveDatabase=save;
- assert.equal(run(a,'me').profile.balance,5000);assert.equal(store.DB().products[product.id].stock,1);
- const second=run(a,'purchase',body,'PURCHASE-FAILED');assert.equal(second.balance,0);assert.equal(store.DB().products[product.id].stock,0);
- service.AdminWrite('order.refund',{id:second.order.id,reason:'미사용 환불'},'ADMIN');service.AdminWrite('order.refund',{id:second.order.id,reason:'반복'},'ADMIN');assert.equal(run(a,'me').profile.balance,5000);
- const activated=run(a,'order.activate',{orderId:bought.order.id});assert.equal(activated.order.status,'ACTIVE');assert.equal(state.licenses.size,1);assert.throws(()=>service.AdminWrite('order.refund',{id:bought.order.id,reason:'사용 후'},'ADMIN'),/ACTIVATED_REFUND_REVIEW/);
+ assert.throws(()=>run(a,'order.activate',{orderId:'OLD-ORDER-1'},'ACTIVATE-REPLAY'),/STORAGE_SAVE_FAILED/);database.SaveDatabase=save;
+ assert.equal(store.DB().orders['OLD-ORDER-1'].activatedAt,0);
+ const activated=run(a,'order.activate',{orderId:'OLD-ORDER-1'},'ACTIVATE-REPLAY');assert.deepEqual(run(a,'order.activate',{orderId:'OLD-ORDER-1'},'ACTIVATE-REPLAY'),activated);assert.equal(activated.order.status,'ACTIVE');assert.equal(state.licenses.size,1);
+ assert.throws(()=>service.AdminWrite('order.refund',{id:'OLD-ORDER-1',reason:'사용 후'},'ADMIN'),/ACTIVATED_REFUND_REVIEW/);
+ service.AdminWrite('order.refund',{id:'OLD-ORDER-2',reason:'미사용 환불'},'ADMIN');service.AdminWrite('order.refund',{id:'OLD-ORDER-2',reason:'반복'},'ADMIN');assert.equal(run(a,'me').profile.balance,10000);
  const post=run(a,'post.create',{body:'첫 소식 <script>hello</script>'}).post;
  assert.throws(()=>run(b,'post.delete',{id:post.id}),/NOT_OWNER/);
  run(b,'react',{postId:post.id,value:1});run(b,'react',{postId:post.id,value:-1});let feed=run(a,'feed');assert.equal(feed.items[0].likes,0);assert.equal(feed.items[0].dislikes,1);
@@ -35,7 +34,7 @@ try{
  run(b,'report',{postId:post.id,reason:'확인 요청'});service.AdminWrite('post.moderate',{id:post.id,hidden:true},'ADMIN');assert.equal(run(a,'feed').total,0);assert.throws(()=>run(b,'comment.create',{postId:post.id,body:'숨긴 글'}),/POST_NOT_FOUND/);
  service.AdminWrite('news.save',{title:'업데이트',body:'새 버전',category:'UPDATE',published:true},'ADMIN');assert.equal(run(a,'news').total,1);
  run(a,'profile.save',{nickname:'한글 프로필',bio:'안녕하세요'});assert.throws(()=>run(a,'profile.save',{nickname:'테스트',avatar:'data:image/svg+xml;base64,AA=='}),/AVATAR_INVALID/);
- const disk=database.ExportDatabase?database.ExportDatabase():JSON.parse(fs.readFileSync(require('../config/config').DB_FILE));store.Import(disk);assert.equal(run(a,'me').profile.balance,5000);assert.equal(run(a,'me').profile.nickname,'한글 프로필');
+ const disk=database.ExportDatabase?database.ExportDatabase():JSON.parse(fs.readFileSync(require('../config/config').DB_FILE));store.Import(disk);assert.equal(run(a,'me').profile.balance,10000);assert.equal(run(a,'me').profile.nickname,'한글 프로필');
  service.AdminWrite('profile.block',{id:pb.id,blocked:true},'ADMIN');assert.throws(()=>run(b,'feed'),/ACCOUNT_BLOCKED/);
  const before=JSON.stringify(store.DB());require('../services/serviceLifecycle').Stop('TEST');assert.equal(JSON.stringify(store.DB()),before,'Service reset must retain balances and paid orders');
  console.log('FIX13 MEMBER PASS: authorization, server prices, balances, existing balances, idempotency, atomic rollback, pass activation, refund, isolation, feed, reactions, comments, moderation, profile and durable financial records');

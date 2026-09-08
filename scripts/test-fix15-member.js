@@ -27,8 +27,8 @@ try{
  const save=database.SaveDatabase,old=JSON.stringify(s.DB());database.SaveDatabase=()=>false;fail(()=>run(a,'article',{id:n1.id}),'STORAGE_SAVE_FAILED');database.SaveDatabase=save;assert.equal(JSON.stringify(s.DB()),old);
  fail(()=>run(a,'news.read'),'UNKNOWN_ACTION');
  const product=admin('product.save',{title:'쇼핑 상품',description:'테스트',accessType:'TYPE2',price:2000,days:30,stock:2,published:true});
- assert.equal(run(a,'product',{id:product.id}).product.price,2000);
- const order=run(a,'purchase',{productId:product.id,expectedPrice:2000}).order;assert.equal(run(a,'me').profile.balance,8000);assert.equal(order.days,30);
+ assert.equal(run(a,'product',{id:product.id}).product.price,undefined);
+ fail(()=>run(a,'purchase',{productId:product.id,expectedPrice:2000}),'SHOP_RETIRED');assert.equal(run(a,'me').profile.balance,10000);
  // No screen/product/news/profile/comment view fields or new counters are exposed.
  assert.equal(run(a,'catalog').items[0].views,undefined);assert.equal(run(a,'news').items[0].views,undefined);assert.equal(run(a,'me').profile.views,undefined);
  fail(()=>run(a,'view',{screen:'news',kind:'news',id:n1.id}),'UNKNOWN_ACTION');

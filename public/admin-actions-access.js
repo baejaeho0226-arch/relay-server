@@ -45,11 +45,9 @@ async function handleAccessAction(event) {
     if (event.target.id === 'qr-auth-approve-btn') {
       if (!qrScanResult || !qrScanResult.request || !qrScanResult.approvalToken) throw new Error('검증된 QR 요청이 없습니다.');
       const values = await openModal({
-        title: 'QR 기기 승인',
-        message: `${qrScanResult.request.clientId}\nAPK의 QR·라이선스 등록만 승인합니다. 이후 Android 생체인증을 수행하며, WinSockServer는 대시보드가 열린 뒤 중계 서버가 별도로 검증하고 1:1 연결합니다.`,
+        title: 'QR 출입증 승인',
+        message: `${qrScanResult.request.clientId}\n기간과 게임 지정 없이 APK 출입증을 승인합니다. 게임 이용권은 QR 충전에서 따로 등록합니다. 이후 Android 생체인증을 수행하며, WinSockServer는 대시보드가 열린 뒤 중계 서버가 별도로 검증하고 1:1 연결합니다.`,
         fields: [
-          { name: 'days', label: '사용 기간(일)', type: 'number', value: String(qrScanResult.defaultDays || 30) },
-          { name: 'accessType', label: 'APK 전용 콘텐츠', type: 'select', value: 'TYPE1', options: [{ value: 'TYPE1', label: "테일즈런너" }, { value: 'TYPE2', label: "알투비트" }, { value: 'TYPE3', label: "로스트사가" }] },
           { name: 'memo', label: '메모', value: `QR 승인 ${qrScanResult.request.clientId}` },
           { name: 'tags', label: '태그', value: 'QR', placeholder: "QR, 고객그룹" }
         ],
@@ -59,8 +57,6 @@ async function handleAccessAction(event) {
       const result = await api('/api/qr-auth/approve', { method: 'POST', body: {
         requestId: qrScanResult.request.requestId,
         approvalToken: qrScanResult.approvalToken,
-        days: Number(values.days),
-        accessType: values.accessType,
         memo: values.memo,
         tags: String(values.tags || '').split(',').map(x => x.trim()).filter(Boolean)
       }});

@@ -36,7 +36,7 @@ async function bulkLicense() {
   const keys = [...selectedLicenses];
   if (!keys.length) { toast('선택한 QR 라이선스가 없습니다.', true); return; }
   const options = Object.entries(LICENSE_ACTION_LABELS)
-    .filter(([action]) => roleIsAdmin() || !['reissue', 'delete'].includes(action))
+    .filter(([action]) => action!=='extend'&&(roleIsAdmin() || !['reissue', 'delete'].includes(action)))
     .map(([value, label]) => ({ value, label }));
   const choice = await openModal({ title: `QR 라이선스 ${keys.length}개 선택`,
     fields: [{ name: 'action', label: '선택 작업', type: 'select', options }], confirmLabel: '다음' });
