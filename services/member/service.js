@@ -2,20 +2,21 @@
 const state=require('../../core/state'),s=require('./store'),commerce=require('./commerce'),social=require('./social');
 const {SendLine}=require('../../core/utils');
 const protocol=require('./protocol');
-const coins=require('./coins'),views=require('./views');
-const messages={...require('./messages'),INPUT_INVALID:'입력 내용을 확인해주세요.',AMOUNT_INVALID:'금액을 확인해주세요.',ACCOUNT_REQUIRED:'회원 정보를 확인할 수 없습니다.',ACCOUNT_BLOCKED:'이용이 제한된 계정입니다. 고객센터에 문의해주세요.',MEMBER_AUTH_REQUIRED:'기기 승인과 생체인증을 먼저 완료해주세요.',SERVICE_DISABLED:'서비스가 종료되었습니다.',STORAGE_SAVE_FAILED:'저장하지 못했습니다. 같은 요청으로 다시 시도해주세요.',PRODUCT_NOT_FOUND:'상품을 찾을 수 없습니다.',PRODUCT_UNAVAILABLE:'판매 중인 상품이 아닙니다.',PRICE_CHANGED:'상품 가격이 변경되었습니다. 다시 확인해주세요.',SOLD_OUT:'품절된 상품입니다.',INSUFFICIENT_BALANCE:'잔액이 부족합니다. 먼저 충전해주세요.',BALANCE_INVALID:'잔액 한도를 확인해주세요.',TOPUP_UNAVAILABLE:'현재 충전 신청을 받고 있지 않습니다.',TOPUP_PENDING_LIMIT:'진행 중인 충전 요청을 먼저 확인해주세요.',TOPUP_ALREADY_PROCESSED:'이미 처리된 충전 요청입니다.',TOPUP_NOT_FOUND:'충전 요청을 찾을 수 없습니다.',ORDER_NOT_FOUND:'구매 내역을 찾을 수 없습니다.',ORDER_REFUNDED:'환불된 구매 내역입니다.',PASS_EXPIRED:'이용권 기간이 만료되었습니다.',ACTIVATED_REFUND_REVIEW:'이미 사용한 이용권은 개별 환불 검토가 필요합니다.',AVATAR_INVALID:'프로필 사진을 작은 PNG 이미지로 다시 선택해주세요.',POST_NOT_FOUND:'삭제되었거나 숨겨진 글입니다.',NOT_OWNER:'본인이 작성한 내용만 삭제할 수 있습니다.',PLEASE_WAIT:'잠시 후 다시 작성해주세요.',REQUEST_REUSED:'요청 번호가 중복되었습니다. 다시 시도해주세요.',REQUEST_ID_INVALID:'요청 정보를 확인해주세요.',UNKNOWN_ACTION:'지원하지 않는 작업입니다.'};
+
+const messages={...require('./messages'),INPUT_INVALID:'입력 내용을 확인해주세요.',AMOUNT_INVALID:'금액을 확인해주세요.',ACCOUNT_REQUIRED:'회원 정보를 확인할 수 없습니다.',ACCOUNT_BLOCKED:'이용이 제한된 계정입니다. 고객센터에 문의해주세요.',MEMBER_AUTH_REQUIRED:'기기 승인과 생체인증을 먼저 완료해주세요.',SERVICE_DISABLED:'서비스가 종료되었습니다.',STORAGE_SAVE_FAILED:'저장하지 못했습니다. 같은 요청으로 다시 시도해주세요.',PRODUCT_NOT_FOUND:'상품을 찾을 수 없습니다.',PRODUCT_UNAVAILABLE:'판매 중인 상품이 아닙니다.',PRICE_CHANGED:'상품 가격이 변경되었습니다. 다시 확인해주세요.',SOLD_OUT:'품절된 상품입니다.',INSUFFICIENT_BALANCE:'잔액이 부족합니다. 고객센터로 문의해주세요.',BALANCE_INVALID:'잔액 한도를 확인해주세요.',TOPUP_UNAVAILABLE:'충전 방식은 준비 중입니다.',ORDER_NOT_FOUND:'구매 내역을 찾을 수 없습니다.',ORDER_REFUNDED:'환불된 구매 내역입니다.',PASS_EXPIRED:'이용권 기간이 만료되었습니다.',ACTIVATED_REFUND_REVIEW:'이미 사용한 이용권은 개별 환불 검토가 필요합니다.',AVATAR_INVALID:'프로필 사진을 작은 PNG 이미지로 다시 선택해주세요.',POST_NOT_FOUND:'삭제되었거나 숨겨진 글입니다.',NOT_OWNER:'본인이 작성한 내용만 변경할 수 있습니다.',PLEASE_WAIT:'잠시 후 다시 작성해주세요.',REQUEST_REUSED:'요청 번호가 중복되었습니다. 다시 시도해주세요.',REQUEST_ID_INVALID:'요청 정보를 확인해주세요.',UNKNOWN_ACTION:'지원하지 않는 작업입니다.'};
 function Allowed(c){return !!c&&state.serviceEnabled&&require('../haCoordinator').CanAcceptTraffic()&&require('../clientPermissions').Ready(c)&&require('../clientInstallation').Ready(c)&&c.licenseAuthorized===true&&c.biometricVerified===true&&require('../deviceAuth').Verified('CLIENT',c.clientId);}
 function Execute(c,requestId,action,body={}){
  if(!Allowed(c))s.Fail(state.serviceEnabled?'MEMBER_AUTH_REQUIRED':'SERVICE_DISABLED');
  const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
- const read={view:()=>views.Record(p,body),home:()=>({profile:s.PublicProfile(p,true),news:social.News(p,body),settings:s.DB().settings}),news:()=>social.News(p,body),catalog:()=>commerce.Catalog(body),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
+ if(action.startsWith('topup.')||action.startsWith('coin.'))s.Fail('TOPUP_UNAVAILABLE');
+ const read={product:()=>commerce.Product(body),article:()=>social.Article(p,body),home:()=>({profile:s.PublicProfile(p,true),news:social.News(p,body),settings:{}}),news:()=>social.News(p,body),catalog:()=>commerce.Catalog(body),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
  if(read[action])return read[action]();
  const mutations={
-  'topup.quote':()=>coins.Quote(p,body),'profile.save':()=>social.SaveProfile(p,body),'topup.create':()=>commerce.RequestTopup(p,body),'topup.cancel':()=>commerce.CancelTopup(p,body),
+  'profile.save':()=>social.SaveProfile(p,body),
   purchase:()=>commerce.Purchase(p,body),'order.activate':()=>commerce.Activate(p,c,body),
-  'post.create':()=>social.Post(p,body),'post.delete':()=>social.Remove(p,body,'posts'),
+  'post.edit':()=>social.EditPost(p,body),'post.create':()=>social.Post(p,body),'post.delete':()=>social.Remove(p,body,'posts'),
   'comment.create':()=>social.Comment(p,body),'comment.delete':()=>social.Remove(p,body,'comments'),
-  react:()=>social.React(p,body),report:()=>social.Report(p,body),'news.read':()=>{p.readNewsAt=Date.now();return {read:true};}
+  react:()=>social.React(p,body),report:()=>social.Report(p,body)
  };
  if(!mutations[action])s.Fail('UNKNOWN_ACTION');
  return s.Operation(p,requestId,action,body,mutations[action],action==='order.activate'?['licenses','licenseRevision']:[]);

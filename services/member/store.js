@@ -4,7 +4,7 @@ const state = require('../../core/state');
 const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits'];
 const TABLES = ['profiles','products','news','orders','topups','ledger','posts','comments','reactions','reports','operations'];
 function Empty() {
- const db={schema:2,revision:0,settings:{topupInstructions:'등록된 코인과 네트워크를 선택하고 입금 안내를 확인해주세요.',topupEnabled:false}};
+ const db={schema:2,revision:0,settings:{topupInstructions:'충전 방식은 준비 중입니다.',topupEnabled:false}};
  for(const name of [...TABLES,...EXTRA_TABLES])db[name]={};
  return db;
 }
@@ -26,7 +26,7 @@ function Account(c){
  if(!p)return Atomic(()=>{p={id:Id('USR'),subject,nickname:'회원 '+crypto.randomBytes(2).toString('hex').toUpperCase(),bio:'',avatar:'',avatarRevision:0,balance:0,createdAt:Date.now(),readNewsAt:0,blocked:false};DB().profiles[subject]=p;return p;});
  return p;
 }
-function PublicProfile(p,own=false){return {id:p.id,nickname:p.nickname,bio:p.bio,avatar:p.avatar,avatarRevision:p.avatarRevision,views:ViewCount('profile',p.id),...(own?{balance:p.balance,createdAt:p.createdAt}: {})};}
+function PublicProfile(p,own=false){return {id:p.id,nickname:p.nickname,bio:p.bio,avatar:p.avatar,avatarRevision:p.avatarRevision,...(own?{balance:p.balance,createdAt:p.createdAt}: {})};}
 function ViewCount(kind,id){return DB().viewCounters?.[kind+':'+id]?.count||0;}
 function ProfileById(id){return Object.values(DB().profiles).find(p=>p.id===id);}
 function Page(rows,body={},max=12){const offset=Math.max(0,Math.min(100000,Number(body.offset)||0));const limit=Math.max(1,Math.min(max,Number(body.limit)||max));return {items:rows.slice(offset,offset+limit),total:rows.length,nextOffset:offset+limit<rows.length?offset+limit:null};}

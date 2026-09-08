@@ -1,6 +1,7 @@
 'use strict';
 const s=require('./store'),state=require('../../core/state');
-function Catalog(body={}){return s.Page(Object.values(s.DB().products).filter(p=>p.published&&!p.deleted&&(!body.category||p.accessType===body.category)).sort((a,b)=>a.sort-b.sort||b.updatedAt-a.updatedAt).map(p=>({...p,views:s.ViewCount('product',p.id)})),body);}
+function Catalog(body={}){return s.Page(Object.values(s.DB().products).filter(p=>p.published&&!p.deleted&&(!body.category||p.accessType===body.category)).sort((a,b)=>a.sort-b.sort||b.updatedAt-a.updatedAt),body);}
+function Product(body){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');return {product:row};}
 function SaveProduct(body){
  const id=body.id?s.Text(body.id,40):s.Id('PRD');const previous=s.DB().products[id];if(body.id&&!previous)s.Fail('PRODUCT_NOT_FOUND');
  const accessType=s.Text(body.accessType,16);if(!['TYPE1','TYPE2','TYPE3'].includes(accessType))s.Fail('ACCESS_TYPE_INVALID');
@@ -32,16 +33,10 @@ function AfterActivation(c){
  c.biometricVerified=false;c.buildCompleted=false;c.buildSessionId='';
  require('../../license/licenseManager').AuthorizeBoundClientByQr(c,'PURCHASE');
 }
-function RequestTopup(p,body){return require('./coins').Request(p,body);}
-function CancelTopup(p,body){const t=s.DB().topups[body.id];if(!t||t.accountId!==p.id)s.Fail('TOPUP_NOT_FOUND');if(t.status!=='PENDING')s.Fail('TOPUP_ALREADY_PROCESSED');t.status='CANCELED';return {topup:t};}
-function DecideTopup(body,actor){
- const t=s.DB().topups[body.id];if(!t)s.Fail('TOPUP_NOT_FOUND');const status=body.approve===true?'APPROVED':'REJECTED';
- if(t.status===status)return t;if(t.status!=='PENDING')s.Fail('TOPUP_ALREADY_PROCESSED');
- return s.Atomic(()=>{const p=s.ProfileById(t.accountId);if(!p)s.Fail('ACCOUNT_REQUIRED');if(status==='APPROVED'){const receipt=require('./coins').CheckReceipt(t,body);s.Ledger(p,t.amount,'TOPUP',t.id);Object.assign(t,receipt);}t.status=status;t.processedAt=Date.now();t.processedBy=actor;t.reason=s.Text(body.reason,200);return t;});
-}
+
 function Refund(body,actor){
  const order=s.DB().orders[body.id];if(!order)s.Fail('ORDER_NOT_FOUND');if(order.status==='REFUNDED')return PublicOrder(order);if(order.activatedAt)s.Fail('ACTIVATED_REFUND_REVIEW');
  return s.Atomic(()=>{const p=s.ProfileById(order.accountId);s.Ledger(p,order.amount,'REFUND',order.id);order.status='REFUNDED';order.refundedAt=Date.now();order.refundedBy=actor;order.refundReason=s.Text(body.reason,200,true);const product=s.DB().products[order.productId];if(product&&product.stock>=0)product.stock++;return PublicOrder(order);});
 }
-function Mine(p,body){const db=s.DB();return {profile:s.PublicProfile(p,true),orders:s.Page(Object.values(db.orders).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at).map(PublicOrder),body,20),payments:s.Page(Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20),topups:s.Page(Object.values(db.topups).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20),settings:{...db.settings,coins:require('./coins').List()}};}
-module.exports={Catalog,SaveProduct,Purchase,Activate,AfterActivation,RequestTopup,CancelTopup,DecideTopup,Refund,Mine,PublicOrder};
+function Mine(p,body){const db=s.DB();return {profile:s.PublicProfile(p,true),orders:s.Page(Object.values(db.orders).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at).map(PublicOrder),body,20),payments:s.Page(Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20)};}
+module.exports={Product,Catalog,SaveProduct,Purchase,Activate,AfterActivation,Refund,Mine,PublicOrder};
