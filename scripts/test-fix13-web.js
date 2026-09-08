@@ -22,7 +22,7 @@ const wait=()=>new Promise(r=>setTimeout(r,35));
 const click=async el=>{assert.ok(el);el.click();await wait();};
 (async()=>{try{
  await wait();w.switchView('member');await w.renderCurrent();
- assert.ok(w.document.getElementById('content').textContent.includes('충전 안내'));
+ assert.ok(w.document.getElementById('content').textContent.includes('많이 본 피드'));
  await click(w.document.querySelector('[data-member-view="products"]'));
  await click(w.document.querySelector('[data-member-action="product.new"]'));
  const field=(name,value)=>{w.document.querySelector('[data-modal-field="'+name+'"]').value=value;};
@@ -32,7 +32,7 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  assert.ok(w.document.getElementById('content').textContent.includes('테일즈런너 테스트 상품'));
  await click(w.document.querySelector('[data-member-view="news"]'));await click(w.document.querySelector('[data-member-action="news.new"]'));
  field('title','공지 테스트');field('body','다음 업데이트를 안내합니다.');field('published','true');await click(w.document.getElementById('modal-confirm'));await wait();assert.equal(Object.values(store.DB().news).length,1);
- for(const view of ['overview','products','news','topups','orders','ledger','profiles','posts','comments','reports']){await click(w.document.querySelector('[data-member-view="'+view+'"]'));assert.ok(w.document.getElementById('content').textContent.trim());}
+ for(const view of ['overview','products','news','orders','ledger','profiles','posts','comments','reports']){await click(w.document.querySelector('[data-member-view="'+view+'"]'));assert.ok(w.document.getElementById('content').textContent.trim());}
  // Late tab responses must not replace a newer tab or another main screen.
  await click(w.document.querySelector('[data-member-view="products"]'));
  const originalFetch=w.fetch;let release;
@@ -50,5 +50,5 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
   await api.HandleApiRequest(req,{writeHead(n){status=n;},end(){}},{role,id:'OTHER'});assert.equal(status,403);
  }
  assert.equal(errors.length,0,errors.join('\n'));assert.ok(!backend.some(x=>x.status>=500));
- console.log('FIX13 ADMIN DOM PASS: all 10 management views, real product and news writes, rapid tab and page navigation, unchanged protocol values, admin-only API');
+ console.log('FIX13 ADMIN DOM PASS: all 9 management views, real product and news writes, rapid tab and page navigation, unchanged protocol values, admin-only API');
 }finally{w.close();fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

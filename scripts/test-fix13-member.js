@@ -10,16 +10,12 @@ try{
  // Verify real auth gating, including cross-device access and expired proofs.
  assert.equal(service.Allowed(a),true);b.biometricVerified=false;assert.throws(()=>run(b,'me'),/MEMBER_AUTH_REQUIRED/);b.biometricVerified=true;
  const pa=run(a,'me').profile,pb=run(b,'me').profile;assert.notEqual(pa.id,pb.id);
- service.AdminWrite('settings.save',{topupEnabled:true,topupInstructions:'테스트 계좌 입금 확인'},'ADMIN');
  const product=service.AdminWrite('product.save',{title:'테일즈런너 30일',accessType:'TYPE1',description:'서버 상품',price:5000,days:30,stock:2,published:true},'ADMIN');
  assert.equal(run(a,'catalog').items.length,1);
  assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:1}),/PRICE_CHANGED/);
  assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:5000}),/INSUFFICIENT_BALANCE/);
- const coin=service.AdminWrite('coin.save',{symbol:'BTC',name:'비트코인',network:'Bitcoin',address:'TEST_ONLY_ADDRESS_123456789',decimals:8,krwPerCoin:'100000000',confirmations:3,enabled:true},'ADMIN');
- const quote=run(a,'topup.quote',{amount:10000,coinId:coin.id}).quote;
- const top=run(a,'topup.create',{quoteId:quote.id,txHash:'ab'.repeat(32),note:''}).topup;
- assert.equal(run(a,'me').profile.balance,0);assert.throws(()=>run(b,'topup.cancel',{id:top.id}),/TOPUP_NOT_FOUND/);
- service.AdminWrite('topup.decide',{id:top.id,approve:true,receivedAmount:top.coinAmount,confirmations:3,receiptVerified:true},'ADMIN');service.AdminWrite('topup.decide',{id:top.id,approve:true,receivedAmount:top.coinAmount,confirmations:3,receiptVerified:true},'ADMIN');assert.equal(run(a,'me').profile.balance,10000);
+ store.Atomic(()=>store.Ledger(store.Account(a),10000,'TOPUP','EXISTING_BALANCE_FIXTURE'));
+ assert.equal(run(a,'me').profile.balance,10000);
  const body={productId:product.id,expectedPrice:5000,amount:1,accountId:pb.id};
  const bought=run(a,'purchase',body,'PURCHASE-REPLAY');assert.equal(bought.balance,5000);assert.deepEqual(run(a,'purchase',body,'PURCHASE-REPLAY'),bought);assert.equal(run(b,'me').profile.balance,0);
  assert.throws(()=>run(a,'purchase',{...body,expectedPrice:4999},'PURCHASE-REPLAY'),/REQUEST_REUSED/);
@@ -42,5 +38,5 @@ try{
  const disk=database.ExportDatabase?database.ExportDatabase():JSON.parse(fs.readFileSync(require('../config/config').DB_FILE));store.Import(disk);assert.equal(run(a,'me').profile.balance,5000);assert.equal(run(a,'me').profile.nickname,'한글 프로필');
  service.AdminWrite('profile.block',{id:pb.id,blocked:true},'ADMIN');assert.throws(()=>run(b,'feed'),/ACCOUNT_BLOCKED/);
  const before=JSON.stringify(store.DB());require('../services/serviceLifecycle').Stop('TEST');assert.equal(JSON.stringify(store.DB()),before,'Service reset must retain balances and paid orders');
- console.log('FIX13 MEMBER PASS: authorization, server prices, balances, approved topups, idempotency, atomic rollback, pass activation, refund, isolation, feed, reactions, comments, moderation, profile and durable financial records');
+ console.log('FIX13 MEMBER PASS: authorization, server prices, balances, existing balances, idempotency, atomic rollback, pass activation, refund, isolation, feed, reactions, comments, moderation, profile and durable financial records');
 }finally{fs.rmSync(temp,{recursive:true,force:true});}

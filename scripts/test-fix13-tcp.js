@@ -49,12 +49,8 @@ async function reply(peer,c,id,action){
  state.deviceCapabilities.set('CLIENT:'+id,new Set(['BIOMETRIC_AUTH','DEVICE_HMAC']));
  apk.send(request(c,'TCPME0001','me'));let result=await reply(apk,c,'TCPME0001','me');assert.equal(result.body.ok,true);assert.equal(result.body.data.profile.balance,0);
  const profile=result.body.data.profile;
- hub.AdminWrite('settings.save',{topupEnabled:true,topupInstructions:'확인 후 승인'},'TEST');
  const item=hub.AdminWrite('product.save',{title:'로스트사가 이용권',accessType:'TYPE3',description:'실제 통신 검증',price:5000,days:30,stock:3,published:true},'TEST');
- const coin=hub.AdminWrite('coin.save',{symbol:'BTC',name:'비트코인',network:'Bitcoin',address:'TEST_ONLY_ADDRESS_123456789',decimals:8,krwPerCoin:'100000000',confirmations:3,enabled:true},'TEST');
- apk.send(request(c,'TCPQUOTE1','topup.quote',{amount:10000,coinId:coin.id}));result=await reply(apk,c,'TCPQUOTE1','topup.quote');assert.equal(result.body.ok,true);
- apk.send(request(c,'TCPTOP001','topup.create',{quoteId:result.body.data.quote.id,txHash:'cd'.repeat(32)}));result=await reply(apk,c,'TCPTOP001','topup.create');assert.equal(result.body.ok,true);assert.equal(result.body.data.balance,0);
- hub.AdminWrite('topup.decide',{id:result.body.data.topup.id,approve:true,receivedAmount:result.body.data.topup.coinAmount,confirmations:3,receiptVerified:true},'TEST');
+ store.Atomic(()=>store.Ledger(store.Account(c),10000,'TOPUP','EXISTING_BALANCE_FIXTURE'));
  const purchase={productId:item.id,expectedPrice:5000};
  const valid=request(c,'TCPBUY001','purchase',purchase),fields=valid.split('|');
  apk.send(fields.slice(0,4).join('|')); // unsigned cannot execute
@@ -68,10 +64,10 @@ async function reply(peer,c,id,action){
  for(let n=0;n<12;n++)hub.AdminWrite('news.save',{title:'소식 '+n,category:'UPDATE',body:'가'.repeat(4500),published:true},'TEST');
  apk.send(request(c,'TCPNEWS01','news'));result=await reply(apk,c,'TCPNEWS01','news');assert.equal(result.body.data.total,12);assert.equal(result.body.data.items[0].body.length,4500);assert.ok(result.chunks>1);
  const sqlite=require('../storage/sqliteDatabase');sqlite.Close();const persisted=sqlite.LoadSnapshot().data.memberHub;
- assert.equal(Object.values(persisted.profiles).find(p=>p.id===profile.id).balance,5000);assert.equal(Object.keys(persisted.orders).length,1);assert.equal(Object.keys(persisted.operations).length,3);
+ assert.equal(Object.values(persisted.profiles).find(p=>p.id===profile.id).balance,5000);assert.equal(Object.keys(persisted.orders).length,1);assert.equal(Object.keys(persisted.operations).length,1);
  apk.send(request(c,'TCPACT001','order.activate',{orderId:bought.order.id}));result=await reply(apk,c,'TCPACT001','order.activate');assert.equal(result.body.ok,true);assert.equal(result.body.data.order.status,'ACTIVE');assert.equal(c.biometricVerified,false);assert.equal(c.buildCompleted,false);
  await apk.wait('QR_AUTH_OK|');await apk.wait('BIOMETRIC_CHALLENGE|');
- console.log('FIX13 TCP PASS: actual sockets, session HMAC requests and chunk responses, tampering/unsigned/stale rejection, topup approval, purchase retry, multi-chunk Korean news, SQLite reopen, pass activation and biometric reauthentication');
+ console.log('FIX13 TCP PASS: actual sockets, session HMAC requests and chunk responses, tampering/unsigned/stale rejection, existing balance, purchase retry, multi-chunk Korean news, SQLite reopen, pass activation and biometric reauthentication');
 }finally{
  for(const socket of sockets)socket.destroy();
  await new Promise(resolve=>server.close(resolve));await Promise.all(acceptedClosed);

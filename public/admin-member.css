@@ -1,7 +1,58 @@
-.member-shell{--member-ink:#181818;--member-muted:#757575;--member-border:#e8e8e8;color:var(--member-ink)}
-.member-heading{display:flex;justify-content:space-between;align-items:center;margin:6px 0 22px}.member-kicker{font-size:12px;letter-spacing:.06em;color:var(--member-muted)}.member-heading h2{margin:7px 0 0;font-size:26px;letter-spacing:-.04em}
-.member-shell .member-tabs{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;padding:2px 0 12px;margin:0 0 18px;scrollbar-width:thin}.member-tabs button{white-space:nowrap;flex:0 0 auto;border-radius:20px}
-.member-shell button{border:1px solid var(--member-border);background:#fff;color:#242424;box-shadow:none}.member-shell button:hover{background:#f1f1f1}.member-shell button.primary{background:#191919;color:#fff;border-color:#191919}.member-shell button.danger{background:#efefef;color:#353535;border-color:#d2d2d2}
-.member-shell .section-card,.member-metrics article{background:#fff;border:1px solid var(--member-border);border-radius:18px;box-shadow:0 4px 20px rgba(0,0,0,.04)}.member-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px}.member-metrics article{padding:23px}.member-metrics article span{color:var(--member-muted);font-size:12px}.member-metrics article strong{display:block;font-size:31px;line-height:1.4;margin-top:12px;letter-spacing:-.035em}.member-columns{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}
-.member-filter{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}.member-filter input{min-width:220px;flex:1}.member-filter input,.member-filter select{color:#222;background:#fff;border:1px solid var(--member-border);border-radius:10px;padding:10px 12px}.member-shell .member-detail{max-width:570px;min-width:200px;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.8}.member-views{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.member-badge{display:inline-block;border-radius:5px;background:#f0f0f0;font-size:10px;padding:3px 7px;margin-top:7px}.member-shell .actions{gap:5px}.member-shell .actions button{font-size:11px;padding:7px 9px}.member-shell th:first-child{width:34px}.member-shell input[type=checkbox]{accent-color:#171717}.member-shell .toolbar{margin:12px 0}
-@media(max-width:760px){.member-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.member-columns{grid-template-columns:1fr}.member-metrics article{padding:17px}.member-heading h2{font-size:22px}.member-filter input{width:100%;flex:auto}.member-shell .member-detail{min-width:220px}}
+/* FIX15: wrapped navigation, measured spacing, and shared monochrome scrollbars. */
+:root { scrollbar-color:#b6b6b6 #f4f4f4; scrollbar-width:thin; }
+body,main,#content,.table-wrap,.modal-body { scrollbar-color:#b6b6b6 #f4f4f4; scrollbar-width:thin; }
+*::-webkit-scrollbar { width:9px; height:9px; }
+*::-webkit-scrollbar-track { background:#f4f4f4; border-radius:12px; }
+*::-webkit-scrollbar-thumb { background:#b6b6b6; border:2px solid #f4f4f4; border-radius:12px; }
+*::-webkit-scrollbar-thumb:hover { background:#777; }
+*::-webkit-scrollbar-corner { background:transparent; }
+.sidebar,.sidebar #nav,.sidebar .nav-items { scrollbar-width:thin; scrollbar-color:#737373 #252525; }
+.sidebar::-webkit-scrollbar,.sidebar #nav::-webkit-scrollbar,.sidebar .nav-items::-webkit-scrollbar { width:8px; }
+.sidebar::-webkit-scrollbar-track,.sidebar #nav::-webkit-scrollbar-track,.sidebar .nav-items::-webkit-scrollbar-track { background:#252525; }
+.sidebar::-webkit-scrollbar-thumb,.sidebar #nav::-webkit-scrollbar-thumb,.sidebar .nav-items::-webkit-scrollbar-thumb { background:#737373; border:2px solid #252525; border-radius:12px; }
+.sidebar #nav::-webkit-scrollbar-thumb:hover,.sidebar .nav-items::-webkit-scrollbar-thumb:hover { background:#999; }
+.member-shell { color:#181818; min-width:0; }
+.member-shell .member-tabs { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; padding:0; margin:0 0 24px; overflow:visible; }
+.member-shell button { min-height:36px; padding:8px 12px; border:1px solid #e4e4e4; border-radius:10px; background:#fff; color:#242424; box-shadow:none; transition:background .15s,transform .15s,border-color .15s; }
+.member-shell button:hover { background:#f3f3f3; border-color:#bdbdbd; }
+.member-shell button:active { transform:scale(.98); border-color:#555; }
+.member-shell button:focus-visible { outline:2px solid #555; outline-offset:3px; }
+.member-shell button.primary { background:#191919; color:#fff; border-color:#191919; }
+.member-shell button.danger { color:#454545; background:#f4f4f4; }
+.member-shell .member-tabs button { min-height:46px; white-space:normal; width:100%; }
+.member-panel { background:#fff; border:1px solid #e6e6e6; border-radius:18px; padding:24px; margin:0 0 20px; box-shadow:0 4px 18px rgba(0,0,0,.035); min-width:0; }
+.member-panel h3 { margin:0 0 18px; font-size:16px; }
+.member-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
+.member-metrics article { background:#fff; border:1px solid #e8e8e8; border-radius:16px; padding:22px; }
+.member-metrics article span { font-size:12px; color:#777; }
+.member-metrics article strong { display:block; font-size:28px; line-height:1.4; margin-top:14px; }
+.member-filter { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:0 0 22px; }
+.member-filter input { flex:1 1 240px; min-width:160px; }
+.member-filter input,.member-filter select { min-height:40px; color:#222; background:#fafafa; border:1px solid #e4e4e4; border-radius:10px; padding:10px 12px; }
+.member-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; color:#777; font-size:12px; }
+.member-shell .table-wrap { box-shadow:none; border:1px solid #ededed; border-radius:12px; max-height:65vh; overflow:auto; }
+.member-shell table { width:100%; }
+.member-shell th { padding:14px 18px; background:#fafafa; font-size:12px; color:#777; }
+.member-shell td { padding:20px 18px; vertical-align:top; }
+.member-item { min-width:130px; max-width:240px; overflow-wrap:anywhere; }
+.member-item strong { font-size:13px; line-height:1.6; }
+.member-item .small-note { margin-top:8px; font-size:11px; color:#888; }
+.member-detail { min-width:200px; max-width:480px; font-size:12px; line-height:1.8; overflow-wrap:anywhere; }
+.member-meta { color:#777; margin-bottom:9px; }
+.member-preview { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; white-space:pre-wrap; }
+.member-body { margin-top:10px; }
+.member-body summary { color:#666; cursor:pointer; }
+.member-body p { margin:14px 0 0; padding:16px; background:#f7f7f7; border-radius:10px; white-space:pre-wrap; }
+.member-badge { display:inline-block; border-radius:5px; background:#f1f1f1; font-size:10px; padding:3px 7px; margin-top:8px; }
+.member-views { text-align:right; font-variant-numeric:tabular-nums; }
+.member-shell .actions { display:flex; gap:7px; flex-wrap:wrap; min-width:130px; }
+.member-shell .actions button { font-size:11px; min-height:32px; padding:6px 10px; }
+.member-shell input[type=checkbox] { accent-color:#171717; }
+.member-empty { margin:0; padding:38px 18px; text-align:center; color:#888; font-size:13px; }
+.member-pagination { display:flex; justify-content:center; align-items:center; gap:18px; padding-top:22px; color:#777; font-size:12px; }
+.member-popular>div { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:17px 0; border-bottom:1px solid #efefef; }
+.member-popular>div:last-child { border-bottom:0; }
+.member-popular span { font-size:13px; line-height:1.7; overflow-wrap:anywhere; }
+@media(max-width:1050px) { .member-shell .member-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); }.member-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@media(max-width:620px) { .member-shell .member-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }.member-panel { padding:18px; }.member-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.member-metrics article { padding:18px; }.member-filter input { flex-basis:100%; } }
+@media(prefers-reduced-motion:reduce) { .member-shell button { transition:none; } }

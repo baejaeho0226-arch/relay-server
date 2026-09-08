@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'fix14';
+const WEB_UI_REVISION = 'fix15';
 const menuToggle = document.getElementById('menu-toggle');
 function closeMobileMenu() {
   app.classList.remove('menu-open');
@@ -87,7 +87,7 @@ function clearQrSelectedFile() {
 }
 
 const titles = {
-  member: ['앱 콘텐츠 운영', '소식·상품·충전·주문·회원·피드를 서버에서 관리합니다.'],
+  member: ['앱 콘텐츠 운영', ''],
   support: ['고객센터', 'APK 사용자와 대화합니다. 미접속 기기에는 다음 고객센터 연결 시 답변이 전달됩니다.'],
   reinstallblocks: ['재설치 차단', "앱 기기 삭제·바인딩 변경과 관계없이 유지되는 재설치 차단을 관리합니다."],
   dashboard: ['대시보드', "중계 서버 전체 상태와 최근 이벤트를 확인합니다."],
@@ -261,9 +261,9 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.3.0'} · 화면 ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.4.0'} · 화면 ${WEB_UI_REVISION}`;
   } catch (_) {
-    webVersionLabel.textContent = `웹 v4.3.0 · 화면 ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v4.4.0 · 화면 ${WEB_UI_REVISION}`;
   }
 }
 
