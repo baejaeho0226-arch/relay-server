@@ -10,13 +10,13 @@ function Issue(p,persist=true){
  const create=()=>{
   for(const row of Object.values(s.DB().chargeRequests).filter(x=>x.accountId===p.id))Expire(row);
   const token=crypto.randomBytes(32).toString('base64url'),id=s.Id('CHG');
-  const row={id,accountId:p.id,token,tokenHash:hash(token),status:'PENDING',at:Date.now(),expiresAt:Date.now()+TTL};s.DB().chargeRequests[id]=row;return row;
+  const row={id,accountId:p.id,token,tokenHash:hash(token),mode:'WALLET',status:'PENDING',at:Date.now(),expiresAt:Date.now()+TTL};s.DB().chargeRequests[id]=row;return row;
  };return persist?s.Atomic(create):create();
 }
 function Read(p){
  let row=Object.values(s.DB().chargeRequests).filter(x=>x.accountId===p.id).reverse().sort((a,b)=>b.at-a.at)[0]||Issue(p);
  if(row.status==='PENDING'&&row.expiresAt<=Date.now())s.Atomic(()=>Expire(row));
- const data={request:Public(row)};
+ const data={request:Public(row),profile:s.PublicProfile(p,true)};
  if(row.status==='PENDING')data.qr=require('../qrApproval').QrMatrix('RCH1.'+row.id+'.'+row.token);
  return data;
 }
@@ -32,16 +32,16 @@ function Inspect(payload){
 function Scan(body){return Inspect(require('../qrImageDecoder').DecodeQrImage(body.imageData||''));}
 function Approve(body,actor){
  const row=s.DB().chargeRequests[body.id];if(!row||!Equal(body.approvalToken,ApprovalToken(row)))s.Fail('CHARGE_QR_INVALID');
- const amount=s.Money(body.amount),days=s.Money(body.days,1,3650),accessType=s.Text(body.accessType,16),memo=s.Text(body.memo,500);
- if(!Names[accessType])s.Fail('ACCESS_TYPE_INVALID');
- const fingerprint=hash(JSON.stringify({amount,days,accessType,memo}));
- if(row.status==='APPROVED'){if(row.fingerprint!==fingerprint)s.Fail('CONTENT_CHANGED');return Public(row);}
+ // A stale FIX16 approval form must never silently become a wallet credit.
+ if(body.mode!=='WALLET'||body.days!==undefined||body.accessType!==undefined)s.Fail('CHARGE_MODE_CHANGED');
+ const amount=s.Money(body.amount),memo=s.Text(body.memo,500);
+ const fingerprint=hash(JSON.stringify({mode:'WALLET',amount,memo}));
+ if(row.status==='APPROVED'){if(row.mode!=='WALLET')s.Fail('CHARGE_PROCESSED');if(row.fingerprint!==fingerprint)s.Fail('CONTENT_CHANGED');return Public(row);}
  if(row.status!=='PENDING')s.Fail('CHARGE_PROCESSED');if(row.expiresAt<=Date.now())s.Fail('CHARGE_EXPIRED');
  const p=s.ProfileById(row.accountId);if(!p||p.blocked)s.Fail('ACCOUNT_BLOCKED');
  return s.Atomic(()=>{
-  const orderId=s.Id('ORD');s.DB().orders[orderId]={id:orderId,accountId:p.id,productId:'',title:Names[accessType],accessType,days,amount,status:'PAID',at:Date.now(),activatedAt:0,expiresAt:0,licenseKey:'',source:'QR_CHARGE',chargeId:row.id};
-  Object.assign(row,{status:'APPROVED',amount,days,accessType,title:Names[accessType],memo,orderId,approvedAt:Date.now(),approvedBy:actor,fingerprint});
-  const payId=s.Id('PAY');s.DB().ledger[payId]={id:payId,accountId:p.id,amount,balance:p.balance,kind:'QR_CHARGE',reference:row.id,at:Date.now(),affectsBalance:false};
+  const payment=s.Ledger(p,amount,'QR_TOPUP',row.id);
+  Object.assign(row,{mode:'WALLET',status:'APPROVED',amount,memo,paymentId:payment.id,balance:payment.balance,approvedAt:Date.now(),approvedBy:actor,fingerprint});
   return Public(row);
  });
 }
