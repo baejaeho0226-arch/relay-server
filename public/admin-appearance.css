@@ -1,10 +1,10 @@
 /* Color roles shared by independent content pages and operational screens. */
 :root[data-theme="dark"] {
  color-scheme:dark;
- --bg:#111317;--bg-2:#191c22;--panel:#20242b;--panel-2:#252a32;--panel-3:#2d333d;
- --line:#383f4b;--line-strong:#606b7d;--border:#383f4b;
+ --bg:#000;--bg-2:#000;--panel:#000;--panel-2:#171717;--panel-3:#262626;
+ --line:#2b2b2b;--line-strong:#626262;--border:#2b2b2b;
  --text:#eef1f6;--muted:#aab4c5;--accent:#dbe2ee;--accent-2:#96ccdf;
- --good:#8bddb3;--warn:#f1ce7d;--bad:#ffaca2;--shadow:0 4px 20px #0002;
+ --good:#8bddb3;--warn:#f1ce7d;--bad:#ffaca2;--shadow:0 0 14px #0002;
  scrollbar-color:#626d7e #191c22;
 }
 [data-theme="dark"] :is(.login-screen,.content) {background:var(--bg);}
@@ -36,3 +36,5 @@
 #qr-auth-preview {background:#fff;object-fit:contain;}
 #theme-toggle {min-width:90px;white-space:nowrap;}
 @media(prefers-reduced-motion:reduce) {* {scroll-behavior:auto!important;}}
+
+[data-theme="dark"] .support-message.from-bot {background:var(--panel-3);color:var(--text);border-color:var(--line);}

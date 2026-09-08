@@ -1,0 +1,42 @@
+'use strict';
+// Source-level compatibility/lifetime checks; this does not execute FMX or Android gestures.
+require('./verify_fix18_ui');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const dir=path.join(__dirname,'ApkWinSock_Android64'),read=n=>fs.readFileSync(path.join(dir,n),'utf8');
+const refresh=read('ApkMemberRefresh.pas'),flow=read('ApkWinSock.Member.Flow.inc'),ui=read('ApkWinSock.Member.Refresh.inc');
+const client=read('ApkMemberClient.pas'),sync=read('ApkWinSock.Member.ProfileSync.inc');
+const dashboard=read('ApkWinSock.Dashboard.inc'),motion=read('ApkWinSock.Member.Motion.inc'),feed=read('ApkWinSock.Member.Feed.inc');
+assert.ok(read('ApkWinSock.pas').includes('ApkMemberRefresh,'));
+assert.ok(read('ApkWinSock.pas').includes('{$I ApkWinSock.Member.Refresh.inc}'));
+const declarations=[...refresh.split('implementation')[0].matchAll(/\b(?:constructor|destructor|procedure|function)\s+(\w+)/g)].map(m=>m[1]);
+const implementations=[...refresh.matchAll(/\b(?:constructor|destructor|procedure|function)\s+TApkPullRefresh\.(\w+)/g)].map(m=>m[1]);
+assert.deepEqual(declarations.sort(),implementations.sort());
+for(const marker of ['FMX.Types','FMX.Layouts','RemoveFreeNotification','FScroll:=nil','FTimer.Enabled:=False','AniCalculations.BoundsAnimation:=True','AniCalculations.Down','Abs(FPreviousY)<=2','not Down and FWasDown and FCandidate','TStopwatch.Frequency*15'])assert.ok(refresh.includes(marker),marker);
+assert.ok(!/\.OnMouse(?:Down|Up|Move)\s*:=/.test(refresh),'native scroll handlers must remain intact');
+assert.ok(ui.includes('FHubRefreshBadge.HitTest:=False'));
+assert.ok(ui.includes("(FHubView<>'profile')"));assert.ok(ui.includes('if HubInputFocused'));
+assert.ok(ui.includes('HubSaveDraft;FMember.CancelReads'));
+assert.ok(flow.includes('FHubPull.Dragging or FHubTouch.Busy'));
+assert.ok(flow.includes('FHubPage.Height:=Max(FDashboardScroll.Height+1'));
+assert.ok(flow.includes('then begin HubFinishRefresh(Action,True);Exit;end;'));
+assert.ok(flow.includes('if not Mutation then HubFinishRefresh(Action,False)'));
+assert.ok(read('ApkWinSock.Lifecycle.Construction.inc').includes('FHubPull.Enabled:=False'));
+assert.ok(read('ApkWinSock.Service.inc').includes('HubCancelRefresh;FHubPull.Enabled:=False'));
+const cancel=client.split('procedure TApkMemberClient.CancelReads;')[1].split('procedure TApkMemberClient.ClearTransport;')[0];
+assert.ok(cancel.includes('ID<>FPendingID'));assert.ok(cancel.includes('FLatestReads.Clear'));
+assert.ok(!cancel.includes('FPendingID :='));assert.ok(!cancel.includes('TFile.Delete'));
+assert.ok(client.includes('not FLatestReads.TryGetValue(Action,Latest) or (Latest<>ID)'));
+assert.ok(sync.includes('for Cached in FHubCache.Values'));assert.ok(sync.includes('FHubHistory[I]:=Snapshot.ToJSON'));
+assert.ok(sync.includes("'publicProfile'"));assert.ok(sync.includes("HubNumber(Target,'profileRevision')>HubNumber(Source,'profileRevision')"));
+assert.ok(dashboard.includes('OnChangeTracking:=HubCommentChanged'));
+assert.ok(dashboard.includes('TApkTapRectangle(FHubCommentSend).TouchScope:=nil'));
+assert.ok(motion.includes('LabelText.SetBounds(30,0,W-32,H)'));assert.ok(motion.includes('LabelText.TextSettings.VertAlign:=TTextAlign.Center'));
+assert.ok(motion.includes('LabelText.TextSettings.WordWrap:=False'));assert.ok(motion.includes('Icon,4,(H-22)/2,22,22'));
+assert.ok(feed.includes('W:=Min(68,(C.Width-28)/3)'));assert.ok(feed.includes('12+W,H+96,W,48'));
+assert.ok(!feed.includes("'전체 피드'"));assert.ok(!feed.includes('feed.filter'));assert.ok(!read('ApkWinSock.Member.Actions.inc').includes('feed.filter'));
+assert.ok(!flow.includes("Body.AddPair('following'"));
+assert.ok(feed.includes("'팔로우'"));assert.ok(feed.includes('HubRenderFollows'));
+for(const file of ['ApkWinSock.Member.Widgets.inc','ApkWinSock.Ui.inc']){
+ const distances=[...read(file).matchAll(/\b\w+\.Distance\s*:=\s*([\d.]+)/g)].map(m=>Number(m[1]));assert.ok(distances.length);assert.ok(distances.every(x=>x===0));
+}
+console.log('FIX19 UI SOURCE PASS: pull-refresh integration/lifetime/timeout, preserved mutation recovery, profile revision/cache/history synchronization, per-character comment input, centered reactions, subtle centered shadows and no feed timeline filters');

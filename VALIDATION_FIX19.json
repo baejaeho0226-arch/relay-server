@@ -1,0 +1,101 @@
+{
+  "release": "FIX19",
+  "base": "FIX18",
+  "apkVersion": "2.18.0",
+  "apkVersionCode": 21800,
+  "relayPackageVersion": "6.15.0",
+  "webAdminVersion": "4.8.0",
+  "webUiRevision": "fix19",
+  "runtime": "v24.19.0",
+  "regressions": {
+    "passed": 29,
+    "total": 29,
+    "suites": [
+      "test-auth-recovery.js",
+      "test-build-sessions.js",
+      "test-client-installation.js",
+      "test-client-permissions.js",
+      "test-device-registry-history.js",
+      "test-fix10-support-installation.js",
+      "test-fix12-lifecycle-bulk.js",
+      "test-fix12-tcp.js",
+      "test-fix12-web.js",
+      "test-fix13-member.js",
+      "test-fix13-qr.js",
+      "test-fix13-tcp.js",
+      "test-fix13-web.js",
+      "test-fix15-member.js",
+      "test-fix18-social.js",
+      "test-fix18-tcp.js",
+      "test-fix18-wallet.js",
+      "test-fix18-web.js",
+      "test-fix19-profile-refresh.js",
+      "test-production-hardening.js",
+      "test-qr-auth.js",
+      "test-roadmap11-14.js",
+      "test-roadmap15-18.js",
+      "test-roadmap19-23.js",
+      "test-support-center.js",
+      "test-support-persistence.js",
+      "test-web-api-empty-state.js",
+      "test-web-dom.js",
+      "test-web-ui-cache.js"
+    ],
+    "execution": "All 29 suites passed in a single full regression run."
+  },
+  "checks": {
+    "jsModules": 177,
+    "webBundleFiles": 41,
+    "delphiUtf8BomFiles": 110,
+    "svgDocuments": 42,
+    "androidXmlFilesParsed": 5,
+    "nativeDeclarationsAndSignatures": "passed",
+    "svgSourceAndEmbeddedEquality": "passed",
+    "sourceCompatibilityGuards": "passed"
+  },
+  "coveredBehavior": [
+    "Two distinct real TCP clients receive authenticated profile-change notifications",
+    "Updated and removed avatars plus nickname changes match across feed, post, comments, following and follower lists without reconnecting",
+    "Private fields are excluded from public profile results",
+    "Replaying an older profile save does not revert the current stored profile",
+    "Profile save failure rolls back photo, thumbnail, text and revision",
+    "Valid Korean comments are accepted; blank comments do not consume the rate limit",
+    "All existing QR, wallet, purchase, authorization, lifecycle, support and web DOM/API regression suites"
+  ],
+  "nativeSourceGuards": [
+    "Read-only pull-refresh gesture controller, native down/overscroll state, release threshold, cancel and timeout paths",
+    "Refresh indicator is outside replaceable page and does not intercept input",
+    "Input focus, open pickers and purchase confirmation protect unsaved state",
+    "Navigation/deactivation/service stop/destruction disable or cancel refresh",
+    "CancelReads retains pending mutation request and recovery file",
+    "Profile caches, selected post and navigation snapshots update using monotonic profile revision",
+    "Comment OnChangeTracking and independent fixed composer tap target",
+    "Outline/filled SVGs and numbers vertically centered with stable font and reduced spacing",
+    "Centered subtle card shadows; feed timeline filters removed while following people remains available"
+  ],
+  "preserved": {
+    "winSockServerSourcesUnchanged": true,
+    "winSockServerFilesCompared": 33,
+    "qrAndBiometricFlow": "unchanged",
+    "startupSeconds": 5,
+    "automaticPollingSeconds": 12,
+    "pendingMutationRecovery": true
+  },
+  "nativeCompilation": {
+    "performed": false,
+    "reason": "Delphi compiler, original project files and Android device unavailable"
+  },
+  "visualValidation": {
+    "nativeDeviceUI": false,
+    "nativeTouchRuntime": false,
+    "androidKeyboardRuntime": false,
+    "browserScreenshot": false,
+    "webDomAndApi": true,
+    "svgXmlAndEmbeddedSourceEquality": true
+  },
+  "limitations": [
+    "Pull-to-refresh and keyboard/button fixes were inspected at source level; native compilation and device execution remain unverified.",
+    "API regression tests exercise real network responses, not the FMX cache UI itself.",
+    "APK and Relay/web should be updated together."
+  ]
+}

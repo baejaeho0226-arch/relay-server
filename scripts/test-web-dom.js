@@ -11,6 +11,7 @@ c.socket={destroyed:false,remoteAddress:'127.0.0.1',write(){return true}};c.sock
 state.clients.set(id,c);state.clientIdentities.set('DOM-TEST',{id,serverId:''});
 support.Handle(c,'SUPPORT_OPEN|'+id);
 support.Handle(c,'SUPPORT_SEND_V2|DOM_MESSAGE_1|1|'+Buffer.from('첫 문의 <script>unsafe</script>').toString('base64'));
+support.Handle(c,'SUPPORT_BOT_OPEN|'+id);
 const virtualConsole=new VirtualConsole();const errors=[];virtualConsole.on('jsdomError',e=>errors.push(e.message));
 const html=fs.readFileSync(root+'/public/index.html','utf8').replace(/<script[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link[^>]*>/g,'');
 const dom=new JSDOM(html,{url:'https://fixture.invalid/',runScripts:'outside-only',virtualConsole});
@@ -22,7 +23,7 @@ w.fetch=async(url,options={})=>{
  let status=0,body='';
  const req=require('node:stream').Readable.from(options.body?[Buffer.from(options.body)]:[]); Object.assign(req,{method:options.method||'GET',url,headers:{},socket:{remoteAddress:'127.0.0.1'}});
  const res={writeHead(s){status=s},end(s){body=s}};
- if(req.method!=='GET') assert.match(url,/\/read$/,'Only generated fixture unread state may change');
+ if(req.method!=='GET') assert.match(url,/\/read$|^\/api\/support\/knowledge(?:\/delete)?$/,'Only generated fixture read/FAQ state may change');
  await api.HandleApiRequest(req,res,{role:'admin',id:'TEST',ip:'127.0.0.1'});
  return {status,ok:status>=200&&status<300,text:async()=>body};
 };
@@ -54,6 +55,18 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,30));
  w.document.querySelector('[data-view="support"]').click();await settle();
  assert.equal(w.document.querySelector('#support-draft').value,'전송하지 않은 답변');
  menu.click();w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(menu.getAttribute('aria-expanded'),'false');
+ // FAQ editor persists changes through the real API without replacing the conversation draft.
+ assert.ok(w.document.querySelector('.from-bot'));assert.match(w.document.querySelector('.from-bot').textContent,/FAQ 안내 봇/);
+ const select=w.document.querySelector('#support-faq-select');assert.ok(select.options.length>=7);select.value='FAQ_CHARGE';select.dispatchEvent(new w.Event('change',{bubbles:true}));
+ let form=w.document.querySelector('#support-faq-form');form.elements.answer.value='웹에서 수정한 안전한 안내 <script>실행 금지</script>';
+ form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();
+ assert.equal(require('../services/supportKnowledge').Admin().items.find(x=>x.id==='FAQ_CHARGE').answer,'웹에서 수정한 안전한 안내 <script>실행 금지</script>');
+ assert.match(w.document.querySelector('#support-faq-status').textContent,/반영/);assert.equal(w.document.querySelector('#support-draft').value,'전송하지 않은 답변');
+ assert.equal(w.document.querySelectorAll('#support-knowledge-editor script').length,0);
+ // An unsaved FAQ edit remains intact across the automatic support refresh.
+ form=w.document.querySelector('#support-faq-form');form.elements.question.value='작성 중인 질문';form.elements.question.focus();await w.renderSupportCenter();
+ assert.equal(w.document.querySelector('#support-faq-form'),form);assert.equal(form.elements.question.value,'작성 중인 질문');
+ assert.match(w.readableApiError('INVALID_SUPPORT_FAQ'),/검색어/);
  assert.equal(errors.length,0,errors.join('\n'));
- console.log('DOM REGRESSION PASS: dashboard, localized navigation, mobile menu state, support selection, escaped content, draft preservation, permission error labels');
+ console.log('DOM REGRESSION PASS: dashboard, localized navigation, mobile menu state, support selection, escaped content, draft preservation, permission error labels, bot bubbles, safe FAQ editing and preserved drafts');
 }finally{w.close();fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

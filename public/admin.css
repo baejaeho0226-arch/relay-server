@@ -1,12 +1,12 @@
 /* Relay Admin 4 — shared surfaces and interaction tokens. */
 :root {
   color-scheme: light;
-  --bg: #f5f6f8; --bg-2: #eef0f3;
+  --bg: #fff; --bg-2: #fff;
   --panel: #fff; --panel-2: #fafbfc; --panel-3: #f1f3f5;
   --line: #e2e5ea; --line-strong: #bec4ce; --border: #e2e5ea;
   --text: #17191e; --muted: #687181; --accent: #242830; --accent-2: #32748c;
   --good: #247353; --warn: #946200; --bad: #b42318;
-  --shadow: 0 4px 20px rgba(23,25,30,.035);
+  --shadow: 0 0 14px rgba(23,25,30,.045);
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", "Malgun Gothic", sans-serif;
   --mono: "SFMono-Regular", Consolas, monospace;
 }

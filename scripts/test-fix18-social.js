@@ -1,0 +1,51 @@
+'use strict';
+const assert=require('node:assert/strict'),crypto=require('node:crypto'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'relay-fix18-social-'));process.env.DATA_DIR=dir;process.env.STORAGE_ENGINE='json';process.env.QR_APPROVAL_SECRET='FIX18-TEST-ONLY-QR-SECRET';
+require('../core/utils').EnsureDirs();
+const state=require('../core/state'),s=require('../services/member/store'),hub=require('../services/member/service'),db=require('../storage/database'),center=require('../services/qrCenter'),entry=require('../services/qrApproval'),charges=require('../services/member/charges'),protocol=require('../services/member/protocol');
+let sequence=0;const run=(c,action,body={},id)=>hub.Execute(c,id||'FIX18-REQ-'+(++sequence),action,body);
+function client(id){const c={type:'client',clientId:id,connected:true,permissionsGranted:true,licenseAuthorized:true,biometricVerified:true,deviceAuthVerified:true,deviceAuthChallengeId:'AUTH-'+id,installationDeviceKey:'FIX18-'+id,socket:{destroyed:false,write(){return true;}}};state.clients.set(id,c);state.clientIdentities.set(c.installationDeviceKey,{id,serverId:''});state.deviceAuthStatus.set('CLIENT:'+id,{verified:true,verifiedAt:Date.now()});state.deviceSecrets.set('CLIENT:'+id,crypto.randomBytes(32).toString('hex'));return c;}
+(async()=>{try{
+ const a=client('1111111111111111'),b=client('2222222222222222'),c=client('3333333333333333');let p=s.Account(a),q=s.Account(b),t=s.Account(c);
+ const post=run(b,'post.create',{body:'팔로우할 회원의 글'}).post;run(c,'post.create',{body:'다른 회원의 글'});
+ assert.equal(run(a,'feed',{following:true}).total,0);
+ assert.throws(()=>run(a,'follow.set',{id:p.id,following:true}),/INPUT_INVALID/);
+ assert.throws(()=>run(a,'follow.set',{id:'MISSING',following:true}),/MEMBER_NOT_FOUND/);
+ assert.throws(()=>run(a,'follow.set',{id:q.id,following:'true'}),/INPUT_INVALID/);
+ const before=JSON.stringify(s.DB()),save=db.SaveDatabase;db.SaveDatabase=()=>false;
+ assert.throws(()=>run(a,'follow.set',{id:q.id,following:true},'FOLLOW-RETRY-18'),/STORAGE_SAVE_FAILED/);db.SaveDatabase=save;assert.equal(JSON.stringify(s.DB()),before);
+ const following=run(a,'follow.set',{id:q.id,following:true},'FOLLOW-RETRY-18');assert.equal(following.following,true);assert.deepEqual(run(a,'follow.set',{id:q.id,following:true},'FOLLOW-RETRY-18'),following);
+ assert.equal(Object.keys(s.DB().follows).length,1);assert.equal(run(a,'me').profile.following,1);assert.equal(run(b,'me').profile.followers,1);
+ const feed=run(a,'feed',{following:true});assert.equal(feed.total,1);assert.equal(feed.items[0].id,post.id);assert.equal(feed.items[0].following,true);
+ const followers=run(b,'follows',{mode:'followers'});assert.equal(followers.items[0].id,p.id);assert.equal(followers.items[0].balance,undefined);assert.equal(followers.items[0].subject,undefined);
+ assert.equal(run(a,'follows',{mode:'following'}).items[0].isFollowing,true);
+ const snapshot=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(snapshot),true);assert.equal(run(a,'me').profile.following,1);
+ const legacy=structuredClone(snapshot);legacy.memberHub.schema=3;delete legacy.memberHub.follows;s.Import(legacy);assert.equal(s.DB().schema,4);assert.deepEqual(s.DB().follows,{});s.Import(snapshot);
+ s.ProfileById(q.id).blocked=true;assert.equal(run(a,'follows',{}).total,0);assert.equal(run(a,'feed',{following:true}).total,0);assert.throws(()=>run(a,'follow.set',{id:q.id,following:true}),/MEMBER_NOT_FOUND/);s.ProfileById(q.id).blocked=false;
+ run(a,'follow.set',{id:q.id,following:false});assert.equal(run(a,'me').profile.following,0);assert.equal(run(b,'me').profile.followers,0);assert.equal(run(a,'feed',{following:true}).total,0);
+ // Full profile images retain 256px detail; shared feed images use a bounded thumbnail.
+ const {PNG}=require('pngjs'),png=new PNG({width:256,height:256});crypto.randomFillSync(png.data);for(let i=3;i<png.data.length;i+=4)png.data[i]=255;
+ const avatar='data:image/png;base64,'+PNG.sync.write(png).toString('base64');assert.ok(avatar.length>40000);
+ const saved=run(b,'profile.save',{nickname:'선명한 사진',bio:'프로필 소개',avatar}).profile;
+ const ownImage=PNG.sync.read(Buffer.from(saved.avatar.split(',')[1],'base64'));assert.equal(ownImage.width,256);assert.deepEqual(ownImage.data,png.data);
+ const publicImage=run(a,'feed',{}).items.find(x=>x.id===post.id).author.avatar;assert.ok(publicImage.startsWith('data:image/jpeg;base64,'));assert.ok(publicImage.length<30000);assert.equal(require('jpeg-js').decode(Buffer.from(publicImage.split(',')[1],'base64')).width,128);
+ const over=new PNG({width:257,height:1});over.data.fill(255);assert.throws(()=>run(b,'profile.save',{nickname:'큰 사진',avatar:'data:image/png;base64,'+PNG.sync.write(over).toString('base64')}),/AVATAR_INVALID/);
+ assert.equal(run(b,'me').profile.nickname,'선명한 사진');run(b,'profile.save',{nickname:'선명한 사진',bio:'',avatar:''});assert.equal(run(a,'feed',{}).items.find(x=>x.id===post.id).author.avatar,'');
+ // Both QR purposes share the scanner; their approval capabilities cannot cross.
+ p=s.Account(a);const issued=charges.Read(p),row=s.DB().chargeRequests[issued.request.id],QR=require('qrcode');
+ const chargePayload='QRC1.'+row.id+'.'+row.token;const scan=center.Scan(await QR.toDataURL(chargePayload,{errorCorrectionLevel:'H',scale:6}));assert.equal(scan.purpose,'WALLET');assert.equal(scan.request.memberName,p.nickname);
+ assert.equal(charges.Inspect(chargePayload.replace('QRC1.','RCH1.')).request.id,row.id);
+ assert.throws(()=>center.Approve({purpose:'ENTRY',requestId:row.id,approvalToken:scan.approvalToken},'TEST'),/QR_PURPOSE_MISMATCH/);
+ const token=crypto.randomBytes(32).toString('base64url'),requestId='QRA-00112233445566778899AABB',expiresAt=Date.now()+60000;
+ state.qrAuthRequests.set(requestId,{requestId,clientId:a.clientId,deviceKey:a.installationDeviceKey,tokenHash:crypto.createHash('sha256').update(token).digest('hex'),issuedAt:Date.now(),expiresAt,status:'PENDING',scanCount:0});
+ const entryPayload=entry.BuildPayload(requestId,a.clientId,expiresAt,token);assert.ok(entryPayload.startsWith('QRA1.'));
+ const entryScan=center.Scan(await QR.toDataURL(entryPayload,{errorCorrectionLevel:'H',scale:6}));assert.equal(entryScan.purpose,'ENTRY');
+ assert.throws(()=>center.Approve({purpose:'WALLET',requestId,approvalToken:entryScan.approvalToken,mode:'WALLET',amount:1000},'TEST'),/QR_PURPOSE_MISMATCH/);
+ assert.throws(()=>center.Approve({purpose:'WALLET',requestId:row.id,approvalToken:entryScan.approvalToken,mode:'WALLET',amount:1000},'TEST'),/CHARGE_QR_INVALID/);
+ assert.throws(()=>charges.Inspect(entryPayload.replace('QRA1.','QRC1.')),/CHARGE_QR_INVALID/);
+ assert.throws(()=>entry.InspectPayload(chargePayload.replace('QRC1.','QRA1.')),/QR_/);
+ const body={purpose:'WALLET',requestId:row.id,approvalToken:scan.approvalToken,mode:'WALLET',amount:4500,memo:'충전 확인'};
+ const approved=center.Approve(body,'TEST');assert.equal(approved.request.amount,4500);center.Approve(body,'TEST');assert.equal(run(a,'me').profile.balance,4500);assert.equal(Object.keys(s.DB().orders).length,0);
+ assert.equal(center.Summary().approved,1);assert.equal(center.List().length,2);assert.ok(center.List().every(x=>!x.token&&!x.tokenHash));
+ console.log('FIX18 SOCIAL/QR PASS: follow ownership, privacy, rollback, retry, migration, blocked users, filtered feed, 256px images and thumbnails, unified QR purposes, legacy QR and single wallet credit');
+}finally{fs.rmSync(dir,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

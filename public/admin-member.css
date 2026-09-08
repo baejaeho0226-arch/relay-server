@@ -18,7 +18,7 @@ body,main,#content,.table-wrap,.modal-body { scrollbar-color:#b6b6b6 #f4f4f4; sc
 .member-shell button:focus-visible { outline:2px solid #555; outline-offset:3px; }
 .member-shell button.primary { background:#191919; color:#fff; border-color:#191919; }
 .member-shell button.danger { color:#454545; background:#f4f4f4; }
-.member-panel { background:#fff; border:1px solid #e6e6e6; border-radius:18px; padding:24px; margin:0 0 20px; box-shadow:0 4px 18px rgba(0,0,0,.035); min-width:0; }
+.member-panel { background:#fff; border:1px solid #e6e6e6; border-radius:18px; padding:24px; margin:0 0 20px; box-shadow:0 0 14px rgba(0,0,0,.045); min-width:0; }
 .member-panel h3 { margin:0 0 18px; font-size:16px; }
 .member-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
 .member-metrics article { background:#fff; border:1px solid #e8e8e8; border-radius:16px; padding:22px; }

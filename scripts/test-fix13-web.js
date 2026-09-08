@@ -23,24 +23,24 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
 (async()=>{try{
  await wait();w.switchView('member');await w.renderCurrent();
  assert.ok(w.document.getElementById('content').textContent.includes('많이 본 피드'));
- await click(w.document.querySelector('[data-member-view="products"]'));
+ await click(w.document.querySelector('[data-view="member-products"]'));
  await click(w.document.querySelector('[data-member-action="product.new"]'));
  const field=(name,value)=>{w.document.querySelector('[data-modal-field="'+name+'"]').value=value;};
  field('title','테일즈런너 테스트 상품');field('description','설명 <script>실행 금지</script>');field('published','true');
  await click(w.document.getElementById('modal-confirm'));await wait();
  const store=require('../services/member/store');const products=Object.values(store.DB().products);assert.equal(products.length,1);assert.equal(products[0].price,undefined);
  assert.ok(w.document.getElementById('content').textContent.includes('테일즈런너 테스트 상품'));
- await click(w.document.querySelector('[data-member-view="news"]'));await click(w.document.querySelector('[data-member-action="news.new"]'));
+ await click(w.document.querySelector('[data-view="member-news"]'));await click(w.document.querySelector('[data-member-action="news.new"]'));
  field('title','공지 테스트');field('body','다음 업데이트를 안내합니다.');field('published','true');await click(w.document.getElementById('modal-confirm'));await wait();assert.equal(Object.values(store.DB().news).length,1);
- for(const view of ['overview','products','news','orders','ledger','profiles','posts','comments','reports','charges']){await click(w.document.querySelector('[data-member-view="'+view+'"]'));assert.ok(w.document.getElementById('content').textContent.trim());}
+ for(const view of ['overview','products','news','orders','ledger','profiles','posts','comments','reports']){await click(w.document.querySelector('[data-view="member-'+view+'"]'));assert.ok(w.document.getElementById('content').textContent.trim());}
  // Late tab responses must not replace a newer tab or another main screen.
- await click(w.document.querySelector('[data-member-view="products"]'));
+ await click(w.document.querySelector('[data-view="member-products"]'));
  const originalFetch=w.fetch;let release;
  w.fetch=async(url,options)=>{if(url.startsWith('/api/member?view=news'))await new Promise(resolve=>{release=resolve;});return originalFetch(url,options);};
- w.document.querySelector('[data-member-view="news"]').click();await wait();assert.ok(release);
- await click(w.document.querySelector('[data-member-view="products"]'));release();await wait();
+ w.document.querySelector('[data-view="member-news"]').click();await wait();assert.ok(release);
+ await click(w.document.querySelector('[data-view="member-products"]'));release();await wait();
  assert.ok(w.document.querySelector('[data-member-action="product.new"]'));
- w.document.querySelector('[data-member-view="news"]').click();await wait();
+ w.document.querySelector('[data-view="member-news"]').click();await wait();
  w.switchView('dashboard');await w.renderCurrent();release();await wait();
  assert.equal(w.document.querySelector('[data-member-action="news.new"]'),null);
  w.fetch=originalFetch;

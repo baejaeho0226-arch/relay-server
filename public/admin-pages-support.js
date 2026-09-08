@@ -11,10 +11,11 @@ function resetSupportUiState() {
   supportRenderSerial++;
   supportHistory.clear();
   supportAvailabilitySending = false;
+  supportKnowledgeState={revision:0,items:[]};
 }
 const supportHistory = new Map();
 let supportAvailabilitySending = false;
-function supportStatusText(status) { return status === 'CLOSED' ? '상담 종료' : status === 'DELETED' ? '대화 삭제됨' : '상담 중'; }
+function supportStatusText(status,mode) { if(status==='OPEN'&&mode==='BOT')return '봇 안내';return status === 'CLOSED' ? '상담 종료' : status === 'DELETED' ? '대화 삭제됨' : '상담 중'; }
 function renderSupportAvailability(settings) {
   const group = document.getElementById('support-availability');
   if (!group) return;
@@ -50,10 +51,10 @@ function supportSettingsForm(settings) {
 }
 async function renderSupportCenter() {
   const serial = ++supportRenderSerial;
-  const { threads, settings = {} } = await api('/api/support');
+  const { threads, settings = {}, knowledge = {revision:0,items:[]} } = await api('/api/support');
   if (currentView !== 'support' || serial !== supportRenderSerial) return;
   if (!content.querySelector('#support-workspace')) {
-    content.innerHTML = `<section id="support-availability" class="panel support-availability"><div><h3>전체 상담 상태</h3><p>선택한 상태가 모든 상담에 적용됩니다. 다른 메뉴로 이동하거나 웹을 닫아도 유지됩니다.</p></div><div class="support-availability-options" role="group" aria-label="전체 상담 상태"><button type="button" data-support-availability="ONLINE" aria-pressed="false">온라인</button><button type="button" data-support-availability="OFFLINE" aria-pressed="false">오프라인</button></div><p id="support-availability-status" role="status"></p></section>${supportSettingsForm(settings)}<div id="support-workspace" class="support-workspace"><div id="support-threads" class="support-threads"></div><section class="support-conversation"><h3 id="support-heading">문의를 선택하세요</h3><div id="support-device-info" class="support-device-info"></div><div class="support-room-actions"><button id="support-close-room" type="button">상담 종료 / 나가기</button><button id="support-reopen-room" type="button">상담 다시 열기</button><button id="support-delete-room" type="button" class="danger">대화 영구 삭제</button></div><button id="support-history-more" type="button" hidden>이전 대화 불러오기</button><div id="support-transcript" class="support-transcript" aria-live="polite"></div><form id="support-reply-form"><label for="support-draft">관리자 답변</label><textarea id="support-draft" maxlength="1000" rows="3" placeholder="답변을 입력하세요"></textarea><button id="support-reply-send" type="submit" class="primary">답변 보내기</button><span id="support-reply-status" role="status"></span></form></section></div>`;
+    content.innerHTML = `<section id="support-availability" class="panel support-availability"><div><h3>전체 상담 상태</h3><p>선택한 상태가 모든 상담에 적용됩니다. 다른 메뉴로 이동하거나 웹을 닫아도 유지됩니다.</p></div><div class="support-availability-options" role="group" aria-label="전체 상담 상태"><button type="button" data-support-availability="ONLINE" aria-pressed="false">온라인</button><button type="button" data-support-availability="OFFLINE" aria-pressed="false">오프라인</button></div><p id="support-availability-status" role="status"></p></section>${supportSettingsForm(settings)}<details id="support-knowledge" class="panel support-settings"><summary>FAQ · 안내 봇 답변 관리</summary><div id="support-knowledge-editor"></div></details><div id="support-workspace" class="support-workspace"><div id="support-threads" class="support-threads"></div><section class="support-conversation"><h3 id="support-heading">문의를 선택하세요</h3><div id="support-device-info" class="support-device-info"></div><div class="support-room-actions"><button id="support-close-room" type="button">상담 종료 / 나가기</button><button id="support-reopen-room" type="button">상담 다시 열기</button><button id="support-delete-room" type="button" class="danger">대화 영구 삭제</button></div><button id="support-history-more" type="button" hidden>이전 대화 불러오기</button><div id="support-transcript" class="support-transcript" aria-live="polite"></div><form id="support-reply-form"><label for="support-draft">관리자 답변</label><textarea id="support-draft" maxlength="1000" rows="3" placeholder="답변을 입력하세요"></textarea><button id="support-reply-send" type="submit" class="primary">답변 보내기</button><span id="support-reply-status" role="status"></span></form></section></div>`;
     document.getElementById('support-draft').value = supportDrafts.get(supportSelectedClient) || '';
     document.getElementById('support-draft').addEventListener('input', e => {
       supportDrafts.set(supportSelectedClient, e.target.value); supportRequestIds.delete(supportSelectedClient);
@@ -70,8 +71,9 @@ async function renderSupportCenter() {
     for (const action of ['close', 'reopen', 'delete']) document.getElementById(`support-${action}-room`).addEventListener('click', () => changeSupportRoom(action));
     document.getElementById('support-history-more').addEventListener('click', loadOlderSupport);
   }
+  renderSupportKnowledge(knowledge);
   if (!supportAvailabilitySending) renderSupportAvailability(settings);
-  document.getElementById('support-threads').innerHTML = threads.length ? threads.map(t => `<button class="support-thread ${t.clientId === supportSelectedClient ? 'selected' : ''}" data-support-client="${esc(t.clientId)}"><strong>상담 ${esc(t.clientId)}</strong><span>${esc(t.device && (t.device.model || t.device.product) || '기기 정보 대기')} · ${supportStatusText(t.status)}</span><span>${t.online ? '접속 중' : '미접속'}${t.unreadAdmin ? ` · 새 문의 ${t.unreadAdmin}` : ''}</span><small>${esc(t.lastMessage)}</small></button>`).join('') : '<div class="empty">접수된 문의가 없습니다.</div>';
+  document.getElementById('support-threads').innerHTML = threads.length ? threads.map(t => `<button class="support-thread ${t.clientId === supportSelectedClient ? 'selected' : ''}" data-support-client="${esc(t.clientId)}"><strong>상담 ${esc(t.clientId)}</strong><span>${esc(t.device && (t.device.model || t.device.product) || '기기 정보 대기')} · ${supportStatusText(t.status,t.mode)}</span><span>${t.online ? '접속 중' : '미접속'}${t.unreadAdmin ? ` · 새 문의 ${t.unreadAdmin}` : ''}</span><small>${esc(t.lastMessage)}</small></button>`).join('') : '<div class="empty">접수된 문의가 없습니다.</div>';
   const draft = document.getElementById('support-draft');
   draft.disabled = !supportSelectedClient || supportReplySending;
   document.getElementById('support-reply-send').disabled = draft.disabled;
@@ -89,7 +91,7 @@ async function renderSupportCenter() {
   Object.assign(cached, { revision: thread.revision, status: thread.status, messages: [...messages.values()].sort((a,b) => a.seq-b.seq) });
   if (wasEmpty) cached.hasMore = thread.hasMore;
   supportHistory.set(selected, cached);
-  document.getElementById('support-heading').textContent = `상담 ${selected} · ${supportStatusText(thread.status)} · ${thread.online ? '접속 중' : '미접속 / 답변 보관'}`;
+  document.getElementById('support-heading').textContent = `상담 ${selected} · ${supportStatusText(thread.status,thread.mode)} · ${thread.online ? '접속 중' : '미접속 / 답변 보관'}`;
   const d = thread.device || {};
   document.getElementById('support-device-info').innerHTML = `<details><summary>휴대전화 정보 · 고정 상담번호</summary><dl>${[['고정 상담번호', selected], ['현재 CLIENT', thread.currentClientId], ['제조사', d.manufacturer], ['제품명', d.product], ['모델명', d.model], ['OS', d.os], ['전화번호', d.phone || d.phoneStatus], ['시리얼', d.serial || d.serialStatus], ['IMEI', d.imei || d.imeiStatus]].map(([k,v]) => `<dt>${k}</dt><dd>${esc(v || '미제공')}</dd>`).join('')}</dl><p>번호·모델명은 표시용 정보입니다. 대화는 검증된 설치 정보에 연결됩니다.</p></details>`;
   draft.disabled = supportReplySending || thread.status !== 'OPEN';
@@ -110,7 +112,7 @@ function renderSupportMessages(selected, prepend = false) {
   const oldScroll = transcript.scrollTop, oldHeight = transcript.scrollHeight;
   const atBottom = oldHeight - oldScroll - transcript.clientHeight < 48;
   const changedClient = transcript.dataset.client !== selected;
-  transcript.innerHTML = cached.messages.map(m => `<article class="support-message ${m.role === 'SYSTEM' ? 'from-system' : m.role === 'ADMIN' ? 'from-admin' : 'from-client'}"><small>${m.role === 'SYSTEM' ? '상담 안내' : m.role === 'ADMIN' ? '관리자' : '사용자'} · ${esc(new Date(m.at).toLocaleString())}</small><p>${esc(m.text)}</p></article>`).join('') || '<div class="empty">대화가 없습니다.</div>';
+  transcript.innerHTML = cached.messages.map(m => `<article class="support-message ${m.role === 'SYSTEM' ? 'from-system' : m.role === 'ADMIN' ? 'from-admin' : m.role==='BOT' ? 'from-bot' : 'from-client'}"><small>${m.role === 'SYSTEM' ? '상담 안내' : m.role === 'ADMIN' ? '관리자' : m.role==='BOT' ? 'FAQ 안내 봇' : '사용자'} · ${esc(new Date(m.at).toLocaleString())}</small><p>${esc(m.text)}</p></article>`).join('') || '<div class="empty">대화가 없습니다.</div>';
   transcript.dataset.signature = signature; transcript.dataset.client = selected;
   transcript.scrollTop = prepend ? oldScroll + transcript.scrollHeight - oldHeight : changedClient || atBottom ? transcript.scrollHeight : oldScroll;
 }
@@ -188,3 +190,26 @@ content.addEventListener('click', async event => {
     if (currentView === 'reinstallblocks') await renderReinstallBlocks();
   } catch (error) { toast(error.message, true); }
 });
+
+let supportKnowledgeState={revision:0,items:[]};
+function renderSupportKnowledge(knowledge,force=false){
+ const host=document.getElementById('support-knowledge-editor');if(!host)return;
+ if(!force&&host.dataset.revision===String(knowledge.revision))return;
+ if(!force&&host.contains(document.activeElement))return;
+ supportKnowledgeState=knowledge;host.dataset.revision=String(knowledge.revision);
+ host.innerHTML=`<p class="small-note">저장한 FAQ를 APK 안내 화면과 봇이 함께 사용합니다. 최대 12개, 검색어는 쉼표로 구분합니다.</p><form id="support-faq-form"><label>편집할 질문<select id="support-faq-select"><option value="">새 질문 추가</option>${knowledge.items.map(x=>`<option value="${esc(x.id)}">${esc(x.question)}${x.enabled?'':' (비공개)'}</option>`).join('')}</select></label><label>질문<input name="question" maxlength="80" required></label><label>답변<textarea name="answer" maxlength="800" rows="4" required></textarea></label><label>검색어<input name="keywords" maxlength="199" placeholder="충전, 잔액, 적립"></label><label><input name="enabled" type="checkbox" checked> APK와 봇에 공개</label><div class="support-room-actions"><button type="submit">질문 저장</button><button id="support-faq-delete" type="button" class="danger" disabled>질문 삭제</button></div><span id="support-faq-status" role="status"></span></form>`;
+ const form=document.getElementById('support-faq-form'),select=document.getElementById('support-faq-select');
+ select.addEventListener('change',()=>{const row=knowledge.items.find(x=>x.id===select.value);for(const key of ['question','answer'])form.elements[key].value=row?.[key]||'';form.elements.keywords.value=(row?.keywords||[]).join(', ');form.elements.enabled.checked=row?.enabled!==false;document.getElementById('support-faq-delete').disabled=!row;});
+ const save=async remove=>{
+  const id=select.value;if(remove&&!id)return;
+  if(remove&&!await openModal({title:'FAQ 삭제',message:'이 질문을 FAQ와 봇 답변에서 삭제할까요?',confirmLabel:'삭제'}))return;
+  const request={revision:knowledge.revision};
+  if(remove)request.id=id;else request.entry={...(id?{id}:{}),question:form.elements.question.value,answer:form.elements.answer.value,keywords:form.elements.keywords.value.split(',').map(x=>x.trim()).filter(Boolean),enabled:form.elements.enabled.checked};
+  const controls=[...form.elements];controls.forEach(x=>x.disabled=true);
+  try{
+   const result=await api('/api/support/knowledge'+(remove?'/delete':''),{method:'POST',body:request});
+   if(currentView==='support'){renderSupportKnowledge(result.knowledge,true);document.getElementById('support-faq-status').textContent=remove?'질문을 삭제했습니다.':'FAQ와 봇 답변에 반영했습니다.';}
+  }catch(error){toast(error.message,true);controls.forEach(x=>x.disabled=false);}
+ };
+ form.addEventListener('submit',event=>{event.preventDefault();save(false);});document.getElementById('support-faq-delete').addEventListener('click',()=>save(true));
+}

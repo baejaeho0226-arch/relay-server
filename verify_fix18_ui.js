@@ -20,7 +20,7 @@ for(const m of svg.matchAll(/Name = '([^']+)'\) and \(Filled = (True|False)\) th
  const dom=new JSDOM(source,{contentType:'image/svg+xml'}),root=dom.window.document.documentElement;
  assert.equal(root.getAttribute('viewBox'),'0 0 24 24');assert.equal(root.querySelectorAll('script,foreignObject,image,filter').length,0);dom.window.close();count++;
 }
-assert.equal(count,42);
+assert.equal(count,50);
 const flow=read('ApkWinSock.Member.Flow.inc'),dashboard=read('ApkWinSock.Dashboard.inc'),menu=read('ApkWinSock.Member.Menu.inc');
 const render=flow.split('procedure TForm1.HubRender;')[1].split('procedure TForm1.HubRenderTimerTimer')[0];
 assert.ok(render.includes('FHubRenderTimer.Enabled:=True'));assert.ok(!render.includes('FreeAndNil'));assert.ok(flow.includes('FHubRenderedView<>FHubView'));
@@ -56,7 +56,7 @@ const poll=flow.split('procedure TForm1.HubPollTimerTimer')[1].split('procedure 
 assert.ok(!poll.includes('if not FForeground or FHubTouch.Busy'));
 assert.ok(read('ApkMemberClient.pas').includes("RelayHmacSha256Hex(FSecurity.Secret,'HUB_EVENT|"));
 assert.ok(read('ApkWinSock.Member.Charge.inc').includes('RenderQrMatrix'));
-console.log('FIX18 UI SOURCE PASS: fields/signatures, 42 SVG sources, native click/drag guards, bounded busy state, signed automatic refresh, menu arrays, feed-only views, QR charge UI, game purchases, rectangular bars and no press effects');
+console.log('FIX18 UI SOURCE PASS: fields/signatures, 50 SVG sources, native click/drag guards, bounded busy state, signed automatic refresh, menu arrays, feed-only views, QR charge UI, game purchases, rectangular bars and no press effects');
 
 assert.ok(touch.includes('function TApkTapRectangle.PointInObjectLocal'));
 assert.ok(touch.includes('AutoCapture:=True'));
