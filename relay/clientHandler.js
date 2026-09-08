@@ -339,7 +339,7 @@ function HandleClientLine(connection, line) {
     if(connection.superseded || (connection.clientId && GetOnlineClient(connection.clientId)!==connection))return;
     if (connection.reinstallBlocked || require('../services/clientInstallation').IsBlocked(connection)) { require('../services/clientInstallation').Reject(connection); return; }
     if (require('../services/member/service').Handle(connection, line)) return;
-    if (/^SUPPORT_(OPEN|SEND|SEND_V2|SYNC|STATUS|DEVICE)\|/.test(line)) { require('../services/supportCenter').Handle(connection, line); return; }
+    if (/^SUPPORT_(OPEN|SEND|SEND_V2|SYNC|STATUS|DEVICE|HELP|BOT_OPEN)\|/.test(line)) { require('../services/supportCenter').Handle(connection, line); return; }
 
     if (connection.clientId) {
         if (line.startsWith('CLIENT_PERMISSIONS|')) { require('../services/clientPermissions').Handle(connection, line.split('|')); return; }
