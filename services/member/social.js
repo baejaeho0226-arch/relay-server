@@ -21,7 +21,7 @@ function AvatarThumb(value){
  }
  return 'data:image/jpeg;base64,'+require('jpeg-js').encode({width,height,data},82).data.toString('base64');
 }
-function SaveProfile(p,body){p.nickname=s.Text(body.nickname,24,true);p.bio=s.Text(body.bio,160);if(body.avatar!==undefined){p.avatar=Avatar(body.avatar);p.avatarThumb=AvatarThumb(p.avatar);p.avatarRevision++;}return {profile:s.PublicProfile(p,true)};}
+function SaveProfile(p,body){const revision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1;p.nickname=s.Text(body.nickname,24,true);p.bio=s.Text(body.bio,160);if(body.avatar!==undefined){p.avatar=Avatar(body.avatar);p.avatarThumb=AvatarThumb(p.avatar);p.avatarRevision++;}p.profileRevision=revision;return {profile:s.PublicProfile(p,true),publicProfile:s.PublicProfile(p)};}
 function Author(id){const p=s.ProfileById(id);return p?s.PublicProfile(p):{id,nickname:'탈퇴 회원',avatar:''};}
 function News(p,body={}){return s.Page(Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at).map(x=>({...x,unread:(p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1)})),body);}
 function Article(p,body){

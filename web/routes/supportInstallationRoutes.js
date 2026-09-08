@@ -1,5 +1,6 @@
 'use strict';
 const support = require('../../services/supportCenter');
+const knowledge=require('../../services/supportKnowledge');
 const installation = require('../../services/clientInstallation');
 async function Handle({ method, pathname, body, url, res, session, RequireAdmin, Json, ApiError }) {
     if (!/^\/api\/(support(?:\/|$)|reinstall-blocks(?:\/|$))/.test(pathname)) return false;
@@ -8,11 +9,13 @@ async function Handle({ method, pathname, body, url, res, session, RequireAdmin,
         if (!result || result.ok === false) ApiError(res, 409, result && result.reason || 'REQUEST_FAILED');
         else Json(res, 200, { ok: true, ...result });
     };
-    if (method === 'GET' && pathname === '/api/support') { send({ threads: support.List(), settings: support.Info() }); return true; }
+    if (method === 'GET' && pathname === '/api/support') { send({ threads: support.List(), settings: support.Info(), knowledge:knowledge.Admin() }); return true; }
     if (method === 'GET' && pathname === '/api/reinstall-blocks') { send({ blocks: installation.List() }); return true; }
     if (method === 'POST' && pathname === '/api/support/presence') { send(support.Presence(session, body.active === true)); return true; }
     if (method === 'POST' && pathname === '/api/support/availability') { send(support.Availability(session, body.mode)); return true; }
     if (method === 'POST' && pathname === '/api/support/settings') { send(support.Settings(body)); return true; }
+    if(method==='POST' && pathname==='/api/support/knowledge'){send(knowledge.Write(body));return true;}
+    if(method==='POST' && pathname==='/api/support/knowledge/delete'){send(knowledge.Write(body,true));return true;}
     let m = pathname.match(/^\/api\/support\/([0-9A-F]{16})(?:\/(reply|read|close|delete|reopen))?$/i);
     if (m) {
         const id = m[1].toUpperCase();
