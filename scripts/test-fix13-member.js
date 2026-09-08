@@ -12,7 +12,7 @@ try{
  const pa=run(a,'me').profile,pb=run(b,'me').profile;assert.notEqual(pa.id,pb.id);
  const product=service.AdminWrite('product.save',{title:'테일즈런너 30일',accessType:'TYPE1',description:'서버 상품',price:5000,days:30,stock:2,published:true},'ADMIN');
  assert.equal(run(a,'catalog').items.length,1);
- assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:5000}),/SHOP_RETIRED/);
+ assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:5000}),/GAME_PLAN_INVALID/);
  // Existing purchases remain refundable/usable; new game purchases are disabled.
  store.Atomic(()=>{
   store.Ledger(store.Account(a),5000,'TOPUP','EXISTING_BALANCE_FIXTURE');

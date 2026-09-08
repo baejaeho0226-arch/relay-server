@@ -55,7 +55,7 @@ async function run(){
   const authenticated=passkey.LoginFinish(req,{challengeId:login.challengeId,credentialId,clientDataJSON:cdata,authenticatorData:adata,signature});assert.ok(authenticated.ok,authenticated.reason);
 
   const apk=fs.readFileSync(path.resolve(__dirname,'../../ApkWinSock_Android64/ApkWinSock.Lifecycle.Construction.inc'),'utf8');const immersive=apk.slice(apk.indexOf('procedure TForm1.ApplyImmersiveFullscreen'),apk.indexOf('procedure TForm1.FormActivated'));
-  assert.ok(immersive.includes('FullScreen := True'));assert.ok(!/Androidapi|JNI|WindowManager/.test(immersive));
+  assert.ok(immersive.includes('FullScreen := False'));assert.ok(immersive.includes('ShowAndroidSystemBars'));assert.ok(!/Androidapi|JNI|WindowManager/.test(immersive));
   const web=fs.readFileSync(path.resolve(__dirname,'../public/admin-pages-production.js'),'utf8');assert.ok(web.includes('renderProductionHardening'));assert.ok(web.includes('navigator.credentials'));
   console.log('PRODUCTION HARDENING 28-43 PASS');
   console.log('- Atomic fixed-pair collision guard: PASS');
@@ -63,6 +63,6 @@ async function run(){
   console.log('- WebAuthn, dual approval and config dry-run: PASS');
   console.log('- Audit chain, diagnostics, incidents, SLO and recovery drill: PASS');
   console.log('- Anomaly, retention, SBOM and safe chaos simulation: PASS');
-  console.log('- FireMonkey immersive fullscreen without JNI window calls: PASS');
+  console.log('- Visible FireMonkey system-bar policy with biometric focus guards: PASS');
 }
 run().catch(error=>{console.error(error.stack||error);process.exitCode=1;});

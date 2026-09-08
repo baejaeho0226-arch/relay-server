@@ -1,9 +1,10 @@
 'use strict';
+let memberChargeFile=null,memberChargePreview='',memberChargeSerial=0;
 let memberView='overview',memberOffset=0,memberRows=new Map(),memberRenderSerial=0;
 let memberQuery='',memberFilter='',memberSort='recent',memberSelected=new Set();
 let memberPointerDown=false,memberPointerUntil=0,memberInteractionUntil=0,memberLastRefresh=0,memberFingerprint='';
 const memberTabs={overview:'운영 요약',news:'소식',products:'게임',profiles:'회원',posts:'피드 글',comments:'댓글',reports:'신고',charges:'QR 충전',orders:'이용권 내역',ledger:'결제 원장'};
-const memberStatus={PAID:'이용 대기',ACTIVE:'사용 중',REFUNDED:'환불 완료',QR_CHARGE:'QR 충전',PENDING:'확인 대기',APPROVED:'충전 등록',REJECTED:'반려',EXPIRED:'기간 만료',TOPUP:'이전 잔액 반영',PURCHASE:'구매',REFUND:'환불',OPEN:'접수',RESOLVED:'처리 완료',UPDATE:'업데이트',NOTICE:'공지',EVENT:'이벤트',ALERT:'알림'};
+const memberStatus={PAID:'이용 대기',ACTIVE:'사용 중',REFUNDED:'환불 완료',QR_CHARGE:'이전 이용권 등록',QR_TOPUP:'잔액 충전',PENDING:'확인 대기',APPROVED:'충전 완료',REJECTED:'반려',EXPIRED:'기간 만료',TOPUP:'이전 잔액 반영',PURCHASE:'구매',REFUND:'환불',OPEN:'접수',RESOLVED:'처리 완료',UPDATE:'업데이트',NOTICE:'공지',EVENT:'이벤트',ALERT:'알림'};
 const memberEditable=view=>['products','news','posts','comments'].includes(view);
 function memberMoney(n){return Number(n||0).toLocaleString('ko-KR')+'원';}
 function memberButton(action,id,label,danger=false){return `<button type="button" data-member-action="${action}" data-id="${esc(id||'')}" class="${danger?'danger':''}">${label}</button>`;}
@@ -22,10 +23,10 @@ function memberDescription(text){
 }
 function memberRow(row,view){
  let title=row.title||row.nickname||row.id,meta='',body='',actions='';
- if(view==='products'){meta=accessTypeName(row.accessType);body=row.description;actions=memberButton('product.edit',row.id,'수정');}
- if(view==='charges'){title=row.title||'충전 요청';meta=`${row.accountId}${row.amount?' · '+memberMoney(row.amount)+' · '+row.days+'일':''}`;body=row.memo||row.reason||'전달받은 QR 사진을 스캔해 금액과 게임 이용 기간을 등록하세요.';if(row.status==='PENDING')actions=memberButton('charge.reject',row.id,'반려');}
+ if(view==='products'){meta=accessTypeName(row.accessType)+' · '+(row.plans||[]).map(x=>x.days+'일 '+(x.available?memberMoney(x.price):'판매 준비 중')).join(' / ');body=row.description;actions=memberButton('product.edit',row.id,'수정');}
+ if(view==='charges'){title=row.mode==='WALLET'?'잔액 충전':row.title||'충전 요청';meta=`${row.accountId}${row.amount?' · '+memberMoney(row.amount):''}${row.days?' · 이전 '+row.days+'일 이용권':''}`;body=row.memo||row.reason||'전달받은 QR 사진을 확인해 기간 없는 잔액으로 충전합니다.';if(row.status==='PENDING')actions=memberButton('charge.reject',row.id,'반려');}
  if(view==='news'){meta=`${memberStatus[row.category]}${row.pinned?' · 상단 고정':''}`;body=row.body;actions=memberButton('news.edit',row.id,'수정');}
- if(view==='orders'){meta=`${row.accountId} · ${memberMoney(row.amount)}`;body=row.activatedAt?'사용 시작 '+fmtTime(row.activatedAt):'미사용';if(!row.activatedAt&&row.status==='PAID'&&row.source!=='QR_CHARGE')actions=memberButton('order.refund',row.id,'잔액 환불',true);}
+ if(view==='orders'){meta=`${row.accountId} · ${row.days}일 · ${memberMoney(row.amount)}`;body=row.activatedAt?'사용 시작 '+fmtTime(row.activatedAt):'미사용';if(!row.activatedAt&&row.status==='PAID'&&row.source!=='QR_CHARGE')actions=memberButton('order.refund',row.id,'잔액 환불',true);}
  if(view==='ledger'){title=memberStatus[row.kind]||'거래';meta=`${row.accountId} · ${memberMoney(row.amount)} · ${row.kind==='QR_CHARGE'?'이용권 등록':'잔액 '+memberMoney(row.balance)}`;body=row.reference;}
  if(view==='profiles'){meta=`잔액 ${memberMoney(row.balance)}`;body=row.bio;actions=memberButton('profile.edit',row.id,'프로필 수정')+memberButton('profile.block',row.id,row.blocked?'제한 해제':'이용 제한',!row.blocked);}
  if(view==='posts'||view==='comments'){title=row.author?.nickname||row.accountId;body=row.body||'작성자가 삭제한 내용입니다.';if(!row.deleted)actions=memberButton(view==='posts'?'post.edit':'comment.edit',row.id,'수정')+memberButton('content.'+(row.hidden?'show':'hide'),row.id,row.hidden?'공개':'숨기기');}
@@ -38,7 +39,7 @@ function memberRow(row,view){
  return `<tr>${memberEditable(view)?`<td><input type="checkbox" class="member-check" aria-label="${esc(title)} 선택" data-id="${esc(row.id)}" ${memberSelected.has(row.id)?'checked':''}></td>`:''}<td class="member-item"><strong>${esc(title)}</strong><div class="small-note">${esc(fmtTime(row.updatedAt||row.at||row.createdAt))}</div><span class="member-badge">${esc(memberState(row,view))}</span></td><td class="member-detail">${meta?`<div class="member-meta">${esc(meta)}</div>`:''}${memberDescription(body)}</td>${view==='posts'?`<td class="member-views">${Number(row.views||0).toLocaleString('ko-KR')}</td>`:''}<td><div class="actions">${actions||'—'}</div></td></tr>`;
 }
 function memberCanAutoRefresh(){
- const file=content.querySelector('#member-charge-file');if(file?.files?.length)return false;
+ const file=content.querySelector('#member-charge-file');if(memberChargeFile||file?.files?.length)return false;
  const search=content.querySelector('#member-search');
  if(search&&search.value.trim()!==memberQuery)return false;
  return currentView==='member'&&!document.hidden&&!(memberPointerDown&&Date.now()<memberPointerUntil)&&Date.now()>=memberInteractionUntil&&memberSelected.size===0&&
@@ -62,7 +63,10 @@ async function renderMember(automatic=false){
   html+=`<div class="member-metrics">${stats.map(([label,value])=>`<article><span>${label}</span><strong>${Number(value||0).toLocaleString('ko-KR')}</strong></article>`).join('')}</div><section class="member-panel"><h3>많이 본 피드</h3><div class="member-popular">${result.topContent.map(x=>`<div><span>${esc(x.title||x.id)}</span><strong>${Number(x.count).toLocaleString('ko-KR')}</strong></div>`).join('')||'<p class="member-empty">아직 조회 기록이 없습니다.</p>'}</div></section>`;
  }else{
   const filters=memberFilters(view);
-  if(view==='charges')html+='<section class="member-panel"><h3>충전 QR 확인</h3><p class="small-note">회원이 전달한 QR 사진을 확인한 뒤 충전 금액과 게임 이용 기간을 등록합니다.</p><div class="member-filter"><input id="member-charge-file" type="file" accept="image/png,image/jpeg" aria-label="충전 QR 사진"><button type="button" data-member-action="charge.scan">QR 확인 · 충전 등록</button></div></section>';
+  if(view==='charges')html+=`<section class="member-panel"><h3>충전 QR 확인</h3><p class="small-note">사진을 확인한 뒤 금액을 회원 잔액에 충전합니다. 잔액에는 사용 기한이 없습니다.</p>
+    <input id="member-charge-file" class="visually-hidden" type="file" accept="image/png,image/jpeg" aria-label="충전 QR 사진">
+    <label for="member-charge-file" class="qr-drop-zone member-charge-drop"><div class="qr-drop-icon">▦</div><strong>${memberChargeFile?'선택한 사진 변경':'충전 QR 사진 선택'}</strong><span>${esc(memberChargeFile?.name||'PNG / JPEG · 최대 8MB')}</span><img id="member-charge-preview" class="${memberChargePreview?'':'hidden'}" ${memberChargePreview?`src="${esc(memberChargePreview)}"`:''} alt="선택한 충전 QR 사진 미리보기"></label>
+    <div class="actions"><button type="button" data-member-action="charge.scan" class="primary">QR 확인 · 잔액 충전</button><button type="button" data-member-action="charge.clear">사진 지우기</button></div></section>`;
   html+=`<section class="member-panel"><form id="member-search-form" class="member-filter"><input id="member-search" type="search" placeholder="이름·내용 검색" value="${esc(memberQuery)}" aria-label="콘텐츠 검색"><button type="submit">검색</button>${filters.length?`<select id="member-filter" aria-label="상태 필터">${[['','모든 상태'],...filters].map(([value,label])=>`<option value="${value}" ${memberFilter===value?'selected':''}>${label}</option>`).join('')}</select>`:''}${view==='posts'?`<select id="member-sort" aria-label="정렬"><option value="recent" ${memberSort==='recent'?'selected':''}>최신순</option><option value="views" ${memberSort==='views'?'selected':''}>조회순</option></select>`:''}${memberButton('reset','','초기화')}</form>`;
   let add='';if(view==='products')add=memberButton('product.new','','게임 등록');if(view==='news')add=memberButton('news.new','','소식 작성');
   html+=`<div class="member-toolbar">${add}<span>총 ${result.total||0}개</span>`;
@@ -82,3 +86,17 @@ for(const name of ['pointerup','pointercancel'])document.addEventListener(name,(
 window.addEventListener('blur',()=>{memberPointerDown=false;});
 content.addEventListener('scroll',()=>{memberInteractionUntil=Date.now()+700;},true);
 setInterval(()=>{if(memberCanAutoRefresh()&&Date.now()-memberLastRefresh>=12000)renderMember(true).catch(()=>{});},1000);
+
+async function setMemberChargeFile(file){
+ const serial=++memberChargeSerial;memberChargeFile=null;memberChargePreview='';
+ if(file){
+  if(!['image/png','image/jpeg'].includes(file.type)||file.size>8*1024*1024)throw Error('8MB 이하의 PNG 또는 JPEG 사진을 선택해주세요.');
+  memberChargeFile=file;
+  try{const preview=await fileAsDataUrl(file);if(serial!==memberChargeSerial)return;memberChargePreview=preview;}
+  catch(e){if(serial!==memberChargeSerial)return;memberChargeFile=null;memberChargePreview='';throw e;}
+ }
+ if(currentView==='member'&&memberView==='charges')await renderMember();
+}
+content.addEventListener('change',event=>{
+ if(event.target.id==='member-charge-file')setMemberChargeFile(event.target.files?.[0]||null).catch(e=>{renderMember().catch(()=>{});toast(e.message,true);});
+});

@@ -56,3 +56,7 @@ body,main,#content,.table-wrap,.modal-body { scrollbar-color:#b6b6b6 #f4f4f4; sc
 @media(max-width:1050px) { .member-shell .member-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); }.member-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:620px) { .member-shell .member-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }.member-panel { padding:18px; }.member-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.member-metrics article { padding:18px; }.member-filter input { flex-basis:100%; } }
 @media(prefers-reduced-motion:reduce) { .member-shell button { transition:none; } }
+
+.member-charge-drop{margin:18px 0;min-height:180px;max-width:540px;box-sizing:border-box}
+#member-charge-preview{display:block;width:100%;max-width:360px;max-height:380px;object-fit:contain;background:#fff;border-radius:12px;margin:12px auto 0}
+#member-charge-preview.hidden{display:none}
