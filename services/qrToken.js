@@ -8,10 +8,10 @@ function Encode(secret,requestId,clientId,expiresAt,token){
  const t=Buffer.from(token,'base64url');if(t.length!==32)throw Error('QR_TOKEN_INVALID');t.copy(plain,26);
  const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',Key(secret),iv);cipher.setAAD(AAD);
  const encrypted=Buffer.concat([cipher.update(plain),cipher.final()]);
- return 'RLY2.'+Buffer.concat([iv,encrypted,cipher.getAuthTag()]).toString('base64url');
+ return 'QRA1.'+Buffer.concat([iv,encrypted,cipher.getAuthTag()]).toString('base64url');
 }
 function Decode(secret,value){
- if(!/^RLY2\.[A-Za-z0-9_-]{115}$/.test(value))throw Error('QR_PAYLOAD_INVALID');
+ if(!/^(?:QRA1|RLY2)\.[A-Za-z0-9_-]{115}$/.test(value))throw Error('QR_PAYLOAD_INVALID');
  const packet=Buffer.from(value.slice(5),'base64url');if(packet.length!==86||packet.toString('base64url')!==value.slice(5))throw Error('QR_PAYLOAD_INVALID');
  try{
   const decipher=crypto.createDecipheriv('aes-256-gcm',Key(secret),packet.subarray(0,12));decipher.setAAD(AAD);decipher.setAuthTag(packet.subarray(-16));

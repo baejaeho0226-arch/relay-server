@@ -1,6 +1,6 @@
 'use strict';
 
-const qrApproval = require('../../services/qrApproval');
+const qrCenter = require('../../services/qrCenter');
 const buildGate = require('../../services/buildGate');
 const { SafeField } = require('../../core/utils');
 const { LogEvent } = require('../../storage/audit');
@@ -13,7 +13,7 @@ async function Handle(context) {
 
     if (method === 'GET' && pathname === '/api/qr-auth') {
         if (!RequireAdmin(res, session)) return true;
-        Json(res, 200, { ok: true, requests: qrApproval.List(), summary: qrApproval.Summary() });
+        Json(res, 200, { ok: true, requests: qrCenter.List(), summary: qrCenter.Summary() });
         return true;
     }
 
@@ -67,7 +67,7 @@ async function Handle(context) {
     if (method === 'POST' && pathname === '/api/qr-auth/scan') {
         if (!RequireAdmin(res, session)) return true;
         try {
-            const result = qrApproval.ScanImage(body.imageData || '');
+            const result = qrCenter.Scan(body.imageData || '');
             LogEvent('QR_AUTH_SCANNED', `${result.request.requestId} -> ${result.request.clientId} / ${session.role}`);
             Json(res, 200, { ok: true, ...result });
         } catch (error) {
@@ -80,10 +80,7 @@ async function Handle(context) {
 
     if (method === 'POST' && pathname === '/api/qr-auth/approve') {
         if (!RequireAdmin(res, session)) return true;
-        const result = qrApproval.Approve(body.requestId, body.approvalToken, {
-            memo: body.memo,
-            tags: body.tags
-        }, session.role);
+        let result;try{result=qrCenter.Approve(body,session.role);}catch(e){ApiError(res,e.message==='STORAGE_SAVE_FAILED'?503:409,e.memberError?e.message:'QR_APPROVAL_FAILED');return true;}
         if (!result.ok) {
             LogEvent('QR_AUTH_APPROVE_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);
             ApiError(res, 409, result.reason);
@@ -95,7 +92,7 @@ async function Handle(context) {
 
     if (method === 'POST' && pathname === '/api/qr-auth/reject') {
         if (!RequireAdmin(res, session)) return true;
-        const result = qrApproval.Reject(body.requestId, body.reason, session.role);
+        let result;try{result=qrCenter.Reject(body,session.role);}catch(e){ApiError(res,409,e.memberError?e.message:'QR_REJECT_FAILED');return true;}
         if (!result.ok) {
             LogEvent('QR_AUTH_REJECT_FAILED', `${SafeField(body.requestId || '').slice(0, 40)} / ${result.reason} / ${session.role}`);
             ApiError(res, 409, result.reason);

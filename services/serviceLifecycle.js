@@ -44,6 +44,7 @@ function Park(connection) {
   connection.buildClients?.clear();
   connection.buildSessions?.clear();
   connection.accessType = '';
+  connection.hubUpload = null;
   connection.permissionSequence = 0;
   connection.permissionMask = -1;
   if (first) {

@@ -49,7 +49,7 @@ function BuildPayload(requestId, clientId, expiresAt, token) {
 }
 
 function ParsePayload(payload) {
-    if (String(payload).startsWith('RLY2.')) return require('./qrToken').Decode(SigningSecret(), String(payload));
+    if (/^(QRA1|RLY2)\./.test(String(payload))) return require('./qrToken').Decode(SigningSecret(), String(payload));
     // Retain validation for already-issued FIX12 tokens until they expire.
     let url;
     try { url = new URL(String(payload || '')); }

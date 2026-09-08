@@ -17,13 +17,13 @@ function Read(p){
  let row=Object.values(s.DB().chargeRequests).filter(x=>x.accountId===p.id).reverse().sort((a,b)=>b.at-a.at)[0]||Issue(p);
  if(row.status==='PENDING'&&row.expiresAt<=Date.now())s.Atomic(()=>Expire(row));
  const data={request:Public(row),profile:s.PublicProfile(p,true)};
- if(row.status==='PENDING')data.qr=require('../qrApproval').QrMatrix('RCH1.'+row.id+'.'+row.token);
+ if(row.status==='PENDING')data.qr=require('../qrApproval').QrMatrix('QRC1.'+row.id+'.'+row.token);
  return data;
 }
 function ApprovalToken(row){return crypto.createHmac('sha256',row.tokenHash).update('CHARGE_APPROVE|'+row.id+'|'+row.expiresAt).digest('hex');}
 function Equal(a,b){if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);}
 function Inspect(payload){
- const parts=String(payload).split('.');if(parts.length!==3||parts[0]!=='RCH1'||!/^CHG-[A-F0-9]{24}$/.test(parts[1])||!/^[A-Za-z0-9_-]{43}$/.test(parts[2]))s.Fail('CHARGE_QR_INVALID');
+ const parts=String(payload).split('.');if(parts.length!==3||!['QRC1','RCH1'].includes(parts[0])||!/^CHG-[A-F0-9]{24}$/.test(parts[1])||!/^[A-Za-z0-9_-]{43}$/.test(parts[2]))s.Fail('CHARGE_QR_INVALID');
  const row=s.DB().chargeRequests[parts[1]];if(!row||!Equal(row.tokenHash,hash(parts[2])))s.Fail('CHARGE_QR_INVALID');
  if(row.status!=='PENDING')s.Fail('CHARGE_PROCESSED');if(row.expiresAt<=Date.now())s.Fail('CHARGE_EXPIRED');
  const p=s.ProfileById(row.accountId);if(!p||p.blocked)s.Fail('ACCOUNT_BLOCKED');

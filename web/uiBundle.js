@@ -8,6 +8,8 @@ const FILES = [
   "index.html",
   "admin.css",
   "admin-theme.css",
+  "admin-appearance.css",
+  "admin-appearance.js",
   "admin-navigation.css",
   "admin-i18n.js",
   "admin.js",

@@ -2,13 +2,26 @@
 const s=require('./store');
 function Avatar(value){
  if(!value)return '';
- const m=/^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(value));if(!m||m[1].length>28000)s.Fail('AVATAR_INVALID');
+ const m=/^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(value));if(!m||m[1].length>360000)s.Fail('AVATAR_INVALID');
  const b=Buffer.from(m[1],'base64');if(b.length<24||b.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')s.Fail('AVATAR_INVALID');
- const w=b.readUInt32BE(16),h=b.readUInt32BE(20);if(w<1||h<1||w>128||h>128)s.Fail('AVATAR_INVALID');
- // Decode then re-encode to exclude trailing payloads and ancillary metadata.
- try{const {PNG}=require('pngjs');const png=PNG.sync.read(b);const normalized=PNG.sync.write(png).toString('base64');if(normalized.length>28000)s.Fail('AVATAR_INVALID');return 'data:image/png;base64,'+normalized;}catch(_){s.Fail('AVATAR_INVALID');}
+ const w=b.readUInt32BE(16),h=b.readUInt32BE(20);if(w<1||h<1||w>256||h>256)s.Fail('AVATAR_INVALID');
+ try{const {PNG}=require('pngjs');const png=PNG.sync.read(b);const normalized=PNG.sync.write(png).toString('base64');if(normalized.length>360000)s.Fail('AVATAR_INVALID');return 'data:image/png;base64,'+normalized;}catch(_){s.Fail('AVATAR_INVALID');}
 }
-function SaveProfile(p,body){p.nickname=s.Text(body.nickname,24,true);p.bio=s.Text(body.bio,160);if(body.avatar!==undefined){p.avatar=Avatar(body.avatar);p.avatarRevision++;}return {profile:s.PublicProfile(p,true)};}
+function AvatarThumb(value){
+ if(!value)return '';
+ const png=require('pngjs').PNG.sync.read(Buffer.from(value.split(',')[1],'base64'));
+ const width=Math.min(128,png.width),height=Math.min(128,png.height),data=Buffer.alloc(width*height*4);
+ // Area resampling preserves detail; flatten transparency on a neutral surface.
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+  const sum=[0,0,0];let count=0;
+  for(let sy=Math.floor(y*png.height/height);sy<Math.ceil((y+1)*png.height/height);sy++)for(let sx=Math.floor(x*png.width/width);sx<Math.ceil((x+1)*png.width/width);sx++){
+   const i=(sy*png.width+sx)*4,a=png.data[i+3]/255;for(let c=0;c<3;c++)sum[c]+=png.data[i+c]*a+255*(1-a);count++;
+  }
+  const out=(y*width+x)*4;for(let c=0;c<3;c++)data[out+c]=Math.round(sum[c]/count);data[out+3]=255;
+ }
+ return 'data:image/jpeg;base64,'+require('jpeg-js').encode({width,height,data},82).data.toString('base64');
+}
+function SaveProfile(p,body){p.nickname=s.Text(body.nickname,24,true);p.bio=s.Text(body.bio,160);if(body.avatar!==undefined){p.avatar=Avatar(body.avatar);p.avatarThumb=AvatarThumb(p.avatar);p.avatarRevision++;}return {profile:s.PublicProfile(p,true)};}
 function Author(id){const p=s.ProfileById(id);return p?s.PublicProfile(p):{id,nickname:'탈퇴 회원',avatar:''};}
 function News(p,body={}){return s.Page(Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at).map(x=>({...x,unread:(p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1)})),body);}
 function Article(p,body){
@@ -26,8 +39,8 @@ function EditPost(p,body){
 }
 function SaveNews(body){const id=body.id||s.Id('NEWS');if(body.id&&!s.DB().news[id])s.Fail('NEWS_NOT_FOUND');const previous=s.DB().news[id];if(previous&&body.revision!==undefined&&body.revision!==(previous.revision||0))s.Fail('CONTENT_CHANGED');const category=s.Text(body.category,20);if(!['UPDATE','NOTICE','EVENT','ALERT'].includes(category))s.Fail('CATEGORY_INVALID');const row={id,deleted:previous?.deleted||false,revision:(previous?.revision||0)+1,title:s.Text(body.title,90,true),body:s.Text(body.body,5000,true),category,published:body.published===true,pinned:body.pinned===true,audience:s.Text(body.audience,40),at:Date.now(),publishAt:0};return s.Atomic(()=>{s.DB().news[id]=row;return row;});}
 function VisiblePost(id){const post=s.DB().posts[id];if(!post||post.deleted||post.hidden)s.Fail('POST_NOT_FOUND');return post;}
-function PublicPost(post,p){const reactions=Object.values(s.DB().reactions).filter(x=>x.postId===post.id);return {id:post.id,body:post.body,at:post.at,updatedAt:post.updatedAt||post.at,revision:post.revision||0,views:s.ViewCount('post',post.id),author:Author(post.accountId),own:post.accountId===p.id,likes:reactions.filter(x=>x.value===1).length,dislikes:reactions.filter(x=>x.value===-1).length,myReaction:reactions.find(x=>x.accountId===p.id)?.value||0,comments:Object.values(s.DB().comments).filter(x=>x.postId===post.id&&!x.deleted&&!x.hidden).length};}
-function Feed(p,body){const page=s.Page(Object.values(s.DB().posts).filter(x=>!x.deleted&&!x.hidden&&(!body.mine||x.accountId===p.id)).sort((a,b)=>b.at-a.at),body,8);require('./views').Impressions(p,page.items);return {...page,items:page.items.map(x=>PublicPost(x,p))};}
+function PublicPost(post,p){const reactions=Object.values(s.DB().reactions).filter(x=>x.postId===post.id);return {id:post.id,body:post.body,at:post.at,updatedAt:post.updatedAt||post.at,revision:post.revision||0,views:s.ViewCount('post',post.id),author:Author(post.accountId),own:post.accountId===p.id,following:require('./follows').IsFollowing(p.id,post.accountId),likes:reactions.filter(x=>x.value===1).length,dislikes:reactions.filter(x=>x.value===-1).length,myReaction:reactions.find(x=>x.accountId===p.id)?.value||0,comments:Object.values(s.DB().comments).filter(x=>x.postId===post.id&&!x.deleted&&!x.hidden).length};}
+function Feed(p,body){const page=s.Page(Object.values(s.DB().posts).filter(x=>!x.deleted&&!x.hidden&&!s.ProfileById(x.accountId)?.blocked&&(!body.mine||x.accountId===p.id)&&(!body.following||require('./follows').IsFollowing(p.id,x.accountId))).sort((a,b)=>b.at-a.at),body,8);require('./views').Impressions(p,page.items);return {...page,items:page.items.map(x=>PublicPost(x,p))};}
 function Thread(p,body){
  const post=VisiblePost(body.postId);
  const comments=s.Page(Object.values(s.DB().comments).filter(x=>x.postId===post.id&&!x.deleted&&!x.hidden).sort((a,b)=>a.at-b.at),body,12);

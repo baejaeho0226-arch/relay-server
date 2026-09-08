@@ -1,20 +1,20 @@
 'use strict';
 const crypto = require('node:crypto');
 const state = require('../../core/state');
-const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests'];
+const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests','follows'];
 const TABLES = ['profiles','products','news','orders','topups','ledger','posts','comments','reactions','reports','operations'];
 function Empty() {
- const db={schema:3,revision:0,settings:{topupInstructions:'충전 방식은 준비 중입니다.',topupEnabled:false}};
+ const db={schema:4,revision:0,settings:{topupInstructions:'충전 방식은 준비 중입니다.',topupEnabled:false}};
  for(const name of [...TABLES,...EXTRA_TABLES])db[name]={};
  return db;
 }
 function DB(){return state.memberHub || (state.memberHub=Empty());}
 function Import(data){
  const raw=data && data.memberHub;if(!raw)return void(state.memberHub=Empty());
- if(![1,2,3].includes(raw.schema) || TABLES.some(name=>!raw[name]||typeof raw[name]!=='object'||Array.isArray(raw[name])))throw Error('MEMBER_STORAGE_INVALID');
+ if(![1,2,3,4].includes(raw.schema) || TABLES.some(name=>!raw[name]||typeof raw[name]!=='object'||Array.isArray(raw[name])))throw Error('MEMBER_STORAGE_INVALID');
  const next=structuredClone(raw);
- for(const name of EXTRA_TABLES){if((raw.schema===1||name==='chargeRequests'&&raw.schema<3)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
- next.schema=3;state.memberHub=next;
+ for(const name of EXTRA_TABLES){if((raw.schema===1||name==='chargeRequests'&&raw.schema<3||name==='follows'&&raw.schema<4)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
+ next.schema=4;state.memberHub=next;
 }
 function Fail(reason){const e=Error(reason);e.memberError=true;throw e;}
 function Text(value,max,required=false){const v=String(value??'').trim().replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');if(v.length>max || required&&!v)Fail('INPUT_INVALID');return v;}
@@ -26,7 +26,7 @@ function Account(c){
  if(!p)return Atomic(()=>{p={id:Id('USR'),subject,nickname:'회원 '+crypto.randomBytes(2).toString('hex').toUpperCase(),bio:'',avatar:'',avatarRevision:0,balance:0,createdAt:Date.now(),readNewsAt:0,blocked:false};DB().profiles[subject]=p;return p;});
  return p;
 }
-function PublicProfile(p,own=false){return {id:p.id,nickname:p.nickname,bio:p.bio,avatar:p.avatar,avatarRevision:p.avatarRevision,...(own?{balance:p.balance,createdAt:p.createdAt}: {})};}
+function PublicProfile(p,own=false){return {id:p.id,nickname:p.nickname,bio:p.bio,avatar:own?p.avatar:(p.avatarThumb||p.avatar),avatarRevision:p.avatarRevision,...require('./follows').Counts(p.id),...(own?{balance:p.balance,createdAt:p.createdAt}: {})};}
 function ViewCount(kind,id){return DB().viewCounters?.[kind+':'+id]?.count||0;}
 function ProfileById(id){return Object.values(DB().profiles).find(p=>p.id===id);}
 function Page(rows,body={},max=12){const offset=Math.max(0,Math.min(100000,Number(body.offset)||0));const limit=Math.max(1,Math.min(max,Number(body.limit)||max));return {items:rows.slice(offset,offset+limit),total:rows.length,nextOffset:offset+limit<rows.length?offset+limit:null};}
