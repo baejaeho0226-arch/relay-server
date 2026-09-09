@@ -4,7 +4,7 @@ const { config, buildQrRoutes, productionRoutes, deviceRegistry, historyCleanup,
 
 async function HandleApiRequest(req, res, session) {
     const url = new URL(req.url, 'http://localhost');
-    const pathname = url.pathname;
+    let pathname = url.pathname;
     const method = String(req.method || 'GET').toUpperCase();
     let body = {};
 
@@ -15,6 +15,12 @@ async function HandleApiRequest(req, res, session) {
         try { body = await ReadJsonBody(req, maxBodyBytes); }
         catch (error) { ApiError(res, error.message === 'BODY_TOO_LARGE' ? 413 : 400, error.message); return; }
     }
+
+    try {
+        if((/(?:@|%40)/i.test(pathname)||['clientId','targetClientId'].some(k=>String(body[k]||'').startsWith('@')))&&!RequireAdmin(res,session))return;
+        const resolved=require('./routes/memberAliases').Resolve(pathname,body,url);
+        if(resolved){if(!RequireAdmin(res,session))return;pathname=resolved.pathname;body=resolved.body;url.pathname=pathname;}
+    } catch(e){ApiError(res,400,e.memberError?e.message:'INPUT_INVALID');return;}
 
     if (!['GET', 'HEAD'].includes(method) && pathname !== '/api/logout' && !require('../services/haCoordinator').CanAcceptTraffic()) {
         ApiError(res, 409, 'RELAY_STANDBY_READ_ONLY');

@@ -45,12 +45,12 @@ for(const source of ['ApkWinSock.Member.NewsShop.inc','ApkWinSock.Member.MyPage.
  assert.ok(!read(source).includes("'topup"),source);
  assert.ok(!read(source).includes("'refresh'"),source);
 }
-assert.ok(read('ApkWinSock.Member.NewsShop.inc').includes('TComboBox.Create'));
+assert.ok(read('ApkWinSock.Member.NewsShop.inc').includes('TApkMemberCombo.Create'));
 assert.ok(actions.includes("Send('post.edit')"));
 assert.ok(!fs.existsSync(path.join(dir,'ApkWinSock.Member.Coins.inc')));
 for(const key of ['Names','Actions','Groups','Icons']){
  const match=menu.slice(menu.indexOf('procedure TForm1.HubRenderMenuResults;')).match(new RegExp(key+':=\\s*\\[([^\\]]+)\\]'));
- assert.ok(match,key);assert.equal([...match[1].matchAll(/'[^']*'/g)].length,12,key);
+ assert.ok(match,key);assert.equal([...match[1].matchAll(/'[^']*'/g)].length,13,key);
 }
 assert.ok(!touch.includes('FHighlight'));assert.ok(!touch.includes('Feedback('));
 const poll=flow.split('procedure TForm1.HubPollTimerTimer')[1].split('procedure TForm1.HubRender;')[0];
@@ -61,7 +61,7 @@ console.log('FIX18 UI SOURCE PASS: fields/signatures, 60 SVG sources, native cli
 
 assert.ok(touch.includes('function TApkTapRectangle.PointInObjectLocal'));
 assert.ok(touch.includes('AutoCapture:=True'));
-assert.ok(read('ApkWinSock.Member.Feed.inc').includes('W,44'));
+assert.ok(read('ApkWinSock.Member.Feed.inc').includes('W,48'));
 for(const icon of ['like','dislike'])assert.notEqual(read('Svg/'+icon+'-filled.svg'),read('Svg/'+icon+'-outline.svg'));
 assert.ok(read('ApkWinSock.Member.Purchase.inc').includes('HubApplyReaction'));
 assert.ok(read('ApkWinSock.Member.Actions.inc').includes("Send('purchase')"));
@@ -72,7 +72,7 @@ assert.ok(read('ApkSystemBars.pas').includes('Insets.getInsets(1 or 2 or 128)'))
 const newsShop=read('ApkWinSock.Member.NewsShop.inc'),motion=read('ApkWinSock.Member.Motion.inc'),feed=read('ApkWinSock.Member.Feed.inc');
 assert.ok(motion.includes('FHubPlanCombo.DroppedDown'),'native picker must survive polling');
 assert.ok(read('ApkWinSock.pas').includes('FMX.Pickers'),'TDropDownKind is unit-scoped');
-assert.ok(dashboard.includes('FHubCommentEdit.Parent:=FHubCommentBar'));
+assert.ok(dashboard.includes('FHubCommentEdit.Parent:=FHubCommentBox'));
 assert.ok(!feed.includes("HubEditField('댓글 작성'"));assert.ok(!feed.includes("'댓글 등록'"));
 assert.ok(actions.includes("Trim(FHubCommentEdit.Text)=''"));
 assert.ok(flow.includes("FHubCommentContext<>FHubPostID"),'comment drafts remain scoped to the thread');
