@@ -11,7 +11,7 @@ async function HandleApiRequest(req, res, session) {
     if (!['GET', 'HEAD'].includes(method)) {
         const maxBodyBytes = pathname === '/api/qr-auth/scan'
             ? Math.ceil(config.QR_AUTH_MAX_IMAGE_BYTES * 1.4) + 64 * 1024
-            : 128 * 1024;
+            : pathname === '/api/member/action' ? 384 * 1024 : 128 * 1024;
         try { body = await ReadJsonBody(req, maxBodyBytes); }
         catch (error) { ApiError(res, error.message === 'BODY_TOO_LARGE' ? 413 : 400, error.message); return; }
     }

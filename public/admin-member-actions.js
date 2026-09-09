@@ -1,15 +1,16 @@
 'use strict';
 async function handleMemberAction(event){
- const b=event.target.closest('[data-member-action]');if(!b)return false;const action=b.dataset.memberAction,row=memberRows.get(b.dataset.id)||{};
+ const b=event.target.closest('[data-member-action]');if(!b)return false;const action=b.dataset.memberAction;let row=memberRows.get(b.dataset.id)||{};
  if(action==='prev'||action==='next'){memberOffset=Math.max(0,memberOffset+(action==='next'?30:-30));await renderMember();return true;}
  if(action==='refresh'){await renderMember();return true;}
  if(action==='reset'){memberQuery='';memberFilter='';memberSort='recent';memberOffset=0;memberSelected.clear();await renderMember();return true;}
  let values,body;
+ if(['product.edit','news.edit'].includes(action)){const view=action==='product.edit'?'products':'news';const data=await api('/api/member?view='+view+'&id='+encodeURIComponent(row.id));row=data.items?.[0]||row;}
  if(action==='product.new'||action==='product.edit'){
-  values=await openModal({title:row.id?'게임 안내 수정':'게임 등록',fields:[{name:'title',label:'게임 이름',value:row.title},{name:'description',label:'게임 소개',type:'textarea',value:row.description},{name:'accessType',label:'게임 분류',type:'select',value:row.accessType||'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},...[1,7,15,30].map(days=>({name:'price'+days,label:days+'일 가격 (원, 0 = 판매 준비 중)',type:'number',value:(row.plans||[]).find(x=>x.days===days)?.price||0})),{name:'published',label:'공개 상태',type:'select',value:String(row.published||false),options:[{value:'false',label:'비공개'},{value:'true',label:'공개'}]}],confirmLabel:'저장'});
-  if(values)body={...values,action:'product.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',plans:[1,7,15,30].map(days=>({days,price:Number(values['price'+days])}))};
+  values=await openModal({title:row.id?'게임 안내 수정':'게임 등록',fields:[{name:'title',label:'게임 이름',value:row.title},{name:'description',label:'게임 소개',type:'textarea',value:row.description},{name:'image',label:'게임 배너 사진',type:'image',value:row.image},...gameDetailFields(row.details||{}),{name:'accessType',label:'게임 분류',type:'select',value:row.accessType||'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},...[1,7,15,30].map(days=>({name:'price'+days,label:days+'일 가격 (원, 0 = 판매 준비 중)',type:'number',value:(row.plans||[]).find(x=>x.days===days)?.price||0})),{name:'published',label:'공개 상태',type:'select',value:String(row.published||false),options:[{value:'false',label:'비공개'},{value:'true',label:'공개'}]}],confirmLabel:'저장'});
+  if(values)body={...values,action:'product.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',details:gameDetailValues(values),plans:[1,7,15,30].map(days=>({days,price:Number(values['price'+days])}))};
  }else if(action==='news.new'||action==='news.edit'){
-  values=await openModal({title:'소식 작성',fields:[{name:'title',label:'제목',value:row.title},{name:'body',label:'내용',type:'textarea',value:row.body},{name:'category',label:'분류',type:'select',value:row.category||'NOTICE',options:['NOTICE','UPDATE','EVENT','ALERT'].map(value=>({value,label:memberStatus[value]}))},{name:'published',label:'공개',type:'select',value:String(row.published||false),options:[{value:'false',label:'임시 저장'},{value:'true',label:'공개'}]},{name:'pinned',label:'상단 고정',type:'select',value:String(row.pinned||false),options:[{value:'false',label:'사용 안 함'},{value:'true',label:'고정'}]}],confirmLabel:'저장'});
+  values=await openModal({title:'소식 작성',fields:[{name:'title',label:'제목',value:row.title},{name:'body',label:'내용',type:'textarea',value:row.body},{name:'image',label:'소식 사진',type:'image',value:row.image},{name:'category',label:'분류',type:'select',value:row.category||'NOTICE',options:['NOTICE','UPDATE','EVENT','ALERT'].map(value=>({value,label:memberStatus[value]}))},{name:'published',label:'공개',type:'select',value:String(row.published||false),options:[{value:'false',label:'임시 저장'},{value:'true',label:'공개'}]},{name:'pinned',label:'상단 고정',type:'select',value:String(row.pinned||false),options:[{value:'false',label:'사용 안 함'},{value:'true',label:'고정'}]}],confirmLabel:'저장'});
   if(values)body={...values,action:'news.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',pinned:values.pinned==='true'};
  }else if(action==='profile.edit'){
   values=await openModal({title:'회원 프로필 수정',fields:[{name:'nickname',label:'닉네임',value:row.nickname},{name:'bio',label:'소개',type:'textarea',value:row.bio}],confirmLabel:'저장'});if(values)body={...values,action:'profile.save',id:row.id};
@@ -48,3 +49,19 @@ content.addEventListener('change',event=>{
 content.addEventListener('submit',event=>{
  if(event.target.id!=='member-search-form')return;event.preventDefault();memberQuery=content.querySelector('#member-search').value.trim();memberOffset=0;memberSelected.clear();renderMember().catch(e=>toast(e.message,true));
 });
+
+function gameDetailFields(details){
+ const basic=[['releaseDate','출시일'],['developer','제작사'],['publisher','배급사'],['genre','장르'],['ageRating','이용 등급'],['language','지원 언어'],['platform','플랫폼']];
+ const fields=[{type:'section',label:'게임 상세 정보'},...basic.map(([name,label])=>({name:'detail_'+name,label,value:details[name]||''}))];
+ fields.push({type:'section',label:'공식 채널'});
+ for(const [name,label]of [['official','공식 사이트'],['instagram','인스타그램'],['twitter','트위터 / X'],['facebook','페이스북'],['youtube','YouTube']])fields.push({name:'channel_'+name,label,type:'url',value:details.channels?.[name]||'',placeholder:'https://'});
+ for(const [tier,title]of [['minimum','최소 사양'],['recommended','권장 사양']]){fields.push({type:'section',label:title});for(const [name,label]of [['os','운영체제'],['cpu','CPU'],['ram','메모리'],['gpu','그래픽']])fields.push({name:tier+'_'+name,label,value:details.requirements?.[tier]?.[name]||''});}
+ return fields;
+}
+function gameDetailValues(values){
+ const details={channels:{},requirements:{minimum:{},recommended:{}}};
+ for(const name of ['releaseDate','developer','publisher','genre','ageRating','language','platform'])details[name]=values['detail_'+name]||'';
+ for(const name of ['official','instagram','twitter','facebook','youtube'])details.channels[name]=values['channel_'+name]||'';
+ for(const tier of ['minimum','recommended'])for(const name of ['os','cpu','ram','gpu'])details.requirements[tier][name]=values[tier+'_'+name]||'';
+ return details;
+}
