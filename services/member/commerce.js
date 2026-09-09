@@ -1,6 +1,6 @@
 'use strict';
 const s=require('./store'),state=require('../../core/state'),plans=require('./gamePlans');
-function PublicGame(p,detail=false){return {...(detail?{image:p.image||'',details:p.details||{}}:{details:Object.fromEntries(['releaseDate','developer','publisher','genre','ageRating','language','platform'].map(k=>[k,p.details?.[k]||'']))}),imageThumb:p.imageThumb||'',id:p.id,title:p.title,description:p.description,accessType:p.accessType,plans:plans.Plans(p),published:p.published,deleted:p.deleted,sort:p.sort,revision:p.revision,updatedAt:p.updatedAt};}
+function PublicGame(p,detail=false){return {...(detail?{image:p.image||'',details:require('./media').GameDetails(undefined,p.details)}:{details:Object.fromEntries(['releaseDate','developer','publisher','genre','ageRating','language','platform'].map(k=>[k,p.details?.[k]||'']))}),imageThumb:p.imageThumb||'',id:p.id,title:p.title,description:p.description,accessType:p.accessType,plans:plans.Plans(p),published:p.published,deleted:p.deleted,sort:p.sort,revision:p.revision,updatedAt:p.updatedAt};}
 function Catalog(body={}){return s.Page(Object.values(s.DB().products).filter(p=>p.published&&!p.deleted&&(!body.category||p.accessType===body.category)).sort((a,b)=>a.sort-b.sort||b.updatedAt-a.updatedAt).map(p=>PublicGame(p)),body);}
 function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');return {product:PublicGame(row,true),...(p?{profile:s.PublicProfile(p,true)}:{})};}
 function SaveProduct(body){

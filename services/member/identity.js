@@ -20,23 +20,50 @@ function ResolveClient(handle,selected=''){
  if(selected){if(!ids.includes(selected))s.Fail('NOT_OWNER');return selected;}
  const live=ids.filter(id=>state.clients.get(id)?.connected);if(live.length===1)return live[0];if(ids.length!==1)s.Fail('MEMBER_DEVICE_SELECT');return ids[0];
 }
+function Rooms(p){const ids=ClientIds(p);return [...state.supportThreads.values()].filter(t=>t.deviceKey===p.subject||ids.includes(t.clientId)||ids.includes(t.currentClientId));}
+function ResolveSupport(handle,selected=''){
+ const p=s.Resolve(handle);if(!p)s.Fail('MEMBER_NOT_FOUND');const rooms=Rooms(p);
+ if(selected){const room=rooms.find(t=>[t.clientId,t.currentClientId].includes(selected));if(!room)s.Fail('NOT_OWNER');return room.clientId;}
+ if(rooms.length!==1)s.Fail(rooms.length?'MEMBER_DEVICE_SELECT':'SUPPORT_NOT_FOUND');return rooms[0].clientId;
+}
 function Home(p){
- const db=s.DB(),orders=Object.values(db.orders).filter(x=>x.accountId===p.id).map(require('./commerce').PublicOrder),ledger=Object.values(db.ledger).filter(x=>x.accountId===p.id);
- return {settings:{},profile:s.PublicProfile(p,true),summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:ledger.length,posts:s.PublicProfile(p).posts,unreadNews:require('./social').News(p,{limit:12}).items.filter(x=>x.unread).length},latestPayment:ledger.sort((a,b)=>b.at-a.at)[0]||null};
+ const db=s.DB(),orders=Object.values(db.orders).filter(x=>x.accountId===p.id).map(require('./commerce').PublicOrder).sort((a,b)=>b.at-a.at),ledger=Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at);
+ const visibleNews=Object.values(db.news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id));
+ const unreadNews=visibleNews.filter(x=>(p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1)).length;
+ return {settings:{},profile:s.PublicProfile(p,true),summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:ledger.length,posts:s.PublicProfile(p).posts,unreadNews},recentOrders:orders.slice(0,2),latestPayment:ledger[0]||null};
+}
+const INFO_FIELDS=['name','manufacturer','product','model','os','architecture','appVersion','protocolVersion','phone','phoneStatus','serial','serialStatus','imei','imeiStatus'];
+function Device(id,rooms){
+ const saved=require('../../identity/identityManager').GetSavedClientByID(id),live=state.clients.get(id),key='CLIENT:'+id;
+ const raw={...(state.deviceInfo.get(key)||{})};
+ for(const t of rooms.filter(t=>t.clientId===id||t.currentClientId===id).sort((a,b)=>a.updatedAt-b.updatedAt))Object.assign(raw,t.device);
+ const bound=require('../../license/licenseManager').GetBoundLicenseEntry(id),auth=state.deviceAuthStatus.get(key)||{};
+ return {id,serverId:saved?.serverId||'',online:!!live?.connected,registered:!!saved,lastSeenAt:saved?.lastSeenAt||0,
+  device:Object.fromEntries(INFO_FIELDS.map(k=>[k,String(raw[k]??'')])),
+  biometric:require('../clientBiometric').PublicStatus(id),
+  permissions:{granted:!!live&&require('../clientPermissions').Ready(live),online:!!live?.connected,mask:live?.permissionMask??null,reapprovalRequired:!!saved?.permissionsReapprovalRequired},
+  capabilities:require('../deviceControl').Capabilities('CLIENT',id),
+  authentication:{status:auth.status||'UNKNOWN',verified:!!live?.deviceAuthVerified,enrolledAt:auth.enrolledAt||0,verifiedAt:auth.verifiedAt||0},
+  entryPass:bound?{status:require('../../license/licenseManager').GetLicenseStatus(bound.license),expiresAt:bound.license.expiresAt||0}:null,
+  alias:state.clientAliases.get(id)||'',...(state.clientNotes.has(id)?{note:state.clientNotes.get(id)}:{}),
+  flags:require('../featureFlags').EffectiveFlags('CLIENT',id),
+  uiState:state.clientUiStates.get(id)?{status:state.clientUiStates.get(id).status,updatedAt:state.clientUiStates.get(id).updatedAt}:null};
 }
 function Read(p,body={},admin=false){
- const db=s.DB(),ids=ClientIds(p),rooms=[...state.supportThreads.values()].filter(t=>t.deviceKey===p.subject||ids.includes(t.clientId)||ids.includes(t.currentClientId));
- const linked=rows=>rows.filter(x=>x.accountId===p.id);
- const sections={orders:()=>linked(Object.values(db.orders)).map(require('./commerce').PublicOrder),payments:()=>linked(Object.values(db.ledger)),charges:()=>linked(Object.values(db.chargeRequests)).map(require('./charges').Public),posts:()=>linked(Object.values(db.posts)).map(x=>({id:x.id,body:x.body,at:x.at,hidden:x.hidden,deleted:x.deleted,imageThumb:x.imageThumb||''})),comments:()=>linked(Object.values(db.comments)),reports:()=>linked(Object.values(db.reports)),followers:()=>require('./follows').List(p,{id:p.id,mode:'followers',offset:body.offset,limit:body.limit}),following:()=>require('./follows').List(p,{id:p.id,mode:'following',offset:body.offset,limit:body.limit})};
- if(body.section){if(!sections[body.section])s.Fail('INPUT_INVALID');const rows=sections[body.section]();return {profile:s.PublicProfile(p,true),section:body.section,...(Array.isArray(rows)?s.Page(rows.sort((a,b)=>(b.at||0)-(a.at||0)),body,50):rows)};}
- const infoFields=['name','manufacturer','product','model','os','architecture','appVersion','protocolVersion','phone','phoneStatus','serial','serialStatus','imei','imeiStatus'];
- const devices=ids.map(id=>{
-  const saved=require('../../identity/identityManager').GetSavedClientByID(id),live=state.clients.get(id),raw={...(state.deviceInfo.get('CLIENT:'+id)||{})};
-  for(const t of rooms.filter(t=>t.clientId===id||t.currentClientId===id))Object.assign(raw,t.device);
-  const bound=require('../../license/licenseManager').GetBoundLicenseEntry(id);
-  return {id,serverId:saved?.serverId||'',online:!!live?.connected,registered:!!saved,lastSeenAt:saved?.lastSeenAt||0,device:Object.fromEntries(infoFields.map(k=>[k,raw[k]??''])),biometric:require('../clientBiometric').PublicStatus(id),permissions:{granted:live?require('../clientPermissions').Ready(live):false,online:!!live?.connected},capabilities:require('../deviceControl').Capabilities('CLIENT',id),authentication:{status:state.deviceAuthStatus.get('CLIENT:'+id)?.status||'UNKNOWN',verified:!!live?.deviceAuthVerified},entryPass:bound?{status:require('../../license/licenseManager').GetLicenseStatus(bound.license),expiresAt:bound.license.expiresAt||0}:null};
- });
+ const db=s.DB(),ids=ClientIds(p),rooms=Rooms(p),linked=rows=>rows.filter(x=>x.accountId===p.id);
+ const devices=()=>ids.map(id=>{const row=Device(id,rooms);if(!admin)delete row.note;return row;});
+ const qr=()=>require('../qrApproval').List().filter(q=>ids.includes(q.clientId)).map(({deviceKey,lastIP,...q})=>q);
+ const support=()=>rooms.map(t=>({id:t.clientId,currentClientId:t.currentClientId,status:t.status,mode:t.mode||'HUMAN',at:t.createdAt||t.updatedAt,updatedAt:t.updatedAt,messages:t.messages.length}));
+ const sections={devices,qr,support,orders:()=>linked(Object.values(db.orders)).map(require('./commerce').PublicOrder),payments:()=>linked(Object.values(db.ledger)),charges:()=>linked(Object.values(db.chargeRequests)).map(require('./charges').Public),posts:()=>linked(Object.values(db.posts)).map(x=>({id:x.id,body:x.body,at:x.at,hidden:x.hidden,deleted:x.deleted,imageThumb:x.imageThumb||''})),comments:()=>linked(Object.values(db.comments)),reports:()=>linked(Object.values(db.reports)),followers:()=>require('./follows').List(p,{id:p.id,mode:'followers',offset:body.offset,limit:body.limit}),following:()=>require('./follows').List(p,{id:p.id,mode:'following',offset:body.offset,limit:body.limit})};
+ if(body.section){
+  if(!sections[body.section])s.Fail('INPUT_INVALID');let rows=sections[body.section]();
+  if(body.section==='support'&&body.threadId){
+   const room=rooms.find(t=>t.clientId===body.threadId);if(!room)s.Fail('NOT_OWNER');
+   rows=room.messages.map(m=>({id:String(m.seq),title:m.role==='CLIENT'?'나':m.role==='ADMIN'?'상담원':m.role==='BOT'?'안내 봇':'상담 안내',body:m.text,at:m.at,role:m.role}));
+  }
+  return {profile:s.PublicProfile(p,true),section:body.section,...(body.threadId?{threadId:body.threadId}:{}),...(Array.isArray(rows)?s.Page(rows.sort((a,b)=>(b.at||b.issuedAt||0)-(a.at||a.issuedAt||0)),body,50):rows)};
+ }
  const counts={};for(const [key,get]of Object.entries(sections)){const v=get();counts[key]=Array.isArray(v)?v.length:v.total;}
- return {...Home(p),profile:{...s.PublicProfile(p,true),...(admin?{blocked:!!p.blocked}:{})},devices,counts,qr:require('../qrApproval').List().filter(q=>ids.includes(q.clientId)),support:rooms.map(t=>({id:t.clientId,currentClientId:t.currentClientId,status:t.status,mode:t.mode||'HUMAN',updatedAt:t.updatedAt,messages:t.messages.length,device:t.device}))};
+ return {...Home(p),profile:{...s.PublicProfile(p,true),...(admin?{blocked:!!p.blocked}:{})},devices:devices().slice(0,12),counts,qr:qr().slice(0,12),support:support().slice(0,12)};
 }
-module.exports={MemberIndex,ClientIds,ResolveClient,Home,Read};
+module.exports={MemberIndex,ClientIds,ResolveClient,ResolveSupport,Home,Read};

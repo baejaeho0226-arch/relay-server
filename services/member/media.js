@@ -42,7 +42,7 @@ function PostFields(value,previous={}){
 }
 function Url(value){const text=s.Text(value,350);if(!text)return '';let url;try{url=new URL(text);}catch(_){s.Fail('CONTENT_URL_INVALID');}if(!['https:','http:'].includes(url.protocol)||url.username||url.password)s.Fail('CONTENT_URL_INVALID');return url.href;}
 function GameDetails(value,previous={}){
- if(value===undefined)return structuredClone(previous||{});
+ if(value===undefined)value=previous||{};
  if(!value||typeof value!=='object'||Array.isArray(value))s.Fail('INPUT_INVALID');
  const result={};for(const key of ['releaseDate','developer','publisher','genre','ageRating','language','platform'])result[key]=s.Text(value[key],120);
  result.channels={};for(const key of ['official','instagram','twitter','facebook','youtube'])result.channels[key]=Url(value.channels?.[key]);
