@@ -1,6 +1,11 @@
 'use strict';
 async function handleMemberAction(event){
  const b=event.target.closest('[data-member-action]');if(!b)return false;const action=b.dataset.memberAction;let row=memberRows.get(b.dataset.id)||{};
+ if(action==='profile.lookup'){memberLookupHandle=row.handle||b.dataset.id;memberLookupSection='';memberLookupOffset=0;await renderMemberLookup();return true;}
+ if(action==='lookup.support'){supportSelectedClient=b.dataset.id;memberLookupHandle='';currentView='support';document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view==='support'));await renderCurrent();return true;}
+ if(action==='lookup.back'){memberLookupHandle='';if(memberQuery.startsWith('@'))memberQuery='';memberOffset=0;await renderMember();return true;}
+ if(action==='lookup.section'){memberLookupSection=b.dataset.id||'';memberLookupOffset=0;await renderMemberLookup();return true;}
+ if(action==='lookup.prev'||action==='lookup.next'){memberLookupOffset=Math.max(0,memberLookupOffset+(action==='lookup.next'?30:-30));await renderMemberLookup();return true;}
  if(action==='prev'||action==='next'){memberOffset=Math.max(0,memberOffset+(action==='next'?30:-30));await renderMember();return true;}
  if(action==='refresh'){await renderMember();return true;}
  if(action==='reset'){memberQuery='';memberFilter='';memberSort='recent';memberOffset=0;memberSelected.clear();await renderMember();return true;}
@@ -13,7 +18,7 @@ async function handleMemberAction(event){
   values=await openModal({title:'소식 작성',fields:[{name:'title',label:'제목',value:row.title},{name:'body',label:'내용',type:'textarea',value:row.body},{name:'image',label:'소식 사진',type:'image',value:row.image},{name:'category',label:'분류',type:'select',value:row.category||'NOTICE',options:['NOTICE','UPDATE','EVENT','ALERT'].map(value=>({value,label:memberStatus[value]}))},{name:'published',label:'공개',type:'select',value:String(row.published||false),options:[{value:'false',label:'임시 저장'},{value:'true',label:'공개'}]},{name:'pinned',label:'상단 고정',type:'select',value:String(row.pinned||false),options:[{value:'false',label:'사용 안 함'},{value:'true',label:'고정'}]}],confirmLabel:'저장'});
   if(values)body={...values,action:'news.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',pinned:values.pinned==='true'};
  }else if(action==='profile.edit'){
-  values=await openModal({title:'회원 프로필 수정',fields:[{name:'nickname',label:'닉네임',value:row.nickname},{name:'bio',label:'소개',type:'textarea',value:row.bio}],confirmLabel:'저장'});if(values)body={...values,action:'profile.save',id:row.id};
+  values=await openModal({title:'회원 프로필 수정',fields:[{name:'handle',label:'@아이디 · 최초 1회 변경'+(row.handleEditable?'':' (변경 완료)'),value:row.handle},{name:'nickname',label:'닉네임 · 변경 후 30일 유지'+(row.nicknameChangeAt>Date.now()?' / '+fmtTime(row.nicknameChangeAt)+'부터 변경 가능':''),value:row.nickname},{name:'bio',label:'소개',type:'textarea',value:row.bio}],confirmLabel:'저장'});if(values)body={...values,action:'profile.save',memberHandle:'@'+row.handle,id:row.id};
  }else if(action==='post.edit'||action==='comment.edit'){
   values=await openModal({title:'본문 수정',fields:[{name:'body',label:'내용',type:'textarea',value:row.body}],confirmLabel:'저장'});if(values)body={...values,action:action==='post.edit'?'post.save':'comment.save',id:row.id,revision:row.revision||0};
  }else if(action.startsWith('content.')||action.startsWith('bulk.')){
@@ -47,7 +52,7 @@ content.addEventListener('change',event=>{
  }
 });
 content.addEventListener('submit',event=>{
- if(event.target.id!=='member-search-form')return;event.preventDefault();memberQuery=content.querySelector('#member-search').value.trim();memberOffset=0;memberSelected.clear();renderMember().catch(e=>toast(e.message,true));
+ if(event.target.id!=='member-search-form')return;event.preventDefault();memberQuery=content.querySelector('#member-search').value.trim();memberOffset=0;memberSelected.clear();if(memberView==='profiles'&&memberQuery.startsWith('@')){memberLookupHandle=memberQuery;memberLookupSection='';memberLookupOffset=0;}renderMember().catch(e=>{memberLookupHandle='';toast(e.message,true);});
 });
 
 function gameDetailFields(details){
@@ -55,13 +60,11 @@ function gameDetailFields(details){
  const fields=[{type:'section',label:'게임 상세 정보'},...basic.map(([name,label])=>({name:'detail_'+name,label,value:details[name]||''}))];
  fields.push({type:'section',label:'공식 채널'});
  for(const [name,label]of [['official','공식 사이트'],['instagram','인스타그램'],['twitter','트위터 / X'],['facebook','페이스북'],['youtube','YouTube']])fields.push({name:'channel_'+name,label,type:'url',value:details.channels?.[name]||'',placeholder:'https://'});
- for(const [tier,title]of [['minimum','최소 사양'],['recommended','권장 사양']]){fields.push({type:'section',label:title});for(const [name,label]of [['os','운영체제'],['cpu','CPU'],['ram','메모리'],['gpu','그래픽']])fields.push({name:tier+'_'+name,label,value:details.requirements?.[tier]?.[name]||''});}
  return fields;
 }
 function gameDetailValues(values){
- const details={channels:{},requirements:{minimum:{},recommended:{}}};
+ const details={channels:{}};
  for(const name of ['releaseDate','developer','publisher','genre','ageRating','language','platform'])details[name]=values['detail_'+name]||'';
  for(const name of ['official','instagram','twitter','facebook','youtube'])details.channels[name]=values['channel_'+name]||'';
- for(const tier of ['minimum','recommended'])for(const name of ['os','cpu','ram','gpu'])details.requirements[tier][name]=values[tier+'_'+name]||'';
  return details;
 }

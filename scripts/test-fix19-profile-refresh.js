@@ -45,16 +45,17 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  const first=await run(author,'profile.save',firstBody,'FIX19-PHOTO-FIRST');await changed(viewer,store.DB().revision);
  assert.ok(first.profile.avatar.startsWith('data:image/png;'));assert.ok(first.publicProfile.avatar.startsWith('data:image/jpeg;'));
  assert.equal(first.publicProfile.balance,undefined);await publicAppearances(first.publicProfile);
- const second=await run(author,'profile.save',{nickname:'바뀐 사진',bio:'소개',avatar:avatar(210)});await changed(viewer,store.DB().revision);
+ const second=await run(author,'profile.save',{nickname:'첫 사진',bio:'소개',avatar:avatar(210)});await changed(viewer,store.DB().revision);
  assert.ok(second.profile.profileRevision>first.profile.profileRevision);assert.ok(second.profile.avatarRevision>first.profile.avatarRevision);assert.notEqual(second.publicProfile.avatar,first.publicProfile.avatar);await publicAppearances(second.publicProfile);
  assert.equal(cachedFeed.items[0].author.avatar,'','an already delivered response cannot mutate itself');
  // A retry of the older save returns its original result without reverting current profile state.
  const replay=await run(author,'profile.save',firstBody,'FIX19-PHOTO-FIRST');assert.deepEqual(replay,first);await publicAppearances(second.publicProfile);
+ store.ProfileById(a.id).nicknameChangedAt=Date.now()-30*86400000;
  const nickname=await run(author,'profile.save',{nickname:'이름만 변경',bio:'변경된 소개'});assert.ok(nickname.profile.profileRevision>second.profile.profileRevision);assert.equal(nickname.profile.avatarRevision,second.profile.avatarRevision);assert.equal(nickname.publicProfile.avatar,second.publicProfile.avatar);await publicAppearances(nickname.publicProfile);
  const before=JSON.stringify(store.DB()),save=db.SaveDatabase;let failed;
- try{db.SaveDatabase=()=>false;failed=await request(author,'profile.save',{nickname:'저장 실패',bio:'',avatar:avatar(80)});}finally{db.SaveDatabase=save;}
+ try{db.SaveDatabase=()=>false;failed=await request(author,'profile.save',{nickname:'이름만 변경',bio:'',avatar:avatar(80)});}finally{db.SaveDatabase=save;}
  assert.equal(failed.reason,'STORAGE_SAVE_FAILED');assert.equal(JSON.stringify(store.DB()),before);await publicAppearances(nickname.publicProfile);
- const removed=await run(author,'profile.save',{nickname:'사진 삭제',bio:'',avatar:''});await changed(viewer,store.DB().revision);assert.equal(removed.publicProfile.avatar,'');await publicAppearances(removed.publicProfile);
+ const removed=await run(author,'profile.save',{nickname:'이름만 변경',bio:'',avatar:''});await changed(viewer,store.DB().revision);assert.equal(removed.publicProfile.avatar,'');await publicAppearances(removed.publicProfile);
  // Valid Korean text is accepted immediately; failed blank text does not consume the rate limit.
  assert.equal((await request(viewer,'comment.create',{postId:post.id,body:'   '})).reason,'INPUT_INVALID');
  const sent=await run(viewer,'comment.create',{postId:post.id,body:'한글 입력 후 바로 전송'});assert.equal(sent.comment.body,'한글 입력 후 바로 전송');

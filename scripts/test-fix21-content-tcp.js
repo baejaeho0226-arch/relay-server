@@ -35,6 +35,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal((await run(author,'article',{id:news.id})).article.views,2);
  const privateNews=save('news.save',{title:'개인 공지',body:'개인 본문',category:'ALERT',image:avatar(20),audience:a.id,published:true});assert.equal((await request(viewer,'article',{id:privateNews.id})).reason,'NEWS_NOT_FOUND');assert.ok(!(await run(viewer,'news',{summary:true})).items.some(x=>x.id===privateNews.id));
  const gameDetails={releaseDate:'2005.8.1',developer:'제작 테스트',publisher:'배급 테스트',genre:'레이싱 / PC',ageRating:'전체 이용가',language:'한국어',platform:'Windows',channels:{official:'https://example.com/game',instagram:'https://example.com/social',twitter:'',facebook:'',youtube:''},requirements:{minimum:{os:'Windows 10',cpu:'Core2 Duo',ram:'4GB',gpu:'GPU 예시'},recommended:{os:'Windows 11',cpu:'권장 CPU',ram:'8GB',gpu:'권장 GPU'}}};
+ delete gameDetails.requirements;
  const imageData=Buffer.alloc(480*640*4);for(let y=0;y<640;y++)for(let x=0;x<480;x++){const i=(y*480+x)*4;imageData[i]=(x*3+y)%256;imageData[i+1]=(x+y*2)%256;imageData[i+2]=(x*y)%256;imageData[i+3]=255;}
  const gameImage='data:image/jpeg;base64,'+require('jpeg-js').encode({width:480,height:640,data:imageData},60).data.toString('base64');assert.ok(gameImage.length>12000);
  const game=save('product.save',{title:'배너 게임',description:'게임 안내',accessType:'TYPE1',image:gameImage,details:gameDetails,plans:[1,7,15,30].map(days=>({days,price:days*100})),published:true});

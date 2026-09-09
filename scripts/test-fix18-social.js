@@ -29,7 +29,7 @@ function client(id){const c={type:'client',clientId:id,connected:true,permission
  const saved=run(b,'profile.save',{nickname:'선명한 사진',bio:'프로필 소개',avatar}).profile;
  const ownImage=PNG.sync.read(Buffer.from(saved.avatar.split(',')[1],'base64'));assert.equal(ownImage.width,256);assert.deepEqual(ownImage.data,png.data);
  const publicImage=run(a,'feed',{}).items.find(x=>x.id===post.id).author.avatar;assert.ok(publicImage.startsWith('data:image/jpeg;base64,'));assert.ok(publicImage.length<30000);assert.equal(require('jpeg-js').decode(Buffer.from(publicImage.split(',')[1],'base64')).width,128);
- const over=new PNG({width:257,height:1});over.data.fill(255);assert.throws(()=>run(b,'profile.save',{nickname:'큰 사진',avatar:'data:image/png;base64,'+PNG.sync.write(over).toString('base64')}),/AVATAR_INVALID/);
+ const over=new PNG({width:257,height:1});over.data.fill(255);assert.throws(()=>run(b,'profile.save',{nickname:'선명한 사진',avatar:'data:image/png;base64,'+PNG.sync.write(over).toString('base64')}),/AVATAR_INVALID/);
  assert.equal(run(b,'me').profile.nickname,'선명한 사진');run(b,'profile.save',{nickname:'선명한 사진',bio:'',avatar:''});assert.equal(run(a,'feed',{}).items.find(x=>x.id===post.id).author.avatar,'');
  // Both QR purposes share the scanner; their approval capabilities cannot cross.
  p=s.Account(a);const issued=charges.Read(p),row=s.DB().chargeRequests[issued.request.id],QR=require('qrcode');

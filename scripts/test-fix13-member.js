@@ -33,7 +33,7 @@ try{
  assert.throws(()=>run(a,'comment.delete',{id:comment.id}),/NOT_OWNER/);run(b,'comment.delete',{id:comment.id});assert.equal(run(a,'thread',{postId:post.id}).comments.total,0);
  run(b,'report',{postId:post.id,reason:'확인 요청'});service.AdminWrite('post.moderate',{id:post.id,hidden:true},'ADMIN');assert.equal(run(a,'feed').total,0);assert.throws(()=>run(b,'comment.create',{postId:post.id,body:'숨긴 글'}),/POST_NOT_FOUND/);
  service.AdminWrite('news.save',{title:'업데이트',body:'새 버전',category:'UPDATE',published:true},'ADMIN');assert.equal(run(a,'news').total,1);
- run(a,'profile.save',{nickname:'한글 프로필',bio:'안녕하세요'});assert.throws(()=>run(a,'profile.save',{nickname:'테스트',avatar:'data:image/svg+xml;base64,AA=='}),/AVATAR_INVALID/);
+ run(a,'profile.save',{nickname:'한글 프로필',bio:'안녕하세요'});assert.throws(()=>run(a,'profile.save',{nickname:'한글 프로필',avatar:'data:image/svg+xml;base64,AA=='}),/AVATAR_INVALID/);
  const disk=database.ExportDatabase?database.ExportDatabase():JSON.parse(fs.readFileSync(require('../config/config').DB_FILE));store.Import(disk);assert.equal(run(a,'me').profile.balance,10000);assert.equal(run(a,'me').profile.nickname,'한글 프로필');
  service.AdminWrite('profile.block',{id:pb.id,blocked:true},'ADMIN');assert.throws(()=>run(b,'feed'),/ACCOUNT_BLOCKED/);
  const before=JSON.stringify(store.DB());require('../services/serviceLifecycle').Stop('TEST');assert.equal(JSON.stringify(store.DB()),before,'Service reset must retain balances and paid orders');
