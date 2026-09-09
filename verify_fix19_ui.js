@@ -30,9 +30,9 @@ assert.ok(sync.includes('for Cached in FHubCache.Values'));assert.ok(sync.includ
 assert.ok(sync.includes("'publicProfile'"));assert.ok(sync.includes("HubNumber(Target,'profileRevision')>HubNumber(Source,'profileRevision')"));
 assert.ok(dashboard.includes('OnChangeTracking:=HubCommentChanged'));
 assert.ok(dashboard.includes('TApkTapRectangle(FHubCommentSend).TouchScope:=nil'));
-assert.ok(motion.includes('LabelText.SetBounds(30,0,W-32,H)'));assert.ok(motion.includes('LabelText.TextSettings.VertAlign:=TTextAlign.Center'));
-assert.ok(motion.includes('LabelText.TextSettings.WordWrap:=False'));assert.ok(motion.includes('Icon,4,(H-22)/2,22,22'));
-assert.ok(feed.includes('W:=Min(68,(C.Width-28)/3)'));assert.ok(feed.includes('12+W,H+96,W,48'));
+assert.ok(motion.includes('LabelText.SetBounds(28,0,W-29,H)'));assert.ok(motion.includes('LabelText.TextSettings.VertAlign:=TTextAlign.Center'));
+assert.ok(motion.includes('LabelText.TextSettings.WordWrap:=False'));assert.ok(motion.includes('IconBox.SetBounds(3,(H-22)/2,22,22)'));
+assert.ok(feed.includes('W:=Min(56,(C.Width-24)/3)'));assert.ok(feed.includes('12+W,H+86,W,44'));
 assert.ok(!feed.includes("'전체 피드'"));assert.ok(!feed.includes('feed.filter'));assert.ok(!read('ApkWinSock.Member.Actions.inc').includes('feed.filter'));
 assert.ok(!flow.includes("Body.AddPair('following'"));
 assert.ok(feed.includes("'팔로우'"));assert.ok(feed.includes('HubRenderFollows'));

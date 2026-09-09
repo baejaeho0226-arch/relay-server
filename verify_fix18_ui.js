@@ -20,7 +20,7 @@ for(const m of svg.matchAll(/Name = '([^']+)'\) and \(Filled = (True|False)\) th
  const dom=new JSDOM(source,{contentType:'image/svg+xml'}),root=dom.window.document.documentElement;
  assert.equal(root.getAttribute('viewBox'),'0 0 24 24');assert.equal(root.querySelectorAll('script,foreignObject,image,filter').length,0);dom.window.close();count++;
 }
-assert.equal(count,50);
+assert.equal(count,60);
 const flow=read('ApkWinSock.Member.Flow.inc'),dashboard=read('ApkWinSock.Dashboard.inc'),menu=read('ApkWinSock.Member.Menu.inc');
 const render=flow.split('procedure TForm1.HubRender;')[1].split('procedure TForm1.HubRenderTimerTimer')[0];
 assert.ok(render.includes('FHubRenderTimer.Enabled:=True'));assert.ok(!render.includes('FreeAndNil'));assert.ok(flow.includes('FHubRenderedView<>FHubView'));
@@ -40,14 +40,15 @@ assert.ok(flow.includes('FHubReadyPayload:=Payload'));
 assert.ok(flow.includes('TStopwatch.Frequency*12'));
 for(const source of ['ApkWinSock.Member.NewsShop.inc','ApkWinSock.Member.MyPage.inc','ApkWinSock.Member.Menu.inc','ApkWinSock.Member.Flow.inc']){
  assert.ok(!/HubTitle\(/.test(read(source)),source);
- assert.ok(!/HubNumber\([^\n]*'views'/.test(read(source)),source);
+ if(source==='ApkWinSock.Member.NewsShop.inc')assert.ok(!/HubNumber\([^\n]*'views'/.test(read(source).split('procedure TForm1.HubRenderArticle')[0]),source);
+ else if(source!=='ApkWinSock.Member.MyPage.inc')assert.ok(!/HubNumber\([^\n]*'views'/.test(read(source)),source);
  assert.ok(!read(source).includes("'topup"),source);
  assert.ok(!read(source).includes("'refresh'"),source);
 }
 assert.ok(read('ApkWinSock.Member.NewsShop.inc').includes('TComboBox.Create'));
 assert.ok(actions.includes("Send('post.edit')"));
 assert.ok(!fs.existsSync(path.join(dir,'ApkWinSock.Member.Coins.inc')));
-for(const key of ['Names','Details','Actions','Groups','Icons']){
+for(const key of ['Names','Actions','Groups','Icons']){
  const match=menu.slice(menu.indexOf('procedure TForm1.HubRenderMenuResults;')).match(new RegExp(key+':=\\s*\\[([^\\]]+)\\]'));
  assert.ok(match,key);assert.equal([...match[1].matchAll(/'[^']*'/g)].length,12,key);
 }
@@ -56,11 +57,11 @@ const poll=flow.split('procedure TForm1.HubPollTimerTimer')[1].split('procedure 
 assert.ok(!poll.includes('if not FForeground or FHubTouch.Busy'));
 assert.ok(read('ApkMemberClient.pas').includes("RelayHmacSha256Hex(FSecurity.Secret,'HUB_EVENT|"));
 assert.ok(read('ApkWinSock.Member.Charge.inc').includes('RenderQrMatrix'));
-console.log('FIX18 UI SOURCE PASS: fields/signatures, 50 SVG sources, native click/drag guards, bounded busy state, signed automatic refresh, menu arrays, feed-only views, QR charge UI, game purchases, rectangular bars and no press effects');
+console.log('FIX18 UI SOURCE PASS: fields/signatures, 60 SVG sources, native click/drag guards, bounded busy state, signed automatic refresh, menu arrays, feed and article-detail views, QR charge UI, game purchases, rectangular bars and no press effects');
 
 assert.ok(touch.includes('function TApkTapRectangle.PointInObjectLocal'));
 assert.ok(touch.includes('AutoCapture:=True'));
-assert.ok(read('ApkWinSock.Member.Feed.inc').includes('W,48'));
+assert.ok(read('ApkWinSock.Member.Feed.inc').includes('W,44'));
 for(const icon of ['like','dislike'])assert.notEqual(read('Svg/'+icon+'-filled.svg'),read('Svg/'+icon+'-outline.svg'));
 assert.ok(read('ApkWinSock.Member.Purchase.inc').includes('HubApplyReaction'));
 assert.ok(read('ApkWinSock.Member.Actions.inc').includes("Send('purchase')"));

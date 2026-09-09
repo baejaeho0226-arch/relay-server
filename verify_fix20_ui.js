@@ -20,10 +20,13 @@ for(const part of ['Ui','Help','Messages','Flow','Permissions','Protocol'])asser
 for(const m of all.matchAll(/\{\$I\s+([^}]+)\}/g))assert.ok(fs.existsSync(path.join(apk,m[1].trim())),m[1]);
 const me=read('ApkWinSock.Member.MyPage.inc').split('procedure TForm1.HubRenderMe')[1].split('procedure TForm1.HubRenderHistory')[0];
 for(const action of ['orders','payments','myfeed','support'])assert.ok(!me.includes("'"+action+"'"),'Removed profile shortcut '+action);
-for(const marker of ["HubProfileStat(C,'게시물'","HubProfileStat(C,'팔로워'","HubProfileStat(C,'팔로잉'","HubTextAction(C,'QR 충전','charge'","HubObject(Data,'posts')","(I mod 3)*(CellW+2)","'comments|'","C.ClipChildren:=True"])assert.ok(me.includes(marker),marker);
+for(const marker of ["HubProfileStat(C,'게시물'","HubProfileStat(C,'팔로워'","HubProfileStat(C,'팔로잉'","HubObject(Data,'posts')"])assert.ok(me.includes(marker),marker);
+const grid=read('ApkWinSock.Member.MyPage.inc').split('procedure TForm1.HubRenderPostGrid')[1].split('procedure TForm1.HubRenderMe')[0];
+assert.ok(grid.includes("'comments|'"));assert.ok(grid.includes('C.ClipChildren:=True'));
+assert.ok(!me.includes("'QR 충전'")&&!me.includes("'charge'"));
 const news=read('ApkWinSock.Member.NewsShop.inc'),lists=news.split('procedure TForm1.HubRenderArticle')[0];
 assert.ok(!lists.includes("'body'")&&!lists.includes("'description'"),'List must not repeat full details');
-assert.equal([...news.matchAll(/Title:='\['/g)].length,4,'List and detail share a bracketed title');
+assert.ok(news.includes('HubNewsBadge'));assert.ok(!lists.includes('HubDate('),'Dates are detail-only');
 for(const marker of ['Periods:array[0..3] of Integer=(1,7,15,30)','TDropDownKind.Custom',"ListBoxResource:='listboxstyle'",'ListBox.OnApplyStyleLookup:=HubPlanPopupStyle','ListItems[I].StyledSettings:=[]'])assert.ok(news.includes(marker),marker);
 const motion=read('ApkWinSock.Member.Motion.inc');assert.ok(!motion.includes('TControl(Background).Opacity:=0'),'Never hide input/popup containers with text children');
 assert.ok(motion.includes('TControl(Background).Visible:=True'));
@@ -31,7 +34,7 @@ const menu=read('ApkWinSock.Member.Menu.inc');assert.ok(menu.includes("'search',
 assert.ok(menu.includes('FHubSearchPrompt.HitTest:=False'));assert.ok(menu.includes('OnChangeTracking:=HubMenuSearchChanged'));assert.ok(!menu.includes('menu.category'));
 const feed=read('ApkWinSock.Member.Feed.inc'),timeline=feed.split('procedure TForm1.HubRenderFeed')[1].split('procedure TForm1.HubRenderComments')[0];
 assert.ok(!timeline.includes('HubCard(')&&!timeline.includes('compose')&&!timeline.includes('HubButton('));
-assert.ok(feed.includes('DateText,66,38,NameW,19'));assert.ok(feed.includes("'팔로워 '"));assert.ok(feed.includes("' · 팔로잉 '"));
+assert.ok(feed.includes('L.SetBounds(48,32,Header.Width-54,22)'));assert.ok(feed.includes("'팔로워 '"));assert.ok(feed.includes("' · 팔로잉 '"));
 const dashboard=read('ApkWinSock.Dashboard.inc');assert.ok(dashboard.includes('FHubHeaderAction.SetBounds(W-52,4,48,48)'));assert.ok(dashboard.includes("FHubHeaderAction.TagString:='compose'"));
 assert.ok(dashboard.includes("MemberSvg('create')"));assert.ok(dashboard.includes("MemberSvg('hamburger')"));
 const theme=read('ApkMemberTheme.pas');

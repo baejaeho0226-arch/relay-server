@@ -35,7 +35,7 @@ try{
  const post=run(a,'post.create',{body:'원문'}).post;const comment=run(b,'comment.create',{postId:post.id,body:'댓글'}).comment;
  run(a,'feed');run(a,'feed');assert.equal(s.ViewCount('post',post.id),1);run(b,'feed');assert.equal(s.ViewCount('post',post.id),2);
  const thread=run(a,'thread',{postId:post.id});assert.equal(thread.comments.items[0].views,undefined);assert.equal(thread.post.author.views,undefined);assert.equal(s.ViewCount('post',post.id),2);
- assert.ok(Object.values(s.DB().viewCounters).every(x=>x.kind==='post'));assert.equal(s.ViewCount('comment',comment.id),0);assert.equal(s.ViewCount('profile',pa.id),0);
+ assert.ok(Object.values(s.DB().viewCounters).every(x=>['post','news'].includes(x.kind)));assert.equal(s.ViewCount('comment',comment.id),0);assert.equal(s.ViewCount('profile',pa.id),0);
  s.DB().viewHits[pa.id+':post:'+post.id]='2000-01-01';run(a,'feed');assert.equal(s.ViewCount('post',post.id),3);
  // Owner edits, optimistic revision checks and retries cannot alter someone else's post.
  fail(()=>run(b,'post.edit',{id:post.id,body:'도용',revision:0}),'NOT_OWNER');
@@ -49,7 +49,7 @@ try{
  admin('content.action',{table:'posts',id:post.id,operation:'show'});run(a,'post.delete',{id:post.id});fail(()=>run(a,'post.edit',{...update,revision:4}),'POST_NOT_FOUND');
  // Historical counters are ignored outside feed posts, without rewriting durable snapshots.
  s.DB().viewCounters['screen:news']={kind:'screen',id:'news',count:999};
- const overview=hub.AdminRead({view:'overview'});assert.equal(overview.postViews,3);assert.equal(overview.pageViews,undefined);assert.ok(overview.topContent.every(x=>x.kind==='post'));
+ const overview=hub.AdminRead({view:'overview'});assert.equal(overview.postViews,3);assert.equal(overview.pageViews,undefined);assert.ok(overview.topContent.every(x=>['post','news'].includes(x.kind)));
  for(const view of ['news','products','profiles','comments'])assert.ok(hub.AdminRead({view}).items.every(x=>x.views===undefined));
  admin('profile.block',{id:pb.id,blocked:true});fail(()=>run(b,'feed'),'ACCOUNT_BLOCKED');
  console.log('FIX15 MEMBER PASS: deposits disabled, financial history retained, per-article unread revisions, feed-only daily views, owner editing, concurrent conflicts, idempotency and atomic rollback');
