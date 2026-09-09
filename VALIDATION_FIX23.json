@@ -1,0 +1,105 @@
+{
+  "release": "FIX23",
+  "base": "FIX22",
+  "versions": {
+    "apk": "2.22.0",
+    "apkCode": 22200,
+    "relay": "6.19.0",
+    "webAdmin": "4.12.0",
+    "ui": "fix23"
+  },
+  "requestedItems": 28,
+  "requestChecklist": "REQUEST_CHECKLIST_FIX23_KO.md",
+  "regressionTests": {
+    "passed": 35,
+    "total": 35,
+    "suites": [
+      "test-auth-recovery.js",
+      "test-build-sessions.js",
+      "test-client-installation.js",
+      "test-client-permissions.js",
+      "test-device-registry-history.js",
+      "test-fix10-support-installation.js",
+      "test-fix12-lifecycle-bulk.js",
+      "test-fix12-tcp.js",
+      "test-fix12-web.js",
+      "test-fix13-member.js",
+      "test-fix13-qr.js",
+      "test-fix13-tcp.js",
+      "test-fix13-web.js",
+      "test-fix15-member.js",
+      "test-fix18-social.js",
+      "test-fix18-tcp.js",
+      "test-fix18-wallet.js",
+      "test-fix18-web.js",
+      "test-fix19-profile-refresh.js",
+      "test-fix20-profile-grid.js",
+      "test-fix20-support-bot.js",
+      "test-fix21-content-tcp.js",
+      "test-fix22-admin-dom.js",
+      "test-fix22-member-tcp.js",
+      "test-fix23-workflows.js",
+      "test-production-hardening.js",
+      "test-qr-auth.js",
+      "test-roadmap11-14.js",
+      "test-roadmap15-18.js",
+      "test-roadmap19-23.js",
+      "test-support-center.js",
+      "test-support-persistence.js",
+      "test-web-api-empty-state.js",
+      "test-web-dom.js",
+      "test-web-ui-cache.js"
+    ],
+    "newWorkflowCoverage": [
+      "Home unread totals beyond first page and recent passes",
+      "Registered device and private support pages without tokens",
+      "Account alias paths, typed client actions and multi-device choice",
+      "Read-only profile fields and preserved DOM on unchanged refresh",
+      "Record links select the intended item in management",
+      "Photo-only post edit, photo removal and restore through actual Admin DOM/API",
+      "QR requests filtered by member handle",
+      "Game image editing and legacy specification removal"
+    ]
+  },
+  "checks": {
+    "sourceIncludesAndDeclarations": "passed",
+    "nativeUiSourceGuards": "passed",
+    "delphiUtf8BomFiles": 120,
+    "svgFilesParsed": 60,
+    "androidXmlFilesParsed": 5,
+    "webBundleFiles": 41,
+    "jsSyntaxFiles": 188
+  },
+  "nativeRuntime": {
+    "dccCompiled": false,
+    "androidExecuted": false,
+    "touchVerified": false,
+    "screenshotsVerified": false,
+    "accessViolationReproductionCleared": false
+  },
+  "limitations": [
+    "No Delphi compiler or Android device is available. Source/static guards are not native compilation or UI execution.",
+    "The game popup/control lifetime risks were changed, but the reported Access violation has not been reproduced or proven absent on a device.",
+    "The price selector is a source-built combo with one selected value and an app-owned drop-down, not a platform picker.",
+    "Device data is limited to values actually registered on the server; biometric templates are not stored or exposed.",
+    "APK and Relay/WebAdmin must be applied together."
+  ],
+  "preserved": {
+    "winSockServerFilesUnchanged": 33,
+    "existingQrBiometricAndAdminAuthorization": true,
+    "databaseSchema": 4,
+    "startupSeconds": 5,
+    "periodDays": [
+      1,
+      7,
+      15,
+      30
+    ]
+  },
+  "evidence": {
+    "regressionLog": "PASS test-auth-recovery.js\nPASS test-build-sessions.js\nPASS test-client-installation.js\nPASS test-client-permissions.js\nPASS test-device-registry-history.js\nPASS test-fix10-support-installation.js\nPASS test-fix12-lifecycle-bulk.js\nPASS test-fix12-tcp.js\nPASS test-fix12-web.js\nPASS test-fix13-member.js\nPASS test-fix13-qr.js\nPASS test-fix13-tcp.js\nPASS test-fix13-web.js\nPASS test-fix15-member.js\nPASS test-fix18-social.js\nPASS test-fix18-tcp.js\nPASS test-fix18-wallet.js\nPASS test-fix18-web.js\nPASS test-fix19-profile-refresh.js\nPASS test-fix20-profile-grid.js\nPASS test-fix20-support-bot.js\nPASS test-fix21-content-tcp.js\nPASS test-fix22-admin-dom.js\nPASS test-fix22-member-tcp.js\nPASS test-fix23-workflows.js\nPASS test-production-hardening.js\nPASS test-qr-auth.js\nPASS test-roadmap11-14.js\nPASS test-roadmap15-18.js\nPASS test-roadmap19-23.js\nPASS test-support-center.js\nPASS test-support-persistence.js\nPASS test-web-api-empty-state.js\nPASS test-web-dom.js\nPASS test-web-ui-cache.js\n35/35 passed\n",
+    "sourceChecks": "SOURCE VALIDATION PASS\n- Missing units / banned APIs / FMX resource regressions: NONE\n- Build lease, revoke, fixed binding and TYPE routing tokens: PASS\n- APK module includes / Server modules / Web Admin modular routes and actions: PASS\n- Delphi UTF-8 BOM / APK Korean / Server ASCII encoding policy: PASS\n- Status vector operands / automatic probes / support protocol declarations: PASS\n",
+    "nativeSourceChecks": "FIX18 UI SOURCE PASS: fields/signatures, 60 SVG sources, native click/drag guards, bounded busy state, signed automatic refresh, menu arrays, feed and article-detail views, QR charge UI, game purchases, rectangular bars and no press effects\nFIX19 UI SOURCE PASS: pull-refresh integration/lifetime/timeout, preserved mutation recovery, profile revision/cache/history synchronization, per-character comment input, centered reactions, subtle centered shadows and no feed timeline filters\nFIX20 UI SOURCE PASS: native declarations/includes, profile statistics/text grid, header compose, separated list/detail, visible styled periods, centered search, uniform themes, FAQ-first support, bubble rendering, scroll guards, cursor/retry and cleanup\nFIX21 UI SOURCE PASS: five-tab routing, avatar refresh/cleanup, local All/Settings, public profile and follow links, custom edit style, measured bubbles, isolated reaction bounds, rounded cards, article photos/views, game metadata/specs, placeholder-free loading and themed QR\nFIX22 UI SOURCE PASS: owned theme dropdown lifetime, detached callbacks, live shadow lookup, balanced color cards, home summary, safe photo drafts, account restrictions, fixed composer, drag guards, support status/polling and tab divider\n",
+    "encoding": "DELPHI SOURCE ENCODING PASS\n- UTF-8 BOM and strict UTF-8 decode: 120 files\n- APK Korean Unicode literals: PASS\n- WinSockServer console ASCII policy: PASS\n- No Win32 console code-page API required: PASS\n"
+  }
+}

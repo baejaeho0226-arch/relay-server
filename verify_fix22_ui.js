@@ -4,7 +4,7 @@ require('./verify_fix21_ui');
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const dir=path.join(__dirname,'ApkWinSock_Android64'),read=n=>fs.readFileSync(path.join(dir,n),'utf8');
 const flow=read('ApkWinSock.Member.Flow.inc'),news=read('ApkWinSock.Member.NewsShop.inc'),actions=read('ApkWinSock.Member.Actions.inc'),motion=read('ApkWinSock.Member.Motion.inc'),media=read('ApkWinSock.Member.Media.inc'),dashboard=read('ApkWinSock.Dashboard.inc');
-assert.ok(news.includes('TDropDownKind.Native'));assert.ok(news.includes('TApkMemberCombo.Create'));
+assert.ok(news.includes('FHubPlanCombo.PopupHost:=FRoot'));assert.ok(!news.includes('TDropDownKind.Native'));assert.ok(news.includes('TApkMemberCombo.Create'));
 for(const source of [flow,news,motion])assert.ok(!source.includes('FHubPlanCombo.ListBox')&&!source.includes('FHubPlanCombo.ListItems'));
 assert.ok(flow.indexOf('FHubPlanCombo.OnChange:=nil')<flow.indexOf('FreeAndNil(FHubPage)'));
 assert.ok(!motion.includes('HubPlanPopupStyle'));assert.ok(!media.includes('Card.TagObject'));assert.ok(!read('ApkWinSock.Member.Widgets.inc').includes('Result.TagObject'));
@@ -15,7 +15,7 @@ assert.ok(news.includes('18+ImageW+14'));assert.ok(news.includes('C.Height-36'))
 assert.ok(dashboard.includes("FHubView='menu' then Title:='홈'"));assert.ok(!dashboard.includes('FHubHeaderMenuIcon.Visible'));
 assert.ok(dashboard.includes("FHubHeaderAction.Visible:=(FHubView='feed') or (FHubView='me')"));assert.ok(dashboard.includes("MemberSvg('hamburger')"));assert.ok(dashboard.includes('FHubTabDivider.SetBounds(0,0,W,0.7)'));
 assert.ok(dashboard.includes('FHubCommentEdit.Parent:=FHubCommentBox'));assert.ok(dashboard.includes('FHubCommentPrompt.TextSettings.FontColor:=MemberMuted'));
-const menu=read('ApkWinSock.Member.Menu.inc');assert.ok(menu.includes('HubRenderHomeSummary'));assert.ok(menu.includes("HubNumber(Profile,'balance')"));assert.ok(menu.includes("'사용 중'"));assert.ok(menu.includes('HubRenderRecords'));assert.ok(menu.includes("Query.StartsWith('@')"));
+const menu=read('ApkWinSock.Member.Menu.inc');assert.ok(menu.includes('HubRenderHomeSummary'));assert.ok(menu.includes("HubNumber(Profile,'balance')"));assert.ok(menu.includes("'사용 중'"));assert.ok(read('ApkWinSock.Member.Records.inc').includes('HubRenderRecords'));assert.ok(menu.includes("Query.StartsWith('@')"));
 assert.ok(flow.includes("FHubView='menu' then Result:='home'"));assert.ok(flow.includes("FHubView='records' then Result:='records'"));assert.ok(!read('ApkWinSock.Member.Refresh.inc').includes('begin HubRender;FHubPull.Finish(True)'));
 const profile=read('ApkWinSock.Member.MyPage.inc');assert.ok(profile.includes("ReadOnly:=not HubBool(Profile,'handleEditable')"));assert.ok(profile.includes("'nicknameChangeAt'"));assert.ok(actions.includes("Body.AddPair('handle'"));
 assert.ok(actions.includes("Action='post.photo'"));assert.ok(actions.includes("if FHubPostImageChanged then Body.AddPair('image'"));assert.ok(flow.includes("FHubPhotoContext<>HubDraftKey(FHubView,FHubPostID)"));assert.ok(flow.includes("TBitmapCodecManager.SaveToStream(Stream,Surface,'.jpg',@Params)"));assert.ok(flow.includes('Surface.Free;Stream.Free;Small.Free'));
@@ -24,5 +24,5 @@ const client=read('ApkMemberClient.pas');assert.ok(client.includes("(Action='pos
 const touch=read('ApkMemberTouch.pas');assert.ok(touch.includes('FCanceled and FHadDown'));assert.ok(touch.includes('not FHadDown and (TStopwatch.GetTimeStamp<FScope.FMovingUntil)'));assert.ok(!touch.includes('inherited Click;\n  inherited Click'));
 const ui=read('ApkWinSock.Support.Ui.inc'),protocol=read('ApkWinSock.Support.Protocol.inc'),messages=read('ApkWinSock.Support.Messages.inc');
 assert.ok(!ui.includes("'refresh'"));assert.ok(ui.includes('FSupportInfoOpen'));assert.ok(ui.includes('FSupportAdminOnline'));assert.ok(ui.includes('FSupportHelpScroll.SetBounds(0,Top+1'));
-assert.ok(protocol.includes('FSupportNextSyncAt:=FState.CurrentUnixMilliseconds+3000'));assert.ok(messages.includes('Max(38,HubTextWidth(Value,14)+24)'));assert.ok(messages.includes('L.SetBounds(16,0,W-32,18)'));
-console.log('FIX22 UI SOURCE PASS: native picker ownership, detached callbacks, live shadow lookup, balanced color cards, home summary, safe photo drafts, account restrictions, fixed composer, drag guards, support status/polling and tab divider');
+assert.ok(protocol.includes('FSupportNextSyncAt:=FState.CurrentUnixMilliseconds+3000'));assert.ok(messages.includes('SupportBubbleSize(Value,Text.TextSettings.Font'));assert.ok(messages.includes('L.SetBounds(16,0,W-32,18)'));
+console.log('FIX22 UI SOURCE PASS: owned theme dropdown lifetime, detached callbacks, live shadow lookup, balanced color cards, home summary, safe photo drafts, account restrictions, fixed composer, drag guards, support status/polling and tab divider');

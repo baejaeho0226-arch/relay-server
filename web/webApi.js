@@ -17,7 +17,7 @@ async function HandleApiRequest(req, res, session) {
     }
 
     try {
-        if((/(?:@|%40)/i.test(pathname)||['clientId','targetClientId'].some(k=>String(body[k]||'').startsWith('@')))&&!RequireAdmin(res,session))return;
+        if(require('./routes/memberAliases').NeedsResolution(pathname,body)&&!RequireAdmin(res,session))return;
         const resolved=require('./routes/memberAliases').Resolve(pathname,body,url);
         if(resolved){if(!RequireAdmin(res,session))return;pathname=resolved.pathname;body=resolved.body;url.pathname=pathname;}
     } catch(e){ApiError(res,400,e.memberError?e.message:'INPUT_INVALID');return;}

@@ -240,7 +240,7 @@ const userDashboard = read(path.join(webDir, 'services', 'userDashboard.js'));
 const recovery = read(path.join(webDir, 'services', 'requestRecovery.js'));
 const indexHtml = read(path.join(webDir, 'public', 'index.html'));
 for (const moduleName of ['admin.js', 'admin-pages-monitoring.js', 'admin-pages-access.js', 'admin-pages-operations.js', 'admin-actions.js', 'admin-pages-production.js', 'admin-pages-support.js']) {
-    assert.ok(indexHtml.includes(`/${moduleName}?v=4.11.0-fix22`));
+    assert.ok(indexHtml.includes(`/${moduleName}?v=4.12.0-fix23`));
     assert.ok(fs.existsSync(path.join(webDir, 'public', moduleName)));
 }
 assert.ok(read(path.join(webDir, 'web', 'apiContext.js')).includes("require('./routes/buildQrRoutes')"));
@@ -253,7 +253,7 @@ assert.ok(webApiSource.includes("pathname === '/api/history/clean'"));
 assert.ok(webApiSource.includes("deviceRegistry.DeleteServer"));
 assert.ok(webApiSource.includes("deviceRegistry.DeleteClient"));
 assert.ok(admin.includes('class="api-error"'));
-assert.ok(indexHtml.includes('4.11.0-fix22'));
+assert.ok(indexHtml.includes('4.12.0-fix23'));
 assert.ok(admin.includes('data-history-clean="SERVER_HISTORY"'));
 assert.ok(admin.includes('data-history-clean="CLIENT_HISTORY"'));
 assert.ok(admin.includes('>삭제</button>'));

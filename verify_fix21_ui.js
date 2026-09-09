@@ -24,12 +24,12 @@ const implementations=[...input.matchAll(/\b(?:constructor|procedure|function)\s
 for(const marker of ['function GetStyleObject: TFmxObject; override','TControlType.Styled',"Content.StyleName:='content'","AddBrush('foreground',MemberText)","AddBrush('selection',$55888888)"])assert.ok(input.includes(marker),marker);
 assert.ok(!input.includes('TBitmap')&&!input.includes('TActiveStyleObject'),'Input background does not inherit a platform bitmap');
 assert.ok(read('ApkWinSock.Support.Ui.inc').includes('FSupportInput:=TApkMemberEdit.Create(Self)'));
-const widgets=read('ApkWinSock.Member.Widgets.inc');assert.ok(widgets.includes('Layout.TextHeight'));assert.ok(widgets.includes('Layout.TextWidth'));assert.ok(widgets.includes("Flat:=FHubView='menu'"));
-assert.ok(read('ApkWinSock.Support.Messages.inc').includes('HubTextWidth(Value,14)+24'));assert.ok(!read('ApkWinSock.Support.Messages.inc').includes('Length(Value)*7'));
+const widgets=read('ApkWinSock.Member.Widgets.inc');assert.ok(widgets.includes('Layout.TextHeight'));assert.ok(widgets.includes('Layout.TextWidth'));assert.ok(widgets.includes("Flat:=False"));
+assert.ok(read('ApkWinSock.Support.Messages.inc').includes('SupportBubbleSize(Value,Text.TextSettings.Font'));assert.ok(!read('ApkWinSock.Support.Messages.inc').includes('Length(Value)*7'));
 const motion=read('ApkWinSock.Member.Motion.inc'),feed=read('ApkWinSock.Member.Feed.inc');
 assert.ok(motion.includes('IconBox.ClipChildren:=True'));assert.ok(motion.includes('IconBox,Icon,0,0,22,22'));
 assert.ok(read('ApkWinSock.Member.Purchase.inc').includes('for Icon in Child.Children'));assert.ok(feed.includes("'member|'+AuthorID"));assert.ok(feed.includes("'report|'+ID"));
-assert.ok(feed.includes('C.Width-W-8,Y,W,48'));assert.ok(feed.includes('HubTextWidth(HubText(Author'));
+assert.ok(feed.includes('C.Width-W-10,Y,W,48'));assert.ok(feed.includes('HubTextWidth(HubText(Author'));
 const news=read('ApkWinSock.Member.NewsShop.inc'),lists=news.split('procedure TForm1.HubRenderArticle')[0];
 assert.ok(news.includes('HubNewsBadge'));assert.ok(lists.includes('열람하려면 게시글을 눌러주세요.'));assert.ok(!lists.includes('HubDate('));
 assert.ok(news.includes("HubNumber(FHubSelected,'views')"));assert.ok(news.includes("HubText(FHubSelected,'image')"));assert.ok(flow.includes("Body.AddPair('summary',TJSONBool.Create(True))"));
