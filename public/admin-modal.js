@@ -7,10 +7,10 @@ function openModal(options) {
     modalBody.innerHTML = `${options.message ? `<p>${esc(options.message)}</p>` : ''}${options.html || ''}${fields.map(f => {
       if (f.type === 'section') return `<h3 class="modal-section">${esc(f.label)}</h3>`;
       if (f.type === 'image') return `<div class="modal-media"><label>${esc(f.label)}<input type="hidden" data-modal-field="${esc(f.name)}" value="${esc(f.value||'')}"><input type="file" accept="image/png,image/jpeg" data-modal-image="${esc(f.name)}" aria-label="${esc(f.label)} 선택"></label><img data-modal-preview="${esc(f.name)}" ${f.value?`src="${esc(f.value)}"`:'hidden'} alt="사진 미리보기"><button type="button" data-modal-image-remove="${esc(f.name)}">사진 삭제</button><p class="small-note" data-modal-image-status="${esc(f.name)}">PNG·JPEG 사진을 선택하세요. 앱 표시 크기로 최적화합니다.</p></div>`;
-      if (f.type === 'textarea') return `<label>${esc(f.label)}<textarea data-modal-field="${esc(f.name)}" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea></label>`;
+      if (f.type === 'textarea') return `<label>${esc(f.label)}<textarea ${f.readOnly?'readonly aria-readonly="true"':''} data-modal-field="${esc(f.name)}" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea></label>`;
       if (f.type === 'select') return `<label>${esc(f.label)}<select data-modal-field="${esc(f.name)}">${(f.options || []).map(o => `<option value="${esc(o.value ?? o)}" ${String(o.value ?? o)===String(f.value ?? '')?'selected':''}>${esc(o.label ?? o)}</option>`).join('')}</select></label>`;
       if (f.type === 'password') return `<label>${esc(f.label)}<div class="password-input-row"><input data-modal-field="${esc(f.name)}" type="password" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" inputmode="${esc(f.inputmode || 'numeric')}" autocomplete="new-password" maxlength="${Number(f.maxLength || 8)}"><button type="button" data-modal-reveal="${esc(f.name)}">보기</button></div></label>`;
-      return `<label>${esc(f.label)}<input data-modal-field="${esc(f.name)}" type="${esc(f.type || 'text')}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"></label>`;
+      return `<label>${esc(f.label)}<input ${f.readOnly?'readonly aria-readonly="true"':''} data-modal-field="${esc(f.name)}" type="${esc(f.type || 'text')}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"></label>`;
     }).join('')}`;
     modalConfirm.textContent = options.confirmLabel || '확인';
     modalConfirm.className = options.danger ? 'danger' : 'primary';
@@ -58,7 +58,7 @@ function openModal(options) {
       modalBody.querySelectorAll('[data-modal-field]').forEach(el => values[el.dataset.modalField] = el.value);
       close(values);
     };
-    const first = modalBody.querySelector('input,textarea,select');
+    const first = modalBody.querySelector('input:not([type=hidden]):not([readonly]),textarea:not([readonly]),select');
     if (first) setTimeout(() => first.focus(), 20);
   });
 }

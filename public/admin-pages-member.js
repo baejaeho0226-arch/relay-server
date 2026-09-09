@@ -1,5 +1,5 @@
 'use strict';
-let memberLookupHandle='',memberLookupSection='',memberLookupOffset=0;
+let memberLookupHandle='',memberLookupSection='',memberLookupOffset=0,memberLookupFingerprint='';
 let memberView='overview',memberOffset=0,memberRows=new Map(),memberRenderSerial=0;
 let memberQuery='',memberFilter='',memberSort='recent',memberSelected=new Set();
 let memberPointerDown=false,memberPointerUntil=0,memberInteractionUntil=0,memberLastRefresh=0,memberFingerprint='';
@@ -24,13 +24,13 @@ function memberRow(row,view){
  let title=row.title||row.nickname||row.id,meta='',body='',actions='';
  if(view==='products'){meta=accessTypeName(row.accessType)+' · '+(row.plans||[]).map(x=>x.days+'일 '+(x.available?memberMoney(x.price):'판매 준비 중')).join(' / ');body=row.description;actions=memberButton('product.edit',row.id,'수정');}
  if(view==='news'){meta=`${memberStatus[row.category]}${row.pinned?' · 상단 고정':''}`;body=row.body;actions=memberButton('news.edit',row.id,'수정');}
- if(view==='orders'){meta=`${row.accountId} · ${row.days}일 · ${memberMoney(row.amount)}`;body=row.activatedAt?'사용 시작 '+fmtTime(row.activatedAt):'미사용';if(!row.activatedAt&&row.status==='PAID'&&row.source!=='QR_CHARGE')actions=memberButton('order.refund',row.id,'잔액 환불',true);}
- if(view==='ledger'){title=memberStatus[row.kind]||'거래';meta=`${row.accountId} · ${memberMoney(row.amount)} · ${row.kind==='QR_CHARGE'?'이용권 등록':'잔액 '+memberMoney(row.balance)}`;body=row.reference;}
+ if(view==='orders'){meta=`${row.memberHandle||row.accountId} · ${row.days}일 · ${memberMoney(row.amount)}`;body=row.activatedAt?'사용 시작 '+fmtTime(row.activatedAt):'미사용';if(!row.activatedAt&&row.status==='PAID'&&row.source!=='QR_CHARGE')actions=memberButton('order.refund',row.id,'잔액 환불',true);}
+ if(view==='ledger'){title=memberStatus[row.kind]||'거래';meta=`${row.memberHandle||row.accountId} · ${memberMoney(row.amount)} · ${row.kind==='QR_CHARGE'?'이용권 등록':'잔액 '+memberMoney(row.balance)}`;body=row.reference;}
  if(view==='profiles'){title='@'+row.handle+' · '+row.nickname;meta=`잔액 ${memberMoney(row.balance)}`;body=row.bio;actions=memberButton('profile.lookup',row.id,'통합 조회')+memberButton('profile.edit',row.id,'프로필 수정')+memberButton('profile.block',row.id,row.blocked?'제한 해제':'이용 제한',!row.blocked);}
- if(view==='posts'||view==='comments'){title=row.author?.nickname||row.accountId;body=row.body||'작성자가 삭제한 내용입니다.';if(!row.deleted)actions=memberButton(view==='posts'?'post.edit':'comment.edit',row.id,'수정')+memberButton('content.'+(row.hidden?'show':'hide'),row.id,row.hidden?'공개':'숨기기');}
- if(view==='reports'){meta=`${row.accountId}`;body=row.reason+(row.resolution?'\n처리 메모: '+row.resolution:'');actions=memberButton('report.post',row.id,'신고 글')+memberButton(row.status==='OPEN'?'report.resolve':'report.reopen',row.id,row.status==='OPEN'?'처리 완료':'다시 열기');}
+ if(view==='posts'||view==='comments'){title=(row.memberHandle?row.memberHandle+' · ':'')+(row.author?.nickname||row.accountId);body=row.body||'작성자가 삭제한 내용입니다.';if(!row.deleted)actions=memberButton(view==='posts'?'post.edit':'comment.edit',row.id,'수정')+memberButton('content.'+(row.hidden?'show':'hide'),row.id,row.hidden?'공개':'숨기기');}
+ if(view==='reports'){meta=`${row.memberHandle||row.accountId}`;body=row.reason+(row.resolution?'\n처리 메모: '+row.resolution:'');actions=memberButton('report.post',row.id,'신고 글')+memberButton(row.status==='OPEN'?'report.resolve':'report.reopen',row.id,row.status==='OPEN'?'처리 완료':'다시 열기');}
  if(memberEditable(view)){
-  if(row.deleted){if(!row.deletedByMember&&(!['posts','comments'].includes(view)||row.body))actions+=memberButton('content.restore',row.id,'복원');}
+  if(row.deleted){if(!row.deletedByMember&&(!['posts','comments'].includes(view)||(row.body||row.imageThumb)))actions+=memberButton('content.restore',row.id,'복원');}
   else actions+=memberButton('content.delete',row.id,'삭제',true);
  }
  if(['products','news'].includes(view)&&!row.deleted)actions+=memberButton('content.'+(row.published?'unpublish':'publish'),row.id,row.published?'비공개':'공개');
@@ -84,28 +84,57 @@ setInterval(()=>{if(memberCanAutoRefresh()&&Date.now()-memberLastRefresh>=12000)
 
 
 function memberCategoryTone(value){const key=String(value||'').toUpperCase();if(key==='UPDATE'||key.includes('레이싱'))return 'blue';if(key==='EVENT'||key.includes('RPG')||key.includes('롤플레잉'))return 'purple';if(key==='ALERT'||key.includes('액션')||key.includes('격투'))return 'orange';if(key.includes('리듬')||key.includes('음악'))return 'pink';return 'green';}
-const memberRecordNames={orders:'이용권 내역',payments:'결제 내역',charges:'QR 충전',posts:'게시물',comments:'댓글',reports:'신고',followers:'팔로워',following:'팔로잉'};
-const memberInfoStatus={AVAILABLE:'수집 완료',UNAVAILABLE:'확인할 수 없음',NOT_AVAILABLE:'확인할 수 없음',PERMISSION_DENIED:'권한 없음',UNSUPPORTED:'지원하지 않음',UNKNOWN:'미확인',NONE:'미등록',VALID:'유효',ACTIVE:'유효',PENDING:'확인 대기',APPROVED:'승인 완료',REJECTED:'반려',EXPIRED:'만료',SUSPENDED:'정지'};
+const memberRecordNames={orders:'이용권 내역',payments:'결제 내역',charges:'QR 충전',posts:'게시물',comments:'댓글',reports:'신고',followers:'팔로워',following:'팔로잉',devices:'등록 기기',qr:'출입증 QR',support:'상담 기록'};
+const memberInfoStatus={AVAILABLE:'수집 완료',UNAVAILABLE:'확인할 수 없음',NOT_AVAILABLE:'확인할 수 없음',PERMISSION_DENIED:'권한 없음',UNSUPPORTED:'지원하지 않음',UNKNOWN:'미확인',VERIFIED:'인증 완료',ENROLLING:'등록 중',CHALLENGE:'인증 대기',FAILED:'인증 실패',SUPERSEDED:'다른 요청으로 변경',CLOSED:'종료',DELETED:'삭제 보관',NONE:'미등록',VALID:'유효',ACTIVE:'유효',PENDING:'확인 대기',APPROVED:'승인 완료',REJECTED:'반려',EXPIRED:'만료',SUSPENDED:'정지'};
 function memberFacts(rows){return '<dl class="member-facts">'+rows.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value===undefined||value===null||value===''?'등록된 정보 없음':(memberInfoStatus[String(value)]||String(value)))}</dd></div>`).join('')+'</dl>';}
 async function renderMemberLookup(automatic=false){
  if(memberView!=='profiles'||!memberLookupHandle)return;
  const handle=memberLookupHandle,section=memberLookupSection,offset=memberLookupOffset,serial=++memberRenderSerial;
  const result=await api('/api/member?'+new URLSearchParams({view:'lookup',handle,section,offset:String(offset),limit:'30'}));
  if(serial!==memberRenderSerial||memberView!=='profiles'||handle!==memberLookupHandle||section!==memberLookupSection||offset!==memberLookupOffset||(automatic&&!memberCanAutoRefresh()))return;
- const position=automatic?captureScrollState(currentView):null;memberLastRefresh=Date.now();
+ const fingerprint=JSON.stringify([handle,section,offset,result]);memberLastRefresh=Date.now();if(automatic&&memberLookupFingerprint===fingerprint)return;memberLookupFingerprint=fingerprint;
+ const position=automatic?captureScrollState(currentView):null;memberRows=new Map([[result.profile.id,result.profile],...(result.items||[]).map(row=>[row.id,row])]);
  const p=result.profile;let html='<div class="member-shell member-dossier">'+memberButton('lookup.back','','회원 목록')+`<section class="member-panel"><div class="member-dossier-heading">${p.avatar?`<img src="${esc(p.avatar)}" alt="프로필 사진">`:''}<div><h2>@${esc(p.handle)}</h2><p>${esc(p.nickname)}</p></div><strong>${memberMoney(p.balance)}</strong></div>`;
+ html+='<div class="actions">'+memberButton('profile.edit',p.id,'프로필 수정')+memberButton('lookup.qr','','QR 인증 · 충전 관리')+'</div>';
  html+='<div class="member-lookup-tabs">'+memberButton('lookup.section','','등록 정보')+Object.entries(memberRecordNames).map(([key,label])=>memberButton('lookup.section',key,label+(result.counts?.[key]!==undefined?' '+result.counts[key]:''))).join('')+'</div></section>';
  if(section){
   html+=`<section class="member-panel"><h3>${esc(memberRecordNames[section])} · ${result.total}개</h3>`;
-  for(const row of result.items||[]){html+='<article class="member-record">'+(row.imageThumb?`<img class="member-record-photo" src="${esc(row.imageThumb)}" alt="게시물 사진">`:'')+memberFacts([['이름',row.title||row.nickname||row.id],...(row.handle?[['아이디','@'+row.handle]]:[]),...(row.body?[['내용',row.body]]:[]),...(row.status?[['상태',memberStatus[row.status]||row.status]]:[]),...(row.amount!==undefined?[['금액',memberMoney(row.amount)]]:[]),...(row.days?[['기간',row.days+'일']]:[]),...(row.at?[['등록',fmtTime(row.at)]]:[]),...(row.reason?[['사유',row.reason]]:[])])+'</article>';}
+  for(const row of result.items||[]){
+   if(section==='devices'){html+=memberDeviceCard(row);continue;}
+   if(section==='qr'){html+=memberQrRecord(row);continue;}
+   html+='<article class="member-record">'+(row.imageThumb?`<img class="member-record-photo" src="${esc(row.imageThumb)}" alt="게시물 사진">`:'')+memberRecordFacts(row);
+   if(section==='support')html+=memberButton('lookup.support',row.id,'상담 기록 / 답변');
+   else if(['orders','payments','posts','comments','reports','followers','following'].includes(section))html+=memberButton('lookup.manage',section+'|'+row.id,'상세 / 관리');
+   else if(section==='charges')html+=memberButton('lookup.qr','','QR 인증 · 충전 관리');
+   html+='</article>';
+  }
   if(!result.items?.length)html+='<p class="member-empty">아직 기록이 없습니다.</p>';
   html+='<div class="member-pagination">'+(offset?memberButton('lookup.prev','','이전'):'')+(result.nextOffset!==null?memberButton('lookup.next','','다음'):'')+'</div></section>';
  }else{
   html+=`<section class="member-panel"><h3>회원 정보</h3>${memberFacts([['가입',fmtTime(p.createdAt)],['소개',p.bio],['아이디 변경',p.handleEditable?'최초 1회 변경 가능':'변경 완료'],['닉네임 변경',p.nicknameChangeAt>Date.now()?fmtTime(p.nicknameChangeAt)+'부터 가능':'변경 가능'],['이용 상태',p.blocked?'이용 제한':'정상']])}</section>`;
-  const fields={name:'기기 이름',manufacturer:'제조사',product:'제품',model:'모델',os:'운영체제',architecture:'아키텍처',appVersion:'앱 버전',protocolVersion:'프로토콜',phone:'전화번호',phoneStatus:'전화번호 수집 상태',serial:'일련번호',serialStatus:'일련번호 수집 상태',imei:'IMEI',imeiStatus:'IMEI 수집 상태'};
-  for(const d of result.devices){html+=`<section class="member-panel"><h3>${esc(d.device.model||d.device.name||'등록 기기')} · ${d.online?'온라인':'오프라인'}</h3>${memberFacts([['기기 식별자',d.id],['서버',d.serverId],['최근 접속',fmtTime(d.lastSeenAt)],['출입증',d.entryPass?d.entryPass.status:'미등록'],['생체인증',d.biometric.enrolled?'등록됨':'미등록'],['최근 생체인증',fmtTime(d.biometric.verifiedAt)],['인증 횟수',d.biometric.verificationCount],['기기 인증',d.authentication.verified?'확인 완료':'미확인'],...Object.entries(fields).map(([key,label])=>[label,d.device[key]])])}<div class="actions">${d.registered?`<button data-client-action="detail" data-id="${esc(d.id)}">기기 상세 / 관리</button><button data-client-action="biometric" data-id="${esc(d.id)}">생체인증 관리</button>`:''}</div></section>`;}
-  html+='<section class="member-panel"><h3>출입증 QR 인증</h3>'+((result.qr||[]).map(q=>'<article class="member-record">'+memberFacts([['코드',q.requestId],['상태',memberStatus[q.status]||q.status],['등록',fmtTime(q.issuedAt)],['승인',fmtTime(q.approvedAt)]])+'</article>').join('')||'<p class="member-empty">등록된 인증 요청이 없습니다.</p>')+'</section>';
+  for(const d of result.devices)html+=memberDeviceCard(d);
+  html+='<section class="member-panel"><h3>출입증 QR 인증</h3>'+((result.qr||[]).map(memberQrRecord).join('')||'<p class="member-empty">등록된 인증 요청이 없습니다.</p>')+'</section>';
   html+='<section class="member-panel"><h3>고객센터</h3>'+((result.support||[]).map(t=>'<article class="member-record">'+memberFacts([['상담',t.id],['상태',t.status==='CLOSED'?'종료':t.status==='DELETED'?'삭제':'진행 중'],['대화',t.messages+'개'],['최근 변경',fmtTime(t.updatedAt)]])+`${memberButton('lookup.support',t.id,'상담 기록')}</article>`).join('')||'<p class="member-empty">상담 내역이 없습니다.</p>')+'</section>';
  }
  content.innerHTML=html+'</div>';content.querySelectorAll('[data-member-action="lookup.section"]').forEach(b=>{b.classList.toggle('primary',b.dataset.id===section);b.setAttribute('aria-pressed',String(b.dataset.id===section));});if(position)restoreScrollState(position);
 }
+
+function memberRecordFacts(row){
+ const rows=[['이름',row.title||row.nickname||row.id]];
+ const text={handle:'아이디',body:'내용',reason:'사유',memo:'메모',resolution:'처리 내용',reference:'연결된 거래',paymentId:'결제',productId:'게임',postId:'게시물',refundedBy:'환불 처리자',approvedBy:'승인자',rejectedBy:'반려 처리자',refundReason:'환불 사유'};
+ for(const [key,label]of Object.entries(text))if(row[key])rows.push([label,key==='handle'?'@'+row[key]:row[key]]);
+ if(row.status)rows.push(['상태',memberStatus[row.status]||row.status]);if(row.kind)rows.push(['거래 구분',memberStatus[row.kind]||row.kind]);
+ for(const [key,label]of [['amount','금액'],['balance','거래 후 잔액']])if(row[key]!==undefined)rows.push([label,memberMoney(row[key])]);
+ if(row.days)rows.push(['기간',row.days+'일']);if(row.messages!==undefined)rows.push(['대화',row.messages+'개']);
+ for(const [key,label]of [['at','등록'],['updatedAt','최근 변경'],['activatedAt','사용 시작'],['expiresAt','확인 / 이용 기한'],['approvedAt','승인'],['rejectedAt','반려'],['refundedAt','환불']])if(row[key])rows.push([label,fmtTime(row[key])]);
+ return memberFacts(rows);
+}
+function memberQrRecord(q){return '<article class="member-record">'+memberFacts([['코드',q.requestId],['기기',q.clientId],['상태',memberStatus[q.status]||q.status],['발급',fmtTime(q.issuedAt)],['승인',fmtTime(q.approvedAt)],['사유',q.reason]])+memberButton('lookup.qr','','QR 인증 · 충전 관리')+'</article>';}
+function memberDeviceCard(d){
+ const fields={name:'기기 이름',manufacturer:'제조사',product:'제품',model:'모델',os:'운영체제',architecture:'아키텍처',appVersion:'앱 버전',protocolVersion:'통신 버전',phone:'전화번호',phoneStatus:'전화번호 수집 상태',serial:'일련번호',serialStatus:'일련번호 수집 상태',imei:'IMEI',imeiStatus:'IMEI 수집 상태'};
+ const permissions=d.permissions?.reapprovalRequired?'권한 재승인 필요':!d.online?'접속 후 확인':d.permissions?.granted?'필수 권한 허용':'확인 필요';
+ const rows=[['기기 식별자',d.id],['별칭',d.alias],['서버',d.serverId],['최근 접속',fmtTime(d.lastSeenAt)],['출입증',d.entryPass?d.entryPass.status:'미등록'],['앱 권한',permissions],['생체인증',d.biometric.enrolled?'등록됨':'미등록'],['생체인증 등록',fmtTime(d.biometric.enrolledAt)],['최근 생체인증',fmtTime(d.biometric.verifiedAt)],['인증 횟수',d.biometric.verificationCount],['생체인증 초기화',fmtTime(d.biometric.resetAt)],['기기 인증',d.authentication.verified?'확인 완료':memberInfoStatus[d.authentication.status]||d.authentication.status],['기기 인증 등록',fmtTime(d.authentication.enrolledAt)],['최근 기기 인증',fmtTime(d.authentication.verifiedAt)],...Object.entries(fields).map(([key,label])=>[label,d.device[key]])];
+ if(d.note)rows.push(['관리자 메모',d.note]);if(d.uiState)rows.push(['화면 상태',uiText(d.uiState.status)],['화면 상태 확인',fmtTime(d.uiState.updatedAt)]);for(const [key,enabled]of Object.entries(d.flags||{}))rows.push([memberCapabilityName(key),enabled?'사용':'사용 안 함']);rows.push(['등록된 지원 기능',(d.capabilities||[]).map(memberCapabilityName).join(', ')||'미등록']);
+ return `<section class="member-panel"><h3>${esc(d.device.model||d.device.name||'등록 기기')} · ${d.online?'온라인':'오프라인'}</h3>${memberFacts(rows)}<div class="actions">${d.registered?`<button data-client-action="detail" data-id="${esc(d.id)}">기기 상세 / 관리</button><button data-client-action="biometric" data-id="${esc(d.id)}">생체인증 관리</button>`:''}</div></section>`;
+}
+function memberCapabilityName(key){return {DEVICE_HMAC:'기기 서명 인증',QR_DEVICE_APPROVAL:'QR 출입증 인증',STRONG_BIOMETRIC:'생체인증',MEMBER_HUB:'회원 서비스',SUPPORT_CENTER:'고객센터',REMOTE_COMMANDS:'원격 명령',REMOTE_DIAGNOSTICS:'진단 수집',UI_STATE:'화면 상태',CONFIG_UPDATE:'설정 동기화',AUTO_UPDATE:'자동 업데이트',DEVICE_HMAC_ENFORCE:'기기 서명 필수',ADVANCED_NOTICE:'확장 알림',PROCESS_RESULT:'처리 결과',PROTOCOL_V3_PREVIEW:'차세대 통신 시험',EVENT_SEQUENCE:'이벤트 순서 확인'}[key]||key;}

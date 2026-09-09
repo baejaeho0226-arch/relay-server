@@ -1,0 +1,72 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),os=require('os'),vm=require('vm');
+const {JSDOM,VirtualConsole}=require('jsdom');
+const root=path.resolve(__dirname,'..'),temp=fs.mkdtempSync(path.join(os.tmpdir(),'relay-fix23-dom-'));
+process.env.DATA_DIR=temp;process.env.STORAGE_ENGINE='json';
+require('../core/utils').EnsureDirs();
+const api=require('../web/webApi'),manager=require('../license/licenseManager');
+const keys=[manager.CreateLicense(30,'USER_TEXT warning online 그대로').key,manager.CreateLicense(30,'두 번째').key];
+const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
+const originalHtml=fs.readFileSync(root+'/public/index.html','utf8');
+const dom=new JSDOM(originalHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link[^>]*>/g,''),{url:'https://fixture.invalid',runScripts:'outside-only',virtualConsole:vc});
+const w=dom.window;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.matchMedia=()=>({matches:false,addListener(){}});w.EventSource=class{addEventListener(){}close(){}};
+const backend=[];
+w.fetch=async(url,options={})=>{
+ if(url==='/api/session')return {status:200,ok:true,text:async()=>JSON.stringify({role:'admin',csrf:'TEST',expiresAt:Date.now()+100000})};
+ const req=require('node:stream').Readable.from(options.body?[Buffer.from(options.body)]:[]);Object.assign(req,{url,method:options.method||'GET',headers:{},socket:{remoteAddress:'127.0.0.1'}});
+ let status,text;await api.HandleApiRequest(req,{writeHead(n){status=n;},end(t){text=t;}},{role:'admin',id:'TEST_ADMIN'});
+ backend.push({url,status});return {status,ok:status>=200&&status<300,text:async()=>text};
+};
+for(const m of originalHtml.matchAll(/<script src="\/([^?]+)\?/g))new vm.Script(fs.readFileSync(root+'/public/'+m[1],'utf8')).runInContext(dom.getInternalVMContext());
+Object.defineProperty(w.document,'hidden',{get:()=>false});
+const wait=()=>new Promise(r=>setTimeout(r,35));
+const click=async el=>{assert.ok(el);el.click();await wait();};
+
+
+(async()=>{try{
+ await wait();const store=require('../services/member/store'),state=require('../core/state'),hub=require('../services/member/service'),social=require('../services/member/social'),identity=require('../services/member/identity');
+ const account=store.Account({installationDeviceKey:'FIX23-DOM'}),other=store.Account({installationDeviceKey:'FIX23-OTHER'}),clientId='ABCDEF1234567890';
+ hub.AdminWrite('profile.save',{id:account.id,handle:'all_member',nickname:'회원 정보',bio:'소개'},'TEST');
+ state.clientIdentities.set('FIX23-DOM',{id:clientId,serverId:'',lastSeenAt:Date.now()});
+ const room={clientId,currentClientId:clientId,deviceKey:account.subject,tokenHashes:['PRIVATE_HASH'],revision:1,epoch:'TEST23',nextSeq:3,unreadAdmin:0,status:'OPEN',mode:'BOT',createdAt:Date.now(),updatedAt:Date.now(),messages:[{seq:1,role:'CLIENT',at:Date.now()-10,text:'이전 문의'},{seq:2,role:'BOT',at:Date.now(),text:'보관된 답변'}],device:{phone:'010-2300-2300',model:'테스트 휴대전화',privateToken:'NEVER_RETURN'}};
+ state.supportThreads.set(clientId,room);state.deviceCapabilities.set('CLIENT:'+clientId,new Set(['DEVICE_HMAC','QR_DEVICE_APPROVAL']));
+ state.deviceAuthStatus.set('CLIENT:'+clientId,{status:'VERIFIED',verifiedAt:Date.now(),enrolledAt:Date.now()-9999});
+ for(let i=0;i<18;i++)store.DB().news['NEWS'+i]={id:'NEWS'+i,at:Date.now(),category:'NOTICE',title:'공지'+i,published:true,revision:1};
+ store.DB().news.PRIVATE={id:'PRIVATE',at:Date.now(),title:'다른 회원 공지',audience:other.id,published:true};
+ for(let i=0;i<3;i++)store.DB().orders['ORD23'+i]={id:'ORD23'+i,accountId:account.id,at:Date.now()+i,title:'게임 '+i,status:'PAID',days:7,amount:1000};
+ assert.equal(identity.Home(account).summary.unreadNews,18,'unread count is not limited to first news page');assert.equal(identity.Home(account).recentOrders.length,2);assert.equal(identity.Home(account).recentOrders[0].id,'ORD232');
+ const own=identity.Read(account),serialized=JSON.stringify(own);for(const secret of ['PRIVATE_HASH','NEVER_RETURN',account.subject])assert.ok(!serialized.includes(secret));
+ assert.equal(own.counts.support,1);assert.equal(own.devices[0].permissions.online,false);assert.equal(own.devices[0].device.phone,'010-2300-2300');
+ assert.equal(identity.Read(account,{section:'support',threadId:clientId,limit:1}).items[0].body,'보관된 답변');assert.throws(()=>identity.Read(other,{section:'support',threadId:clientId}),/NOT_OWNER/);
+ const http=async(url,body)=>{const r=await w.fetch(url,body?{method:'POST',body:JSON.stringify(body)}:{});return {status:r.status,data:JSON.parse(await r.text())};};
+ assert.equal((await http('/api/support/%40all_member')).data.thread.messages.length,2);
+ assert.equal((await http('/api/control/features/device',{type:'CLIENT',id:'@all_member',flags:{REMOTE_COMMANDS:false}})).status,200);
+ assert.equal(require('../services/featureFlags').EffectiveFlags('CLIENT',clientId).REMOTE_COMMANDS,false);
+ const aliases=require('../web/routes/memberAliases');for(const prefix of ['/api/clients/','/api/request-recovery/clients/','/api/failover/clients/','/api/control/client/','/api/build-bindings/']){
+  const path=prefix+'%40all_member',r=aliases.Resolve(path,{},new URL('http://local'+path));assert.equal(r.pathname,prefix+clientId);
+ }
+ state.clientIdentities.set('SECOND-DEVICE',{id:'2222222222222222',serverId:''});state.clientInstallations.set(account.subject,{authorized:[{clientId:'2222222222222222'}]});
+ assert.throws(()=>identity.ResolveClient('@all_member'),/MEMBER_DEVICE_SELECT/);assert.equal(identity.ResolveClient('@all_member',clientId),clientId);assert.throws(()=>identity.ResolveClient('@all_member','3333333333333333'),/NOT_OWNER/);state.clientInstallations.delete(account.subject);
+ w.switchView('member-profiles');await w.renderMember();const content=w.document.querySelector('#content');
+ await click(content.querySelector(`[data-member-action="profile.lookup"][data-id="${account.id}"]`));
+ assert.ok(content.textContent.includes('앱 권한'));assert.ok(content.textContent.includes('기기 서명 인증'));assert.ok(content.textContent.includes('010-2300-2300'));
+ const before=content.firstChild;await w.renderMember(true);assert.equal(content.firstChild,before,'unchanged automatic response preserves DOM');
+ await click(content.querySelector('[data-member-action="profile.edit"]'));assert.equal(w.document.querySelector('[data-modal-field="handle"]').readOnly,true);assert.equal(w.document.querySelector('[data-modal-field="nickname"]').readOnly,true);await click(w.document.querySelector('#modal-cancel'));
+ await click(content.querySelector('[data-member-action="lookup.section"][data-id="support"]'));assert.ok(content.querySelector('[data-member-action="lookup.support"]'));
+ await click(content.querySelector('[data-member-action="lookup.section"][data-id="orders"]'));await click(content.querySelector('[data-member-action="lookup.manage"]'));assert.equal(content.querySelectorAll('tbody tr').length,1);assert.equal(content.querySelector('#member-search').value,'ORD232');
+ const {PNG}=require('pngjs'),png=new PNG({width:16,height:16});png.data.fill(255);const image='data:image/png;base64,'+PNG.sync.write(png).toString('base64');
+ const post=store.Atomic(()=>social.Post(account,{body:'',image})).post;
+ w.switchView('member-posts');await w.renderMember();await click(content.querySelector(`[data-member-action="post.edit"][data-id="${post.id}"]`));
+ assert.ok(w.document.querySelector('[data-modal-preview="image"]').src.startsWith('data:image/'));
+ await click(w.document.querySelector('[data-modal-image-remove="image"]'));w.document.querySelector('[data-modal-field="body"]').value='사진에서 글로 수정';await click(w.document.querySelector('#modal-confirm'));
+ assert.equal(store.DB().posts[post.id].image,'');assert.equal(store.DB().posts[post.id].body,'사진에서 글로 수정');
+ hub.AdminWrite('post.save',{id:post.id,body:'',image,revision:1},'TEST');hub.AdminWrite('content.action',{table:'posts',operation:'delete',ids:[post.id]},'TEST');await w.renderMember();
+ await click(content.querySelector(`[data-member-action="content.restore"][data-id="${post.id}"]`));await click(w.document.querySelector('#modal-confirm'));assert.equal(store.DB().posts[post.id].deleted,false);assert.ok(store.DB().posts[post.id].image);
+ const charge=require('../services/member/charges').Issue(account),foreign=require('../services/member/charges').Issue(other);
+ w.switchView('member-profiles');await w.renderMember();await click(content.querySelector(`[data-member-action="profile.lookup"][data-id="${account.id}"]`));await click(content.querySelector('[data-member-action="lookup.qr"]'));
+ assert.equal(content.querySelector('#qr-member-query').value,'@all_member');assert.ok(content.textContent.includes(charge.id));assert.ok(!content.querySelector('tbody').textContent.includes(foreign.id));
+ const game=hub.AdminWrite('product.save',{title:'사진 게임',description:'소개',accessType:'TYPE1',published:true,image,plans:[1,7,15,30].map(days=>({days,price:1000})),details:{genre:'레이싱',developer:'제작사',platform:'Windows'}},'TEST');
+ store.DB().products[game.id].details.minimum={cpu:'old'};const detail=hub.AdminRead({view:'products',id:game.id}).items[0];assert.equal(detail.details.minimum,undefined);
+ w.switchView('member-products');await w.renderMember();assert.ok(content.querySelector('[data-category-tone="blue"]'));await click(content.querySelector('[data-member-action="product.edit"]'));assert.ok(w.document.querySelector('[data-modal-preview="image"]'));assert.equal(w.document.querySelector('[data-modal-field="minimum_cpu"]'),null);await click(w.document.querySelector('#modal-cancel'));
+ assert.equal(errors.length,0,errors.join('\n'));console.log('FIX23 WORKFLOWS PASS: complete registered records and private support paging, all alias paths/multiple devices, readonly profile controls, unchanged refresh DOM, filtered management links, photo edit/restore, member QR filtering, game metadata and unread counts');
+}finally{dom.window.close();fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

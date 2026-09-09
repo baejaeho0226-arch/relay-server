@@ -1,5 +1,5 @@
 'use strict';
-let qrRenderSerial=0;
+let qrRenderSerial=0,qrMemberQuery='';
 
 function fileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -27,7 +27,8 @@ async function renderQrAuth() {
     <div class="qr-approval-main"><span class="small-note">요청 서명 검증 완료</span><strong>${wallet?'잔액 충전 · '+esc(scanned.memberHandle||scanned.memberName):'출입증 · '+esc(scanned.memberHandle||scanned.clientId)}</strong><div class="code">${esc(scanned.requestId)}</div><div class="qr-approval-meta"><span>만료 ${esc(fmtTime(scanned.expiresAt))}</span><span>${wallet?'회원 '+esc(scanned.accountId):'기기 '+esc(scanned.clientId)}</span><span>${wallet?'충전 잔액은 기간 없음':'출입증은 기간 없음'}</span></div></div>
     <div class="qr-approval-actions"><button id="qr-auth-approve-btn" class="primary">${wallet?'잔액 충전':'출입증 승인'}</button><button id="qr-auth-clear-btn" class="ghost">지우기</button></div>
   </div>` : '<div class="qr-scan-empty">QR 사진을 선택하면 서버가 이미지, 서명, 일회용 토큰과 기기 결합을 모두 검증합니다.</div>';
-  const rows = requests.map(item => `<tr><td>${item.purpose==='WALLET'?'잔액 충전':'출입증'}</td><td>${badge(item.status)}</td><td class="code">${esc(item.requestId)}</td><td>${esc(item.memberHandle||item.memberName||item.clientId)}</td><td>${esc(fmtTime(item.issuedAt))}</td><td>${esc(fmtTime(item.expiresAt))}</td><td>${item.amount?Number(item.amount).toLocaleString('ko-KR')+'원':'—'}</td><td>${esc(item.approvedBy||item.rejectedBy||'-')}</td><td>${esc(item.memo||item.reason||'-')}</td><td>${item.status==='PENDING'?`<button class="danger" data-qr-reject="${esc(item.requestId)}" data-qr-purpose="${item.purpose}">거절</button>`:'—'}</td></tr>`).join('');
+  const query=qrMemberQuery.trim().toLowerCase();const matches=requests.filter(item=>!query||[item.memberHandle,item.memberName,item.clientId,item.requestId].some(value=>String(value||'').toLowerCase().includes(query)));
+  const rows = matches.map(item => `<tr><td>${item.purpose==='WALLET'?'잔액 충전':'출입증'}</td><td>${badge(item.status)}</td><td class="code">${esc(item.requestId)}</td><td>${esc(item.memberHandle||item.memberName||item.clientId)}</td><td>${esc(fmtTime(item.issuedAt))}</td><td>${esc(fmtTime(item.expiresAt))}</td><td>${item.amount?Number(item.amount).toLocaleString('ko-KR')+'원':'—'}</td><td>${esc(item.approvedBy||item.rejectedBy||'-')}</td><td>${esc(item.memo||item.reason||'-')}</td><td>${item.status==='PENDING'?`<button class="danger" data-qr-reject="${esc(item.requestId)}" data-qr-purpose="${item.purpose}">거절</button>`:'—'}</td></tr>`).join('');
   content.innerHTML = `${secretWarning}<div class="cards qr-summary-cards">
     <div class="card"><div class="stat-label">대기 중</div><div class="stat-value">${summary.pending}</div><div class="stat-sub">관리자 스캔 대기</div></div>
     <div class="card"><div class="stat-label">승인됨</div><div class="stat-value">${summary.approved}</div><div class="stat-sub">일회용 승인 완료</div></div>
@@ -43,8 +44,10 @@ async function renderQrAuth() {
     </div></div>
     <div class="section-card"><div class="section-head"><h3>검증 결과</h3><span class="small-note">출입증과 충전 QR을 같은 화면에서 확인합니다.</span></div><div class="section-body">${scannedCard}</div></div>
   </div>
-  <div class="section-card"><div class="section-head"><h3>QR 인증 · 충전 이력</h3></div><div class="table-wrap"><table><thead><tr><th>용도</th><th>상태</th><th>요청</th><th>회원 · 기기</th><th>발급됨</th><th>QR 확인 기한</th><th>충전 금액</th><th>운영자</th><th>메모 · 사유</th><th>작업</th></tr></thead><tbody>${rows||'<tr><td colspan="10" class="empty">QR 요청이 없습니다.</td></tr>'}</tbody></table></div></div>`;
+  <div class="section-card"><div class="section-head"><h3>QR 인증 · 충전 이력</h3><form id="qr-member-search" class="member-filter"><input type="search" id="qr-member-query" value="${esc(qrMemberQuery)}" placeholder="@아이디 · 기기 · QR 코드" aria-label="QR 회원 검색"><button type="submit">검색</button><button type="button" id="qr-member-clear">전체 보기</button></form></div><div class="table-wrap"><table><thead><tr><th>용도</th><th>상태</th><th>요청</th><th>회원 · 기기</th><th>발급됨</th><th>QR 확인 기한</th><th>충전 금액</th><th>운영자</th><th>메모 · 사유</th><th>작업</th></tr></thead><tbody>${rows||'<tr><td colspan="10" class="empty">QR 요청이 없습니다.</td></tr>'}</tbody></table></div></div>`;
 
+  document.getElementById('qr-member-search').onsubmit=event=>{event.preventDefault();qrMemberQuery=document.getElementById('qr-member-query').value;renderQrAuth().catch(e=>toast(e.message,true));};
+  document.getElementById('qr-member-clear').onclick=()=>{qrMemberQuery='';renderQrAuth().catch(e=>toast(e.message,true));};
   const fileInput = document.getElementById('qr-auth-file');
   if (fileInput) fileInput.onchange = async () => {
     const file = fileInput.files && fileInput.files[0];
