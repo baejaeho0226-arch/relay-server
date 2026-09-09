@@ -1,14 +1,15 @@
 'use strict';
 const entry=require('./qrApproval'),charges=require('./member/charges'),store=require('./member/store');
-function ChargeRecord(row){const request=charges.Public(row),p=store.ProfileById(row.accountId);return {...request,purpose:'WALLET',requestId:row.id,clientId:row.accountId,memberName:p?.nickname||'회원',issuedAt:row.at};}
-function List(){return [...entry.List().map(x=>({...x,purpose:'ENTRY'})),...Object.values(store.DB().chargeRequests).map(ChargeRecord)].sort((a,b)=>b.issuedAt-a.issuedAt);}
+function ChargeRecord(row){const request=charges.Public(row),p=store.ProfileById(row.accountId);return {...request,purpose:'WALLET',requestId:row.id,clientId:row.accountId,memberName:p?.nickname||'회원',memberHandle:p?'@'+store.Handle(p):'',issuedAt:row.at};}
+function EntryRecord(row,index=require('./member/identity').MemberIndex()){const p=index.get(row.clientId);return {...row,purpose:'ENTRY',memberHandle:p?'@'+store.Handle(p):'',memberName:p?.nickname||''};}
+function List(){const members=require('./member/identity').MemberIndex();return [...entry.List().map(x=>EntryRecord(x,members)),...Object.values(store.DB().chargeRequests).map(ChargeRecord)].sort((a,b)=>b.issuedAt-a.issuedAt);}
 function Summary(){const all=List();return {...entry.Summary(),pending:all.filter(x=>x.status==='PENDING').length,approved:all.filter(x=>x.status==='APPROVED').length,rejected:all.filter(x=>x.status==='REJECTED').length};}
 function Scan(imageData){
  const payload=require('./qrImageDecoder').DecodeQrImage(imageData);
  if(/^(QRC1|RCH1)\./.test(payload)){
   const result=charges.Inspect(payload);return {...result,purpose:'WALLET',request:ChargeRecord(result.request)};
  }
- const result=entry.InspectPayload(payload);return {...result,purpose:'ENTRY',request:{...result.request,purpose:'ENTRY'}};
+ const result=entry.InspectPayload(payload);return {...result,purpose:'ENTRY',request:EntryRecord(result.request)};
 }
 function Approve(body,actor){
  if(body.purpose==='WALLET'){

@@ -2,7 +2,7 @@
 // Deterministic answers owned by Relay. No external model or payment action runs here.
 const crypto=require('node:crypto'),state=require('../core/state');
 const DEFAULTS=Object.freeze([
- {id:'FAQ_CHARGE',question:'QR로 잔액을 충전하려면 어떻게 하나요?',answer:'마이페이지의 충전 잔액 안에서 QR 충전을 누르세요. QR 화면을 캡처해 관리자에게 전달하면 관리자가 금액을 확인한 뒤 적립합니다. 적립된 잔액에는 만료 기간이 없습니다. 이 봇은 충전을 승인하거나 금액을 변경하지 않습니다.',keywords:['충전','잔액','입금','적립']},
+ {id:'FAQ_CHARGE',question:'QR로 잔액을 충전하려면 어떻게 하나요?',answer:'홈의 전체 메뉴에서 QR 충전을 누르세요. QR 화면을 캡처해 관리자에게 전달하면 관리자가 금액을 확인한 뒤 적립합니다. 적립된 잔액에는 만료 기간이 없습니다. 이 봇은 충전을 승인하거나 금액을 변경하지 않습니다.',keywords:['충전','잔액','입금','적립']},
  {id:'FAQ_GAME',question:'게임 이용권은 어떻게 구매하나요?',answer:'게임 탭에서 게임을 열고 이용 기간과 금액을 선택한 뒤 구매를 확인하세요. 1일·7일·15일·30일 중 판매 중인 기간을 충전 잔액으로 구매할 수 있습니다. 이용 기간은 메뉴의 이용권 내역에서 이용하기를 처음 누른 때부터 시작합니다.',keywords:['게임','구매','기간','이용권','가격']},
  {id:'FAQ_QR',question:'출입증 QR과 충전 QR은 무엇이 다른가요?',answer:'출입증 QR은 기기 사용 승인을 위한 코드이고, 충전 QR은 잔액 적립을 위한 코드입니다. 출입증은 QRA1., 충전은 QRC1.으로 구분됩니다. 화면에 안내된 용도로 캡처해 전달하세요. QR 확인 시간이 지나면 새 QR을 사용해주세요.',keywords:['출입증','qr','큐알','승인','코드']},
  {id:'FAQ_REFUND',question:'결제 내역 확인이나 환불 문의는 어디서 하나요?',answer:'메뉴의 결제 내역에서 충전·구매·환불 기록을 확인할 수 있습니다. 환불이나 결제 금액 확인은 상담원 연결로 문의해주세요. 봇은 결제 기록을 변경하거나 환불을 확정하지 않습니다.',keywords:['환불','결제','차감','취소']},

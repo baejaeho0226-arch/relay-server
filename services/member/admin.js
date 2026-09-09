@@ -21,11 +21,12 @@ function Counter(row){
 }
 function Read(body={}){
     const db=s.DB(),view=body.view||'overview';
-    const table={charges:()=>Object.values(db.chargeRequests).map(require('./charges').Public),products:()=>Object.values(db.products).map(commerce.PublicGame),news:()=>Object.values(db.news),orders:()=>Object.values(db.orders).map(commerce.PublicOrder),ledger:()=>Object.values(db.ledger),profiles:()=>Object.values(db.profiles).map(p=>({...s.PublicProfile(p,true),blocked:p.blocked})),posts:()=>Object.values(db.posts).map(post=>({...post,author:social.Author(post.accountId)})),comments:()=>Object.values(db.comments).map(c=>({...c,author:social.Author(c.accountId)})),reports:()=>Object.values(db.reports),analytics:()=>Object.values(db.viewCounters).filter(x=>x.kind==='post').map(Counter)};
+    if(view==='lookup'){const p=s.Resolve(body.handle||body.id||body.q);if(!p)s.Fail('MEMBER_NOT_FOUND');return require('./identity').Read(p,body,true);}
+    const table={charges:()=>Object.values(db.chargeRequests).map(require('./charges').Public),products:()=>Object.values(db.products).map(p=>commerce.PublicGame(p,!!body.id)),news:()=>Object.values(db.news).map(row=>{if(body.id)return row;const {image,...rest}=row;return rest;}),orders:()=>Object.values(db.orders).map(commerce.PublicOrder),ledger:()=>Object.values(db.ledger),profiles:()=>Object.values(db.profiles).map(p=>({...s.PublicProfile(p,true),blocked:p.blocked})),posts:()=>Object.values(db.posts).map(post=>{const {image,imageFeed,...rest}=post;return {...rest,author:social.Author(post.accountId)};}),comments:()=>Object.values(db.comments).map(c=>({...c,author:social.Author(c.accountId)})),reports:()=>Object.values(db.reports),analytics:()=>Object.values(db.viewCounters).filter(x=>x.kind==='post').map(Counter)};
     if(['coins','topups'].includes(view))s.Fail('TOPUP_UNAVAILABLE');
     const settings={};
     if(table[view]){
-        const rows=Filter(table[view](),body).map(row=>({...row,...(KIND[view]?{views:s.ViewCount(KIND[view],row.id)}:{})}));
+        const rows=Filter(table[view]().map(row=>{const member=s.ProfileById(row.accountId);return member?{...row,memberHandle:'@'+s.Handle(member)}:row;}),body).map(row=>({...row,...(KIND[view]?{views:s.ViewCount(KIND[view],row.id)}:{})}));
         rows.sort(body.sort==='views'?(a,b)=>(b.views||b.count||0)-(a.views||a.count||0):(a,b)=>(b.updatedAt||b.at||b.createdAt||0)-(a.updatedAt||a.at||a.createdAt||0));
         return {...s.Page(rows,body,50),settings};
     }
@@ -66,7 +67,7 @@ function Write(action,body,actor){
     return s.Atomic(()=>{
         const db=s.DB();
         if(action==='profile.block'||action==='profile.save'){
-            const p=s.ProfileById(body.id);if(!p)s.Fail('ACCOUNT_REQUIRED');
+            const p=s.Resolve(body.memberHandle||body.id);if(!p)s.Fail('ACCOUNT_REQUIRED');
             if(action==='profile.block')p.blocked=body.blocked===true;else social.SaveProfile(p,body);
             return {...s.PublicProfile(p,true),blocked:p.blocked};
         }

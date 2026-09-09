@@ -26,7 +26,12 @@ function Account(c){
  if(!p)return Atomic(()=>{p={id:Id('USR'),subject,nickname:'회원 '+crypto.randomBytes(2).toString('hex').toUpperCase(),bio:'',avatar:'',avatarRevision:0,balance:0,createdAt:Date.now(),readNewsAt:0,blocked:false};DB().profiles[subject]=p;return p;});
  return p;
 }
-function PublicProfile(p,own=false){return {id:p.id,nickname:p.nickname,bio:p.bio,avatar:own?p.avatar:(p.avatarThumb||p.avatar),avatarRevision:p.avatarRevision,profileRevision:p.profileRevision||p.avatarRevision||0,posts:Object.values(DB().posts).filter(x=>x.accountId===p.id&&!x.deleted&&!x.hidden).length,...require('./follows').Counts(p.id),...(own?{balance:p.balance,createdAt:p.createdAt}: {})};}
+function DefaultHandle(p){return 'user_'+p.id.replace(/^USR-/, '').slice(0,12).toLowerCase();}
+function Handle(p){return p.handle||DefaultHandle(p);}
+function NormalizeHandle(value){const v=String(value||'').trim().replace(/^@/,'').toLowerCase();if(!/^[a-z0-9_][a-z0-9_.]{2,23}$/.test(v))Fail('HANDLE_INVALID');return v;}
+function Resolve(value){if(typeof value!=='string')return;return ProfileById(value)||Object.values(DB().profiles).find(p=>[Handle(p),DefaultHandle(p)].includes(value.trim().replace(/^@/,'').toLowerCase()));}
+function PublicAvatar(p){if(!p.avatar)return '';if(p.avatarThumb&&p.avatarThumb.length<=16100)return p.avatarThumb;try{return p.avatarThumb=require('./social').AvatarThumb(p.avatar);}catch(_){return '';}}
+function PublicProfile(p,own=false){return {id:p.id,handle:Handle(p),nickname:p.nickname,bio:p.bio,avatar:own?p.avatar:PublicAvatar(p),avatarRevision:p.avatarRevision,profileRevision:p.profileRevision||p.avatarRevision||0,posts:Object.values(DB().posts).filter(x=>x.accountId===p.id&&!x.deleted&&!x.hidden).length,...require('./follows').Counts(p.id),...(own?{balance:p.balance,createdAt:p.createdAt,handleEditable:!p.handleChangedAt,nicknameChangeAt:p.nicknameChangedAt?p.nicknameChangedAt+30*86400000:0}: {})};}
 function ViewCount(kind,id){return DB().viewCounters?.[kind+':'+id]?.count||0;}
 function ProfileById(id){return Object.values(DB().profiles).find(p=>p.id===id);}
 function Page(rows,body={},max=12){const offset=Math.max(0,Math.min(100000,Number(body.offset)||0));const limit=Math.max(1,Math.min(max,Number(body.limit)||max));return {items:rows.slice(offset,offset+limit),total:rows.length,nextOffset:offset+limit<rows.length?offset+limit:null};}
@@ -45,4 +50,4 @@ function Ledger(p,amount,kind,reference){
  const next=p.balance+amount;if(!Number.isSafeInteger(next)||next<0||next>100000000)Fail('BALANCE_INVALID');
  p.balance=next;const id=Id('PAY');const row={id,accountId:p.id,amount,balance:next,kind,reference,at:Date.now()};DB().ledger[id]=row;return row;
 }
-module.exports={Subject,DB,Empty,Import,Fail,Text,Money,Id,Account,ProfileById,PublicProfile,ViewCount,Page,Atomic,Operation,Ledger};
+module.exports={Handle,NormalizeHandle,Resolve,Subject,DB,Empty,Import,Fail,Text,Money,Id,Account,ProfileById,PublicProfile,ViewCount,Page,Atomic,Operation,Ledger};
