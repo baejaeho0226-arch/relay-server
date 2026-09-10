@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'fix25';
+const WEB_UI_REVISION = 'fix26';
 const menuToggle = document.getElementById('menu-toggle');
 function closeMobileMenu() {
   app.classList.remove('menu-open');
@@ -278,9 +278,9 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.14.0'} · 화면 ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.15.0'} · 화면 ${WEB_UI_REVISION}`;
   } catch (_) {
-    webVersionLabel.textContent = `웹 v4.14.0 · 화면 ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v4.15.0 · 화면 ${WEB_UI_REVISION}`;
   }
 }
 
