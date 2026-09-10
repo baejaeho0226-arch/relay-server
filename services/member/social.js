@@ -24,7 +24,15 @@ function AvatarThumb(value){
 }
 function SaveProfile(p,body){const revision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1;const nickname=s.Text(body.nickname,24,true),now=Date.now();if(nickname!==p.nickname){if(p.nicknameChangedAt&&now<p.nicknameChangedAt+30*86400000)s.Fail('NICKNAME_COOLDOWN');p.nickname=nickname;p.nicknameChangedAt=now;}if(body.handle!==undefined){const handle=s.NormalizeHandle(body.handle);if(handle!==s.Handle(p)){if(p.handleChangedAt)s.Fail('HANDLE_LOCKED');if(s.Resolve(handle))s.Fail('HANDLE_TAKEN');p.handle=handle;p.handleChangedAt=now;}}p.bio=s.Text(body.bio,160);if(body.avatar!==undefined){p.avatar=Avatar(body.avatar);p.avatarThumb=AvatarThumb(p.avatar);p.avatarRevision++;}p.profileRevision=revision;return {profile:s.PublicProfile(p,true),publicProfile:s.PublicProfile(p)};}
 function Author(id){const p=s.ProfileById(id);return p?s.PublicProfile(p):{id,nickname:'탈퇴 회원',avatar:''};}
-function News(p,body={}){return s.Page(Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at).map(x=>({...Object.fromEntries(Object.entries(x).filter(([k])=>k!=='image'&&(!body.summary||k!=='body'))),unread:(p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1)})),body);}
+function News(p,body={}){
+ const rows=Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category))
+  .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at);
+ return s.Page(rows.map(x=>({
+  ...Object.fromEntries(Object.entries(x).filter(([k])=>k!=='image'&&(!body.summary||k!=='body'))),
+  views:s.ViewCount('news',x.id),
+  unread:(p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1)
+ })),body);
+}
 function Article(p,body){
  const row=s.DB().news[body.id];
  if(!row||row.deleted||!row.published||(row.publishAt&&row.publishAt>Date.now())||(row.audience&&row.audience!==p.id))s.Fail('NEWS_NOT_FOUND');
