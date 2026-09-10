@@ -142,7 +142,7 @@ async function run() {
     assert.ok(!apk.includes('TBiometricStrength.DeviceCredential'));
     assert.ok(apk.includes('FBiometricLaunchTimer.Interval := 350'));
     assert.ok(apk.includes('procedure TForm1.QueueBiometricAuthentication'));
-    assert.ok(apk.includes('FBiometricFingerprint: TImage'));
+    assert.ok(apk.includes('FBiometricFingerprint: TSkSvg'));
     assert.ok(!apk.includes('FBiometricIcon: TLabel'));
     assert.ok(apk.includes('FBiometricProgressTimer.Interval := 400'));
     assert.ok(apk.includes('SetBiometricProgress(100)'));

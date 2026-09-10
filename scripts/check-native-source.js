@@ -32,4 +32,5 @@ assert.doesNotMatch(social,/Row\('닫기'/);assert.doesNotMatch(read('ApkWinSock
 assert.doesNotMatch(read('ApkWinSock.Member.Feed.inc'),/'reply','reply\|'/);
 assert.match(read('ApkWinSock.Member.Feed.inc'),/'bubble','reply\|'/);
 assert.match(social,/GifView\.LoadFrames\(GifData\)/);
+require('./check-native-theme').Check(apk);
 console.log('Native source checks passed (encoding, includes, declarations and lifecycle invariants; Delphi compilation not run).');

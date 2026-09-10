@@ -29,8 +29,13 @@ try{
  const product=admin('product.save',{title:'쇼핑 상품',description:'테스트',accessType:'TYPE2',price:2000,days:30,stock:2,published:true});
  assert.equal(run(a,'product',{id:product.id}).product.price,undefined);
  fail(()=>run(a,'purchase',{productId:product.id,expectedPrice:2000}),'GAME_PLAN_INVALID');assert.equal(run(a,'me').profile.balance,10000);
- // No screen/product/news/profile/comment view fields or new counters are exposed.
- assert.equal(run(a,'catalog').items[0].views,1);assert.equal(run(a,'news').items[0].views,undefined);assert.equal(run(a,'me').profile.views,undefined);
+ // Content lists expose their existing counters; listing does not count as opening.
+ assert.equal(run(a,'catalog').items[0].views,1);
+ const newsViews=run(a,'news').items;
+ assert.equal(newsViews.find(x=>x.id===n1.id).views,1);
+ assert.equal(newsViews.find(x=>x.id===n2.id).views,0);
+ assert.equal(newsViews.find(x=>x.id===privateNews.id).views,0);
+ assert.equal(run(a,'me').profile.views,undefined);
  fail(()=>run(a,'view',{screen:'news',kind:'news',id:n1.id}),'UNKNOWN_ACTION');
  const post=run(a,'post.create',{body:'원문'}).post;const comment=run(b,'comment.create',{postId:post.id,body:'댓글'}).comment;
  run(a,'feed');run(a,'feed');assert.equal(s.ViewCount('post',post.id),1);run(b,'feed');assert.equal(s.ViewCount('post',post.id),2);
@@ -47,10 +52,10 @@ try{
  admin('post.save',{id:post.id,body:'관리자 수정',revision:1});fail(()=>run(a,'post.edit',{...update,revision:1}),'CONTENT_CHANGED');
  admin('content.action',{table:'posts',id:post.id,operation:'hide'});assert.equal(run(a,'feed').total,0);fail(()=>run(a,'post.edit',{...update,revision:2}),'POST_NOT_FOUND');
  admin('content.action',{table:'posts',id:post.id,operation:'show'});run(a,'post.delete',{id:post.id});fail(()=>run(a,'post.edit',{...update,revision:4}),'POST_NOT_FOUND');
- // Historical counters are ignored outside feed posts, without rewriting durable snapshots.
+ // Historical screen counters remain excluded, without rewriting durable snapshots.
  s.DB().viewCounters['screen:news']={kind:'screen',id:'news',count:999};
  const overview=hub.AdminRead({view:'overview'});assert.equal(overview.postViews,3);assert.equal(overview.pageViews,undefined);assert.ok(overview.topContent.every(x=>['post','news','product'].includes(x.kind)));
  for(const view of ['news','profiles','comments'])assert.ok(hub.AdminRead({view}).items.every(x=>x.views===undefined));
  admin('profile.block',{id:pb.id,blocked:true});fail(()=>run(b,'feed'),'ACCOUNT_BLOCKED');
- console.log('FIX15 MEMBER PASS: deposits disabled, financial history retained, per-article unread revisions, feed-only daily views, owner editing, concurrent conflicts, idempotency and atomic rollback');
+ console.log('FIX15 MEMBER PASS: deposits disabled, financial history retained, per-article unread revisions, content views without profile/comment counters, owner editing, concurrent conflicts, idempotency and atomic rollback');
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
