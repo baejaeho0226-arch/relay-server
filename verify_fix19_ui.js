@@ -32,7 +32,7 @@ assert.ok(dashboard.includes('OnChangeTracking:=HubCommentChanged'));
 assert.ok(dashboard.includes('TApkTapRectangle(FHubCommentSend).TouchScope:=nil'));
 assert.ok(motion.includes('LabelText.SetBounds(CountX,0,W-CountX-6,H)'));assert.ok(motion.includes('LabelText.TextSettings.VertAlign:=TTextAlign.Center'));
 assert.ok(motion.includes('LabelText.TextSettings.WordWrap:=False'));assert.ok(motion.includes('IconBox.SetBounds(IconX,(H-22)/2,22,22)'));
-assert.ok(feed.includes('W:=Min(64,(C.Width-24)/3)'));assert.ok(feed.includes('12+W,Y,W,48'));
+assert.ok(feed.includes('W:=Min(66,(C.Width-76)/3)'));assert.ok(feed.includes('10+W,Y,W,44'));
 assert.ok(!feed.includes("'전체 피드'"));assert.ok(!feed.includes('feed.filter'));assert.ok(!read('ApkWinSock.Member.Actions.inc').includes('feed.filter'));
 assert.ok(!flow.includes("Body.AddPair('following'"));
 assert.ok(feed.includes("'팔로우'"));assert.ok(feed.includes('HubRenderFollows'));

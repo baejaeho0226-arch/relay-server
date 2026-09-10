@@ -10,7 +10,7 @@ assert.ok(flow.indexOf('FHubPlanCombo.OnChange:=nil')<flow.indexOf('FreeAndNil(F
 assert.ok(!motion.includes('HubPlanPopupStyle'));assert.ok(!media.includes('Card.TagObject'));assert.ok(!read('ApkWinSock.Member.Widgets.inc').includes('Result.TagObject'));
 assert.ok(media.includes("TControl(Child).TagString='member-card-shadow'"));
 assert.ok(!news.includes('HubGameSpecs'));assert.ok(!news.includes("'minimum'")&&!news.includes("'recommended'"));
-assert.ok(news.includes('HubCategoryStripe'));assert.ok(news.includes('C.Width-65,18,47,25'));assert.ok(news.includes('HubCard(H+107)'));
+assert.ok(news.includes('HubCategoryStripe'));assert.ok(news.includes('C.Width-65,18,47,25'));assert.ok(news.includes('HubCard(H+133)'));
 assert.ok(news.includes('18+ImageW+14'));assert.ok(news.includes('ImageW,ImageW*1.5'));assert.ok(news.includes("HubText(Item,'description')"));
 assert.ok(dashboard.includes("FHubView='menu' then Title:='홈'"));assert.ok(!dashboard.includes('FHubHeaderMenuIcon.Visible'));
 assert.ok(dashboard.includes("FHubHeaderAction.Visible:=(FHubView='feed') or (FHubView='me')"));assert.ok(dashboard.includes("MemberSvg('hamburger')"));assert.ok(dashboard.includes('FHubTabDivider.SetBounds(0,0,W,0.7)'));

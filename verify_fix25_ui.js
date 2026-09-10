@@ -1,0 +1,30 @@
+'use strict';
+// Static native contracts only. Does not compile Delphi or execute Android UI.
+require('./verify_sources');require('./verify_fix22_ui');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const dir=path.join(__dirname,'ApkWinSock_Android64'),read=n=>fs.readFileSync(path.join(dir,n),'utf8');
+const flow=read('ApkWinSock.Member.Flow.inc'),social=read('ApkWinSock.Member.Social.inc'),feed=read('ApkWinSock.Member.Feed.inc'),compose=read('ApkWinSock.Member.Compose.inc');
+const news=read('ApkWinSock.Member.NewsShop.inc'),actions=read('ApkWinSock.Member.Actions.inc'),widgets=read('ApkWinSock.Member.Widgets.inc'),motion=read('ApkWinSock.Member.Motion.inc');
+assert.ok(flow.includes("Data:=HubObject(HubCached(Action),Action)"));assert.ok(flow.indexOf('Data:=HubObject(HubCached(Action),Action)')<flow.indexOf("else if FHubView='article' then HubRenderArticle"));
+for(const source of [news,feed])assert.ok(source.includes('HubRelativeTime('));assert.ok(widgets.includes('DateTimeToUnix(Now,False)'));
+assert.ok(news.includes("Plans:=HubArray(FHubSelected,'plans')"));assert.ok(!news.includes('Periods:'));assert.ok(!motion.includes('Periods:'));assert.ok(!news.includes("'official'"));
+for(const action of ['heart|','comments|','repost|','more|post|','comment.heart|','reply|','more|comment|'])assert.ok(feed.includes(action),action);
+assert.ok(!feed.includes("'dislike'")&&!feed.includes("'delete.post|'")&&!feed.includes("'edit.post|'"));
+assert.ok(feed.includes("if not Own then begin"));assert.ok(feed.includes("HubBool(Item,'isPostAuthor')"));
+const comments=feed.split('procedure TForm1.HubRenderComments')[1].split('procedure TForm1.HubRenderFollows')[0];assert.ok(!comments.includes("'followers'")&&!comments.includes("'following'"));
+for(const key of ['bookmark','block','report','edit','trash'])assert.ok(social.includes("'"+key+"'"));
+assert.ok(social.indexOf("if FHubView='comments' then begin Data:=HubObject(HubCached('thread'),'post')")<social.indexOf("Result:=HubFind('feed',ID)"));
+assert.ok(read('ApkWinSock.Member.Purchase.inc').includes('var Name:string; Pair:TJSONPair; Value:TJSONValue;'));
+assert.ok(social.includes('FHubOverlay:=TLayout.Create(FHubPage)'));assert.ok(social.includes("FMember.Request('photo'"));assert.ok(social.includes("HubText(Photo,'id')<>FHubPhotoPostID"));
+assert.ok(social.includes('B.OnClick:=HubImageClick'));assert.ok(feed.includes("Header:=HubTextAction(C,'','member|'"));
+assert.ok(read('ApkWinSock.Service.inc').indexOf('FHubOverlay:=nil')<read('ApkWinSock.Service.inc').indexOf('FreeAndNil(FHubPage)'));
+assert.ok(flow.includes('(Assigned(FHubOverlay) and FHubOverlay.Visible) or FHubPull.Dragging'));assert.ok(read('ApkWinSock.Dashboard.inc').includes('HubCloseOverlay(nil);Exit;end;'));
+for(const action of ['post.photo.remove','post.gif.remove','gifs','post.photo','post.poll'])assert.ok(compose.includes("'"+action+"'"));
+assert.ok(compose.includes('FHubMemo.SetBounds'));assert.ok(compose.includes('FHubEdits[0].MaxLength:=90'));assert.ok(actions.includes('HubPostExtras(Body)'));
+for(const field of ['gif','poll','pollEnabled'])assert.ok(flow.includes("Obj.AddPair('"+field+"'"));assert.ok(social.includes('HubSaveComposeMedia'));
+assert.ok(read('ApkMemberGif.pas').includes('FTimer.Enabled:=False;FTimer.OnTimer:=nil'));assert.ok(read('ApkMemberInput.pas').includes('Scope.BindScroll(Scroll)'));
+assert.ok(read('ApkWinSock.Support.Ui.inc').includes('FSupportInfoShadow.SetBounds(16,66,W-32,InfoH)'));assert.ok(!read('ApkWinSock.Support.Messages.inc').includes('FSupportTranscript.Realign'));
+assert.ok(read('ApkWinSock.Member.MyPage.inc').includes('fsUnderline'));assert.ok(read('ApkMemberTheme.pas').includes('$FFCCCCCC'));
+// All new interaction glyphs have a matching, bounded XML source and asset.
+for(const name of ['heart','bubble','repost','more','bookmark','block','reply','photo','gif','poll','trash','close'])for(const state of ['outline','filled'])assert.ok(fs.existsSync(path.join(dir,'Svg',name+'-'+state+'.svg')));
+console.log('FIX25 UI SOURCE PASS: detail-cache recovery, relative times, dynamic plans, action contracts, isolated photo/profile taps, popup/bitmap ownership, service cleanup, GIF/poll/title drafts, reply context, themed glyphs/cards and support panel.');

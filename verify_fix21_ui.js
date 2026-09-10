@@ -28,12 +28,12 @@ const widgets=read('ApkWinSock.Member.Widgets.inc');assert.ok(widgets.includes('
 assert.ok(read('ApkWinSock.Support.Messages.inc').includes('SupportBubbleSize(Value,Text.TextSettings.Font'));assert.ok(!read('ApkWinSock.Support.Messages.inc').includes('Length(Value)*7'));
 const motion=read('ApkWinSock.Member.Motion.inc'),feed=read('ApkWinSock.Member.Feed.inc');
 assert.ok(motion.includes('IconBox.ClipChildren:=True'));assert.ok(motion.includes('IconBox,Icon,0,0,22,22'));
-assert.ok(read('ApkWinSock.Member.Purchase.inc').includes('for Icon in Child.Children'));assert.ok(feed.includes("'member|'+AuthorID"));assert.ok(feed.includes("'report|'+ID"));
-assert.ok(feed.includes('C.Width-W-10,Y,W,48'));assert.ok(feed.includes('HubTextWidth(HubText(Author'));
+assert.ok(read('ApkWinSock.Member.Purchase.inc').includes('Item.AddPair(Name,TJSONObject.ParseJSONValue(Value.ToJSON))'));assert.ok(feed.includes("'member|'+AuthorID"));assert.ok(read('ApkWinSock.Member.Social.inc').includes("'social.report'"));
+assert.ok(feed.includes('10+W,Y,W,44'));assert.ok(feed.includes('HubTextWidth(HubText(Author'));
 const news=read('ApkWinSock.Member.NewsShop.inc'),lists=news.split('procedure TForm1.HubRenderArticle')[0];
 assert.ok(news.includes('HubNewsBadge'));assert.ok(lists.includes('열람하려면 게시글을 눌러주세요.'));assert.ok(!lists.includes('HubDate('));
 assert.ok(news.includes("HubNumber(FHubSelected,'views')"));assert.ok(news.includes("HubText(FHubSelected,'image')"));assert.ok(flow.includes("Body.AddPair('summary',TJSONBool.Create(True))"));
-for(const key of ['releaseDate','developer','publisher','genre','ageRating','language','platform','official','instagram','twitter','facebook','youtube'])assert.ok(news.includes("'"+key+"'"),key);
+for(const key of ['releaseDate','developer','publisher','genre','ageRating','language','platform'])assert.ok(news.includes("'"+key+"'"),key);
 assert.ok(!news.includes('HubGameSpecs'));assert.ok(!actions.includes("if Action='spec'"));assert.ok(actions.includes('AndroidOpenWebLink(ID)'));
 const loading=read('ApkWinSock.Member.Loading.inc');assert.ok(!flow.includes('잠시만 기다려주세요'));assert.ok(loading.includes('FHubSkeleton and FFinalPanel.Visible'));
 assert.ok(loading.includes('FHubBusyVeil.HitTest')===false);assert.ok(dashboard.includes('FHubBusyVeil.HitTest:=False'));assert.ok(loading.includes('not FForeground'));
