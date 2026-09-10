@@ -28,7 +28,7 @@ try{
  service.AdminWrite('order.refund',{id:'OLD-ORDER-2',reason:'미사용 환불'},'ADMIN');service.AdminWrite('order.refund',{id:'OLD-ORDER-2',reason:'반복'},'ADMIN');assert.equal(run(a,'me').profile.balance,10000);
  const post=run(a,'post.create',{body:'첫 소식 <script>hello</script>'}).post;
  assert.throws(()=>run(b,'post.delete',{id:post.id}),/NOT_OWNER/);
- run(b,'react',{postId:post.id,value:1});run(b,'react',{postId:post.id,value:-1});let feed=run(a,'feed');assert.equal(feed.items[0].likes,0);assert.equal(feed.items[0].dislikes,1);
+ run(b,'react',{postId:post.id,value:1});assert.throws(()=>run(b,'react',{postId:post.id,value:-1}),/REACTION_INVALID/);run(b,'react',{postId:post.id,value:0});let feed=run(a,'feed');assert.equal(feed.items[0].likes,0);assert.equal(feed.items[0].dislikes,undefined);
  const comment=run(b,'comment.create',{postId:post.id,body:'댓글입니다.'}).comment;assert.equal(run(a,'thread',{postId:post.id}).comments.total,1);
  assert.throws(()=>run(a,'comment.delete',{id:comment.id}),/NOT_OWNER/);run(b,'comment.delete',{id:comment.id});assert.equal(run(a,'thread',{postId:post.id}).comments.total,0);
  run(b,'report',{postId:post.id,reason:'확인 요청'});service.AdminWrite('post.moderate',{id:post.id,hidden:true},'ADMIN');assert.equal(run(a,'feed').total,0);assert.throws(()=>run(b,'comment.create',{postId:post.id,body:'숨긴 글'}),/POST_NOT_FOUND/);

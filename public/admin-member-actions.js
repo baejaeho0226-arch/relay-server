@@ -14,21 +14,21 @@ async function handleMemberAction(event){
  let values,body;
  if(['product.edit','news.edit','post.edit'].includes(action)){const view=action==='product.edit'?'products':action==='post.edit'?'posts':'news';const data=await api('/api/member?view='+view+'&id='+encodeURIComponent(row.id));row=data.items?.[0]||row;}
  if(action==='product.new'||action==='product.edit'){
-  values=await openModal({title:row.id?'게임 안내 수정':'게임 등록',fields:[{name:'title',label:'게임 이름',value:row.title},{name:'description',label:'게임 소개',type:'textarea',value:row.description},{name:'image',label:'게임 배너 사진',type:'image',value:row.image},...gameDetailFields(row.details||{}),{name:'accessType',label:'게임 분류',type:'select',value:row.accessType||'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},...[1,7,15,30].map(days=>({name:'price'+days,label:days+'일 가격 (원, 0 = 판매 준비 중)',type:'number',value:(row.plans||[]).find(x=>x.days===days)?.price||0})),{name:'published',label:'공개 상태',type:'select',value:String(row.published||false),options:[{value:'false',label:'비공개'},{value:'true',label:'공개'}]}],confirmLabel:'저장'});
-  if(values)body={...values,action:'product.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',details:gameDetailValues(values),plans:[1,7,15,30].map(days=>({days,price:Number(values['price'+days])}))};
+  values=await openModal({title:row.id?'게임 안내 수정':'게임 등록',fields:[{name:'title',label:'게임 이름',value:row.title},{name:'description',label:'게임 소개',type:'textarea',value:row.description},{name:'image',label:'게임 배너 사진',type:'image',value:row.image},...gameDetailFields(row.details||{}),{name:'accessType',label:'게임 분류',type:'select',value:row.accessType||'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},{name:'plans',label:'이용 기간 · 가격',type:'plans',value:row.plans||[1,7,15,30].map(days=>({days,price:0}))},{name:'published',label:'공개 상태',type:'select',value:String(row.published||false),options:[{value:'false',label:'비공개'},{value:'true',label:'공개'}]}],confirmLabel:'저장'});
+  if(values)body={...values,action:'product.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',details:gameDetailValues(values),plans:JSON.parse(values.plans)};
  }else if(action==='news.new'||action==='news.edit'){
   values=await openModal({title:'소식 작성',fields:[{name:'title',label:'제목',value:row.title},{name:'body',label:'내용',type:'textarea',value:row.body},{name:'image',label:'소식 사진',type:'image',value:row.image},{name:'category',label:'분류',type:'select',value:row.category||'NOTICE',options:['NOTICE','UPDATE','EVENT','ALERT'].map(value=>({value,label:memberStatus[value]}))},{name:'published',label:'공개',type:'select',value:String(row.published||false),options:[{value:'false',label:'임시 저장'},{value:'true',label:'공개'}]},{name:'pinned',label:'상단 고정',type:'select',value:String(row.pinned||false),options:[{value:'false',label:'사용 안 함'},{value:'true',label:'고정'}]}],confirmLabel:'저장'});
   if(values)body={...values,action:'news.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',pinned:values.pinned==='true'};
  }else if(action==='profile.edit'){
   values=await openModal({title:'회원 프로필 수정',fields:[{name:'handle',label:'@아이디 · 최초 1회 변경'+(row.handleEditable?'':' (변경 완료)'),value:row.handle,readOnly:!row.handleEditable},{name:'nickname',label:'닉네임 · 변경 후 30일 유지'+(row.nicknameChangeAt>Date.now()?' / '+fmtTime(row.nicknameChangeAt)+'부터 변경 가능':''),value:row.nickname,readOnly:row.nicknameChangeAt>Date.now()},{name:'bio',label:'소개',type:'textarea',value:row.bio}],confirmLabel:'저장'});if(values)body={...values,action:'profile.save',memberHandle:'@'+row.handle,id:row.id};
  }else if(action==='post.edit'||action==='comment.edit'){
-  values=await openModal({title:'본문 수정',fields:[{name:'body',label:'내용',type:'textarea',value:row.body},...(action==='post.edit'?[{name:'image',label:'게시물 사진',type:'image',value:row.image},{name:'imagePosition',label:'글과 사진 배치',type:'select',value:row.imagePosition||'after',options:[{value:'after',label:'사진 위에 글'},{value:'before',label:'사진 아래에 글'}]}]:[])],confirmLabel:'저장'});if(values)body={...values,action:action==='post.edit'?'post.save':'comment.save',id:row.id,revision:row.revision||0};
+  values=await openModal({title:'본문 수정',fields:[...(action==='post.edit'?[{name:'title',label:'제목',value:row.title||''}]:[]),{name:'body',label:'내용',type:'textarea',value:row.body},...(action==='post.edit'?[{name:'image',label:'게시물 사진',type:'image',value:row.image},{name:'imagePosition',label:'글과 사진 배치',type:'select',value:row.imagePosition||'after',options:[{value:'after',label:'사진 위에 글'},{value:'before',label:'사진 아래에 글'}]}]:[])],confirmLabel:'저장'});if(values)body={...values,action:action==='post.edit'?'post.save':'comment.save',id:row.id,revision:row.revision||0};
  }else if(action.startsWith('content.')||action.startsWith('bulk.')){
   const ids=action.startsWith('bulk.')?[...memberSelected]:[row.id];if(!ids.length){toast('항목을 먼저 선택해주세요.',true);return true;}
   const operation=action.split('.')[1];values=await openModal({title:b.textContent,message:`${ids.length}개 항목에 적용합니다. 삭제한 운영 콘텐츠는 삭제 보관에서 복원할 수 있습니다.`,danger:operation==='delete',confirmLabel:'적용'});
   if(values)body={action:'content.action',table:memberView,operation,ids};
  }else if(action==='report.post'){
-  const posts=await api('/api/member?view=posts&id='+encodeURIComponent(row.postId));const post=posts.items.find(x=>x.id===row.postId);if(post){const v=await openModal({title:'신고된 글',message:post.body,confirmLabel:'글 숨기기',danger:true});if(v)body={action:'post.moderate',id:post.id,hidden:true};}else toast('피드 글 목록에서 해당 식별자를 확인해주세요.',true);
+  const isComment=!!row.commentId,view=isComment?'comments':'posts',id=isComment?row.commentId:row.postId;const result=await api('/api/member?view='+view+'&id='+encodeURIComponent(id));const item=result.items.find(x=>x.id===id);if(item){const v=await openModal({title:isComment?'신고된 댓글':'신고된 글',message:item.body,confirmLabel:'숨기기',danger:true});if(v)body={action:isComment?'comment.moderate':'post.moderate',id:item.id,hidden:true};}else toast('삭제되었거나 찾을 수 없는 내용입니다.',true);
  }else if(action==='report.resolve'||action==='report.reopen'){
   values=await openModal({title:b.textContent,fields:[{name:'resolution',label:'처리 메모',type:'textarea',value:row.resolution||''}],confirmLabel:'저장'});if(values)body={...values,action,id:row.id};
  }else{
@@ -60,13 +60,11 @@ content.addEventListener('submit',event=>{
 function gameDetailFields(details){
  const basic=[['releaseDate','출시일'],['developer','제작사'],['publisher','배급사'],['genre','장르'],['ageRating','이용 등급'],['language','지원 언어'],['platform','플랫폼']];
  const fields=[{type:'section',label:'게임 상세 정보'},...basic.map(([name,label])=>({name:'detail_'+name,label,value:details[name]||''}))];
- fields.push({type:'section',label:'공식 채널'});
- for(const [name,label]of [['official','공식 사이트'],['instagram','인스타그램'],['twitter','트위터 / X'],['facebook','페이스북'],['youtube','YouTube']])fields.push({name:'channel_'+name,label,type:'url',value:details.channels?.[name]||'',placeholder:'https://'});
+ const genre=fields.find(x=>x.name==='detail_genre');genre.type='select';genre.value=details.genre||'기타';genre.options=[...new Set(['RPG','레이싱','액션','리듬','캐주얼','스포츠','전략','시뮬레이션','어드벤처','퍼즐','슈팅','기타',...(details.genre?[details.genre]:[])])];
  return fields;
 }
 function gameDetailValues(values){
- const details={channels:{}};
+ const details={};
  for(const name of ['releaseDate','developer','publisher','genre','ageRating','language','platform'])details[name]=values['detail_'+name]||'';
- for(const name of ['official','instagram','twitter','facebook','youtube'])details.channels[name]=values['channel_'+name]||'';
  return details;
 }

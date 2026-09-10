@@ -27,12 +27,12 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  await click(w.document.querySelector('[data-view="member-products"]'));
  await click(w.document.querySelector('[data-member-action="product.new"]'));
  const field=(name,value)=>{w.document.querySelector('[data-modal-field="'+name+'"]').value=value;};
- field('detail_developer','테스트 제작사');assert.equal(w.document.querySelector('[name=minimum_os]'),null);field('channel_official','https://example.com/game');
+ field('detail_developer','테스트 제작사');assert.equal(w.document.querySelector('[name=minimum_os]'),null);assert.equal(w.document.querySelector('[data-modal-field=channel_official]'),null);
  const photoPng=new (require('pngjs').PNG)({width:32,height:32});photoPng.data.fill(255);const testPhoto='data:image/png;base64,'+require('pngjs').PNG.sync.write(photoPng).toString('base64');field('image',testPhoto);
  assert.ok(w.document.querySelector('[data-modal-image="image"]'));
- field('title','테일즈런너 테스트 상품');field('description','설명 <script>실행 금지</script>');field('published','true');for(const [days,price] of [[1,1000],[7,6000],[15,12000],[30,20000]])field('price'+days,String(price));
+ field('title','테일즈런너 테스트 상품');field('description','설명 <script>실행 금지</script>');field('published','true');for(const [i,price] of [1000,6000,12000,20000].entries())w.document.querySelectorAll('[data-plan-price]')[i].value=String(price);
  await click(w.document.getElementById('modal-confirm'));await wait();
- const store=require('../services/member/store');const products=Object.values(store.DB().products);assert.equal(products.length,1);assert.deepEqual(products[0].plans.map(x=>x.days),[1,7,15,30]);assert.equal(products[0].plans[3].price,20000);assert.ok(products[0].image.startsWith('data:image/jpeg;'));assert.equal(products[0].details.developer,'테스트 제작사');assert.equal(products[0].details.requirements,undefined);assert.equal(products[0].details.channels.official,'https://example.com/game');
+ const store=require('../services/member/store');const products=Object.values(store.DB().products);assert.equal(products.length,1);assert.deepEqual(products[0].plans.map(x=>x.days),[1,7,15,30]);assert.equal(products[0].plans[3].price,20000);assert.ok(products[0].image.startsWith('data:image/jpeg;'));assert.equal(products[0].details.developer,'테스트 제작사');assert.equal(products[0].details.requirements,undefined);assert.equal(products[0].details.channels,undefined);
  assert.ok(w.document.getElementById('content').textContent.includes('테일즈런너 테스트 상품'));
  await click(w.document.querySelector('[data-view="member-news"]'));await click(w.document.querySelector('[data-member-action="news.new"]'));
  field('image',testPhoto);field('title','공지 테스트');field('body','다음 업데이트를 안내합니다.');field('published','true');await click(w.document.getElementById('modal-confirm'));await wait();assert.equal(Object.values(store.DB().news).length,1);assert.ok(Object.values(store.DB().news)[0].image);
@@ -88,7 +88,7 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  assert.equal(store.ProfileById(profile.id).balance,20000);assert.equal(Object.keys(store.DB().orders).length,0);
  assert.ok(w.document.getElementById('content').textContent.includes('잔액 충전'));assert.equal(w.document.querySelector('[data-member-action="charge.reject"]'),null);assert.ok(w.document.querySelector('#qr-auth-preview').classList.contains('hidden'));
  await click(w.document.querySelector('[data-view="member-products"]'));await click(w.document.querySelector('[data-member-action="product.edit"]'));
- for(const days of [1,7,15,30])assert.ok(w.document.querySelector('[data-modal-field="price'+days+'"]'));assert.equal(w.document.querySelector('[data-modal-field="days"]'),null);await click(w.document.getElementById('modal-confirm'));
+ assert.deepEqual([...w.document.querySelectorAll('[data-plan-days]')].map(x=>Number(x.value)),[1,7,15,30]);assert.equal(w.document.querySelector('[data-modal-field="days"]'),null);await click(w.document.getElementById('modal-confirm'));
  // An interrupted browser pointer cannot suppress polling forever.
  new vm.Script('memberPointerDown=true;memberPointerUntil=Date.now()-1;memberInteractionUntil=0;').runInContext(dom.getInternalVMContext());assert.equal(w.memberCanAutoRefresh(),true);
  // Late tab responses must not replace a newer tab or another main screen.

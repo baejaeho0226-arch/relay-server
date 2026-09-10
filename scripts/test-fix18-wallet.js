@@ -17,7 +17,7 @@ try{
  const approved=admin('charge.approve',body);assert.equal(approved.status,'APPROVED');assert.equal(approved.mode,'WALLET');assert.equal(approved.days,undefined);assert.equal(approved.orderId,undefined);assert.deepEqual(admin('charge.approve',body),approved);assert.equal(Object.keys(s.DB().orders).length,0);assert.equal(Object.values(s.DB().ledger).filter(x=>x.kind==='QR_TOPUP').length,1);assert.throws(()=>admin('charge.approve',{...body,amount:31000}),/CONTENT_CHANGED/);
  assert.equal(run(a,'charge').request.status,'APPROVED');assert.equal(run(b,'me').orders.total,0);assert.equal(run(a,'me').profile.balance,30000);assert.equal(entry.ForClient(a),null,'a wallet balance does not unlock games');
  const purchase={productId:game.id,days:30,price:20000,revision:game.revision};
- assert.throws(()=>run(a,'purchase',{...purchase,days:2}),/GAME_PLAN_INVALID/);
+ assert.throws(()=>run(a,'purchase',{...purchase,days:2}),/GAME_PLAN_UNAVAILABLE/);
  assert.throws(()=>run(a,'purchase',{...purchase,price:1}),/PRICE_CHANGED/);
  assert.throws(()=>run(a,'purchase',{...purchase,revision:0}),/PRICE_CHANGED/);
  assert.throws(()=>run(b,'purchase',purchase),/INSUFFICIENT_BALANCE/);
@@ -47,7 +47,7 @@ try{
  assert.equal(run(b,'me').profile.balance,61000);
  const unused=run(b,'me').orders.items[0],refunded=admin('order.refund',{id:unused.id,reason:'미사용 취소'});assert.equal(refunded.status,'REFUNDED');const refundBalance=run(b,'me').profile.balance;admin('order.refund',{id:unused.id,reason:'미사용 취소'});assert.equal(run(b,'me').profile.balance,refundBalance);
  const disabled=admin('product.save',{title:'판매 준비',accessType:'TYPE1',published:true});assert.ok(disabled.plans.every(x=>!x.available));assert.throws(()=>run(b,'purchase',{productId:disabled.id,days:1,price:0,revision:disabled.revision}),/GAME_PLAN_UNAVAILABLE/);
- assert.throws(()=>admin('product.save',{title:'잘못된 가격',accessType:'TYPE1',plans:[{days:1,price:100}]}),/GAME_PLAN_INVALID/);
+ assert.throws(()=>admin('product.save',{title:'잘못된 가격',accessType:'TYPE1',plans:[{days:0,price:100}]}),/GAME_PLAN_INVALID/);
  // Previously approved FIX16 entitlements remain records, never wallet credits.
  const legacy=charges.Issue(s.Account(b)),legacyScan=charges.Inspect('RCH1.'+legacy.id+'.'+legacy.token);legacy.status='APPROVED';legacy.mode=undefined;legacy.days=30;legacy.orderId='LEGACY-PASS';legacy.amount=5000;
  const legacyBefore=run(b,'me').profile.balance;assert.throws(()=>admin('charge.approve',{id:legacy.id,approvalToken:legacyScan.approvalToken,mode:'WALLET',amount:5000,memo:''}),/CHARGE_PROCESSED/);assert.equal(run(b,'charge').request.orderId,'LEGACY-PASS');assert.equal(run(b,'me').profile.balance,legacyBefore);
