@@ -24,7 +24,7 @@ function TopLevelComma(type) {
 }
 
 function Check(source) {
-    const code = CodeOnly(source);
+    const code = CodeOnly(source).replace(/\buses\b[\s\S]*?;/gi, ' ');
     const match = /\bTApkMemberClient\s*=\s*class\b([\s\S]*?)^\s*end\s*;/mi.exec(code);
     if (!match) return ['TApkMemberClient declaration missing'];
     const issues = [], fields = new Set();

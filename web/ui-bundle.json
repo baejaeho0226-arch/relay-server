@@ -1,15 +1,17 @@
 {
-  "webAdminVersion": "4.15.0",
-  "uiRevision": "fix26",
+  "webAdminVersion": "4.16.0",
+  "uiRevision": "fix27",
   "files": {
-    "index.html": "0fe385255e973c2fa6304544cf7cdd146883627a0f28e1676d42f4ed0bd4b5df",
+    "index.html": "66cd757d6045b0520487e98fa3a65ea0343490f0bef9214cd366ef038a375a40",
     "admin.css": "5890f2b89126b2aa47cce79e2939402451d0f6aee1a7e657dbefff407987c58b",
     "admin-theme.css": "62f6ea85fae20540d82195d92cc965342d972a87a49228d2c969cbda84d7bc8b",
     "admin-appearance.css": "19f7a687c8eaa6dcf3caffb82956efab81abea142cd992a9fcd62787c5d3e3ed",
     "admin-appearance.js": "71f2ba7bcb97f4cef05a271cdcc878a57b073790f3225f7d8c0771da1f88e039",
+    "admin-controls.css": "b188a5dc0667fa19cc9a08698781347f07477d8fe075fff3027d89fbce3347d3",
+    "admin-controls.js": "c2425b2f3808f940c3a78244c9631ab3b2065ae5a168d2aeca8f094a3d972986",
     "admin-navigation.css": "b4dfe7add02b3459ccafe03bf048b6f705c2cdd97e15a2fa57c30135e5ade104",
     "admin-i18n.js": "dbf870f79f0242fb2b688419807aebcdba0f737f0d8e21a40a8f5929dabf9929",
-    "admin.js": "ba10e964a0e6cc260463d47056f4315b7373ea7582236a574c97941be4b70f7c",
+    "admin.js": "8c9880fb1fada33a9b6dcf8b608e7cc7b24d1c998dede094b8cda292b58cb829",
     "admin-navigation.js": "91919e287d821d82ba4414c7853391c32ec927a8ac13b4a465df6a9c48d84508",
     "admin-pages-monitoring.js": "8ec770a183e43f4c54bfde09016417fa2862056e333a7ae1c7d0d33b6bf779c5",
     "admin-terminal.js": "7ebfcbe23fed621000c1412d3ef60c517908fb312c0a8113a820cc07f058fe84",
@@ -40,8 +42,8 @@
     "admin-member.css": "88479527aa621a9f8296f4b4395a66ced0e42a8df8cea86c511613a51e57e2b8",
     "admin-palette.js": "592501c81ded079397e06e08124163e0bdb7d62c12befb334656e68c1bcbf73c",
     "admin-pages-production.js": "b0c9d7d19b88ab4756849e0c57289c22e57b5f4a61a61eef46566764856653c4",
-    "service-worker.js": "5e0eee93aec3ba87774f8dad3f3c6c992ec1756758dab57442e11d6ac6908402",
-    "ui-refresh.html": "933831ea2585276a02b85056c48efc15547a9699bfc461b9e644e2bf031b17c1",
+    "service-worker.js": "cb7aca688a498de6a74d29e7c672bd7243a8d90bd47d0956e1b578daa9361f71",
+    "ui-refresh.html": "ce5698f890137ccdeba6f92254903e451a817233f6994c506b2282a7b400d951",
     "ui-refresh.js": "18c00a09bdc6409509b42ce6a7d4e5480d6edd1e7feabcd575aafa6922e42dac"
   }
 }
