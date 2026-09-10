@@ -40,7 +40,7 @@ async function web(role,url,body){const req=require('node:stream').Readable.from
  assert.equal((await request(author,'profile.save',{...firstBody,nickname:'너무 이른 변경'})).reason,'NICKNAME_COOLDOWN');assert.equal(JSON.stringify(store.DB()),snapshot);
  assert.equal((await run(viewer,'member',{handle:'@ROUND.MEMBER'})).profile.id,a.id);
  await run(viewer,'follow.set',{handle:'@round.member',following:true});assert.equal((await run(viewer,'follows',{handle:'@round.member',mode:'followers'})).items[0].id,b.id);
- assert.equal((await request(viewer,'records',{handle:'@round.member'})).reason,'NOT_OWNER');
+ assert.equal((await request(viewer,'records',{handle:'@round.member'})).reason,'ADMIN_ONLY');
  store.ProfileById(a.id).nicknameChangedAt=Date.now()-30*86400000+60000;
  assert.equal((await request(author,'profile.save',{...firstBody,nickname:'경계 전'})).reason,'NICKNAME_COOLDOWN');
  store.ProfileById(a.id).nicknameChangedAt=Date.now()-30*86400000;
@@ -51,9 +51,9 @@ async function web(role,url,body){const req=require('node:stream').Readable.from
  state.supportThreads.set(clientID,{clientId:clientID,currentClientId:clientID,deviceKey:account.subject,tokenHashes:['PRIVATE_TOKEN_HASH'],clientAliases:[clientID],revision:1,epoch:'FIX22-EPOCH',status:'OPEN',mode:'BOT',createdAt:Date.now(),updatedAt:Date.now(),nextSeq:1,unreadAdmin:0,messages:[],device:{manufacturer:'테스트',model:'Round Phone',phone:'010-1234-5678',phoneStatus:'AVAILABLE',os:'Android'}});
  state.clientBiometricProfiles.set(clientID,{enrolledAt:Date.now(),verifiedAt:Date.now(),verificationCount:2});
  const qr=await run(author,'charge');assert.equal(require('../services/qrCenter').List().find(x=>x.requestId===qr.request.id).memberHandle,'@round.member');
- const own=await run(author,'records',{handle:'@round.member'});assert.equal(own.devices[0].device.phone,'010-1234-5678');assert.equal(own.devices[0].biometric.enrolled,true);
- const other=await run(viewer,'records');assert.ok(!JSON.stringify(other).includes('010-1234-5678'));
- const admin=await web('admin','/api/member?view=lookup&handle=%40ROUND.MEMBER');assert.equal(admin.status,200);assert.equal(admin.payload.devices[0].device.phone,'010-1234-5678');assert.equal(admin.payload.profile.id,a.id);
+ const own=await request(author,'records',{handle:'@round.member'});assert.equal(own.reason,'ADMIN_ONLY');assert.ok(!JSON.stringify(own).includes('010-1234-5678'));
+ const other=await request(viewer,'records');assert.equal(other.reason,'ADMIN_ONLY');assert.ok(!JSON.stringify(other).includes('010-1234-5678'));
+ const admin=await web('admin','/api/member?view=lookup&handle=%40ROUND.MEMBER');assert.equal(admin.status,200);assert.equal(admin.payload.devices[0].device.phone,'010-1234-5678');assert.equal(admin.payload.profile.id,a.id);assert.equal(admin.payload.devices[0].biometric.enrolled,true);
  for(const secret of ['PRIVATE_TOKEN_HASH',author.secret,account.subject])assert.ok(!JSON.stringify(admin.payload).includes(secret));
  assert.equal((await web('operator','/api/member?view=lookup&handle=%40round.member')).status,403);
  const alias=await web('admin','/api/clients/%40round.member');assert.equal(alias.status,200);assert.equal(alias.payload.client.id,clientID);
@@ -62,20 +62,20 @@ async function web(role,url,body){const req=require('node:stream').Readable.from
  // 960px JPEG upload is split across signed chunks; feed responses stay bounded.
  const pixels=crypto.randomBytes(640*480*4);for(let i=3;i<pixels.length;i+=4)pixels[i]=255;
  const photo='data:image/jpeg;base64,'+require('jpeg-js').encode({width:640,height:480,data:pixels},38).data.toString('base64');assert.ok(photo.length>40000);
- const posted=await run(author,'post.create',{body:'사진 게시글',image:photo},'FIX22-PHOTO-POST');assert.ok(posted.post.image.startsWith('data:image/jpeg;'));
- assert.deepEqual(await run(author,'post.create',{body:'사진 게시글',image:photo},'FIX22-PHOTO-POST'),posted);
- const thread=await run(viewer,'thread',{postId:posted.post.id});assert.ok(thread.post.image.length>=posted.post.image.length);assert.equal((await run(author,'me')).posts.items[0].imageThumb.startsWith('data:image/jpeg;'),true);
+ const posted=await run(author,'post.create',{body:'사진 게시글',image:photo,imagePosition:'before'},'FIX22-PHOTO-POST');assert.ok(posted.post.image.startsWith('data:image/jpeg;'));
+ assert.deepEqual(await run(author,'post.create',{body:'사진 게시글',image:photo,imagePosition:'before'},'FIX22-PHOTO-POST'),posted);
+ assert.equal(posted.post.imagePosition,'before');const thread=await run(viewer,'thread',{postId:posted.post.id});assert.equal(thread.post.imagePosition,'before');assert.ok(thread.post.image.length>=posted.post.image.length);assert.equal((await run(author,'me')).posts.items[0].imageThumb.startsWith('data:image/jpeg;'),true);
  assert.equal((await request(viewer,'post.edit',{id:posted.post.id,revision:0,body:'침범',image:photo})).reason,'NOT_OWNER');
- const edited=await run(author,'post.edit',{id:posted.post.id,revision:0,body:'내용만 수정'});assert.ok(edited.post.image);
+ const edited=await run(author,'post.edit',{id:posted.post.id,revision:0,body:'내용만 수정'});assert.ok(edited.post.image);assert.equal(edited.post.imagePosition,'before','text-only editing preserves photo placement');
  assert.equal((await request(author,'post.edit',{id:posted.post.id,revision:0,body:'오래된 화면'})).reason,'CONTENT_CHANGED');
- const beforePhoto=JSON.stringify(store.DB());assert.equal((await request(author,'post.edit',{id:posted.post.id,revision:1,body:'잘못된 사진',image:'data:image/svg+xml;base64,AAAA'})).reason,'CONTENT_IMAGE_INVALID');assert.equal(JSON.stringify(store.DB()),beforePhoto);
+ const beforePhoto=JSON.stringify(store.DB());assert.equal((await request(author,'post.edit',{id:posted.post.id,revision:1,body:'잘못된 배치',imagePosition:'overlay'})).reason,'INPUT_INVALID');assert.equal(JSON.stringify(store.DB()),beforePhoto);assert.equal((await request(author,'post.edit',{id:posted.post.id,revision:1,body:'잘못된 사진',image:'data:image/svg+xml;base64,AAAA'})).reason,'CONTENT_IMAGE_INVALID');assert.equal(JSON.stringify(store.DB()),beforePhoto);
  for(let i=0;i<7;i++){store.ProfileById(a.id).last_post=0;await run(author,'post.create',{body:'사진 '+i,image:photo});}
  author.c.hubRate=null;viewer.c.hubRate=null;
  const feed=await run(viewer,'feed');assert.equal(feed.items.length,8);assert.ok(Buffer.from(JSON.stringify({ok:true,data:feed})).toString('base64').length<900000);assert.ok(feed.items.every(x=>x.image.startsWith('data:image/jpeg;')));
- const removed=await run(author,'post.edit',{id:posted.post.id,revision:1,body:'사진 삭제',image:''});assert.equal(removed.post.image,'');
+ const removed=await run(author,'post.edit',{id:posted.post.id,revision:1,body:'사진 삭제',image:'',imagePosition:'after'});assert.equal(removed.post.image,'');assert.equal(removed.post.imagePosition,'after');
  const home=await run(author,'home');assert.equal(home.profile.id,a.id);assert.equal(home.summary.posts,8);
  const records=await web('admin','/api/member?view=lookup&handle=%40round.member&section=posts&limit=3');assert.equal(records.payload.items.length,3);assert.equal(records.payload.total,8);assert.equal(records.payload.nextOffset,3);
- const persistent=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(persistent),true);assert.equal(store.Resolve('@ROUND.MEMBER').id,a.id);assert.ok(store.ProfileById(a.id).handleChangedAt);assert.ok(Object.values(store.DB().posts).some(x=>x.imageFeed));
+ const persistent=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(persistent),true);assert.equal(store.Resolve('@ROUND.MEMBER').id,a.id);assert.ok(store.ProfileById(a.id).handleChangedAt);assert.ok(Object.values(store.DB().posts).some(x=>x.imageFeed));assert.equal(store.DB().posts[posted.post.id].imagePosition,'after');
  author.c.biometricVerified=false;assert.equal((await request(author,'records',{handle:'@round.member'})).reason,'MEMBER_AUTH_REQUIRED');
- console.log('FIX22 TCP/API PASS: one-time unique handle, 30-day nickname gate, reserved legacy handle, signed photo upload/edit/delete/replay, response bound, privacy-scoped records, registered phone/biometric links, admin role and alias operations, home summary and durable import');
+ console.log('FIX22 TCP/API PASS: one-time unique handle, 30-day nickname gate, reserved legacy handle, signed photo upload/edit/delete/replay, response bound, admin-only records, registered phone/biometric links, admin role and alias operations, home summary and durable import');
 }finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

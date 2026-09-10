@@ -63,6 +63,12 @@ async function api(role,method,url,body){
  a.c.lastSupportSendAt=0;send('BOT_HANDOFF_001','상담원 연결');await supportFrame(a,'SUPPORT_MESSAGE');assert.match((await supportFrame(a,'SUPPORT_MESSAGE')).text,/오프라인/);info=await supportFrame(a,'SUPPORT_INFO');assert.equal(info.mode,'HUMAN');assert.equal(support.List().find(x=>x.clientId===id).unreadAdmin,1);
  assert.equal(support.Reply(id,'상담원입니다. 확인해드리겠습니다.','BOT_ADMIN_REPLY',info.revision).ok,true);await supportFrame(a,'SUPPORT_INFO');assert.equal((await supportFrame(a,'SUPPORT_MESSAGE')).role,'ADMIN');
  const count=support.Read(id).total;a.c.lastSupportSendAt=0;send('BOT_HUMAN_CHAT1','감사합니다');assert.equal((await supportFrame(a,'SUPPORT_MESSAGE')).role,'CLIENT');await supportFrame(a,'SUPPORT_INFO');assert.equal(support.Read(id).total,count+1,'human conversation must not receive extra automated replies');
+ // A retained server history can start after a returning client's cursor.
+ const room=state.supportThreads.get(id);room.messages=room.messages.slice(2);a.c.supportSyncAt=0;
+ a.send('SUPPORT_SYNC|'+a.c.clientId+'|'+info.epoch+'|0');await supportFrame(a,'SUPPORT_INFO');
+ const rebased=await supportFrame(a,'SUPPORT_RESET');assert.equal(rebased.baseSeq,room.messages[0].seq-1);
+ for(const expected of room.messages)assert.deepEqual(await supportFrame(a,'SUPPORT_MESSAGE'),{...expected,epoch:room.epoch});
+ const rebasedPage=await supportFrame(a,'SUPPORT_PAGE');assert.equal(rebasedPage.lastSeq,room.messages.at(-1).seq);assert.equal(rebasedPage.more,false);
  support.Change(id,'close',info.revision);assert.equal((await supportFrame(a,'SUPPORT_MESSAGE')).role,'SYSTEM');await supportFrame(a,'SUPPORT_INFO');
  a.send('SUPPORT_BOT_OPEN|'+a.c.clientId);info=await supportFrame(a,'SUPPORT_INFO');assert.equal(info.mode,'BOT');assert.ok(support.Read(id).messages.some(x=>x.role==='ADMIN'),'reopening with bot preserves history');
  // Deletion changes revision/epoch; old sends cannot repopulate deleted messages.

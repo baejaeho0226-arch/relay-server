@@ -7,7 +7,7 @@ const dashboard=read('ApkWinSock.Dashboard.inc'),flow=read('ApkWinSock.Member.Fl
 assert.ok(dashboard.includes("0: Result:='menu'; 1: Result:='news'; 2: Result:='catalog'; 3: Result:='feed'; else Result:='me'"));
 assert.ok(read('ApkWinSock.Service.inc').includes("FHubView := 'menu'"));
 assert.ok(dashboard.includes("['home','news','shop','feed','user']"));
-assert.ok(!dashboard.includes("FHubHeaderMenuIcon.Visible"));assert.ok(dashboard.includes("FHubHeaderAction.TagString:='settings'"));
+assert.ok(!dashboard.includes("FHubHeaderMenuIcon.Visible"));assert.ok(dashboard.includes("FHubHeaderAction.TagString:='all'"));
 assert.ok(dashboard.includes('(I<>4) and (I=FDashboardActiveTab)'));assert.ok(dashboard.includes('FHubTabAvatar:=TCircle.Create(Self)'));
 const media=read('ApkWinSock.Member.Media.inc');assert.ok(media.includes('FHubTabAvatar.Fill.Bitmap.Bitmap.LoadFromStream'));assert.ok(media.includes('FHubOwnPhotoKey<>Key'));
 assert.ok(media.includes("HubNumber(Profile,'profileRevision')<HubNumber(FHubOwnProfile,'profileRevision')"));

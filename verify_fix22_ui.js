@@ -11,12 +11,12 @@ assert.ok(!motion.includes('HubPlanPopupStyle'));assert.ok(!media.includes('Card
 assert.ok(media.includes("TControl(Child).TagString='member-card-shadow'"));
 assert.ok(!news.includes('HubGameSpecs'));assert.ok(!news.includes("'minimum'")&&!news.includes("'recommended'"));
 assert.ok(news.includes('HubCategoryStripe'));assert.ok(news.includes('C.Width-65,18,47,25'));assert.ok(news.includes('HubCard(H+107)'));
-assert.ok(news.includes('18+ImageW+14'));assert.ok(news.includes('C.Height-36'));assert.ok(news.includes("HubText(Item,'description')"));
+assert.ok(news.includes('18+ImageW+14'));assert.ok(news.includes('ImageW,ImageW*1.5'));assert.ok(news.includes("HubText(Item,'description')"));
 assert.ok(dashboard.includes("FHubView='menu' then Title:='홈'"));assert.ok(!dashboard.includes('FHubHeaderMenuIcon.Visible'));
 assert.ok(dashboard.includes("FHubHeaderAction.Visible:=(FHubView='feed') or (FHubView='me')"));assert.ok(dashboard.includes("MemberSvg('hamburger')"));assert.ok(dashboard.includes('FHubTabDivider.SetBounds(0,0,W,0.7)'));
 assert.ok(dashboard.includes('FHubCommentEdit.Parent:=FHubCommentBox'));assert.ok(dashboard.includes('FHubCommentPrompt.TextSettings.FontColor:=MemberMuted'));
-const menu=read('ApkWinSock.Member.Menu.inc');assert.ok(menu.includes('HubRenderHomeSummary'));assert.ok(menu.includes("HubNumber(Profile,'balance')"));assert.ok(menu.includes("'사용 중'"));assert.ok(read('ApkWinSock.Member.Records.inc').includes('HubRenderRecords'));assert.ok(menu.includes("Query.StartsWith('@')"));
-assert.ok(flow.includes("FHubView='menu' then Result:='home'"));assert.ok(flow.includes("FHubView='records' then Result:='records'"));assert.ok(!read('ApkWinSock.Member.Refresh.inc').includes('begin HubRender;FHubPull.Finish(True)'));
+const menu=read('ApkWinSock.Member.Menu.inc');assert.ok(menu.includes('HubRenderHomeSummary'));assert.ok(menu.includes("HubNumber(Profile,'balance')"));assert.ok(menu.includes("'사용 중'"));assert.ok(!fs.existsSync(path.join(dir,'ApkWinSock.Member.Records.inc')));assert.ok(menu.includes("Query.StartsWith('@')"));
+assert.ok(flow.includes("FHubView='menu' then Result:='home'"));assert.ok(!flow.includes("FHubView='records'"));assert.ok(!read('ApkWinSock.Member.Refresh.inc').includes('begin HubRender;FHubPull.Finish(True)'));
 const profile=read('ApkWinSock.Member.MyPage.inc');assert.ok(profile.includes("ReadOnly:=not HubBool(Profile,'handleEditable')"));assert.ok(profile.includes("'nicknameChangeAt'"));assert.ok(actions.includes("Body.AddPair('handle'"));
 assert.ok(actions.includes("Action='post.photo'"));assert.ok(actions.includes("if FHubPostImageChanged then Body.AddPair('image'"));assert.ok(flow.includes("FHubPhotoContext<>HubDraftKey(FHubView,FHubPostID)"));assert.ok(flow.includes("TBitmapCodecManager.SaveToStream(Stream,Surface,'.jpg',@Params)"));assert.ok(flow.includes('Surface.Free;Stream.Free;Small.Free'));
 assert.ok(read('ApkWinSock.Service.inc').includes("FHubPhotoContext:=''"));assert.ok(read('ApkWinSock.Lifecycle.Construction.inc').includes('FHubPhotoAction.OnDidFinishTaking := nil'));
