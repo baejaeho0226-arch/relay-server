@@ -45,7 +45,7 @@ function Content(body,actor){
     return s.Atomic(()=>{
         for(const id of ids){
             const row=s.DB()[table][id];
-            if(action==='restore'&&(row.deletedByMember||(['posts','comments'].includes(table)&&!row.body&&!row.image)))s.Fail('CONTENT_RESTORE_UNAVAILABLE');
+            if(action==='restore'&&(row.deletedByMember||(['posts','comments'].includes(table)&&!row.title&&!row.body&&!row.image&&!row.gifId&&!row.poll)))s.Fail('CONTENT_RESTORE_UNAVAILABLE');
             if(action==='delete'){row.deleted=true;if('published'in row)row.published=false;if('enabled'in row)row.enabled=false;}
             else if(action==='restore'){row.deleted=false;}
             else if(action==='publish'||action==='unpublish'){if(!['products','news'].includes(table)||row.deleted)s.Fail('CONTENT_ACTION_INVALID');row.published=action==='publish';}
@@ -76,7 +76,7 @@ function Write(action,body,actor){
             if(body.revision!==undefined&&body.revision!==(row.revision||0))s.Fail('CONTENT_CHANGED');
             if(action.endsWith('.save')){
                 const post=action.startsWith('post.');row.body=s.Text(body.body,post?2000:600,!post);
-                if(post){Object.assign(row,require('./media').PostFields(body.image,row));row.imagePosition=require('./media').PostPosition(body.imagePosition,row);if(!row.body&&!row.image)s.Fail('INPUT_INVALID');}
+                if(post){Object.assign(row,require('./media').PostFields(body.image,row));row.imagePosition=require('./media').PostPosition(body.imagePosition,row);if(body.title!==undefined)row.title=s.Text(body.title,90);if(!row.title&&!row.body&&!row.image&&!row.gifId&&!row.poll)s.Fail('INPUT_INVALID');}
             }else row.hidden=body.hidden===true;
             row.moderatedBy=actor;row.updatedAt=Date.now();row.revision=(row.revision||0)+1;return row;
         }

@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const state = require('../../core/state');
-const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests','follows'];
+const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests','follows','commentReactions','bookmarks','blocks','reposts','pollVotes'];
 const TABLES = ['profiles','products','news','orders','topups','ledger','posts','comments','reactions','reports','operations'];
 function Empty() {
  const db={schema:4,revision:0,settings:{topupInstructions:'충전 방식은 준비 중입니다.',topupEnabled:false}};
@@ -13,7 +13,7 @@ function Import(data){
  const raw=data && data.memberHub;if(!raw)return void(state.memberHub=Empty());
  if(![1,2,3,4].includes(raw.schema) || TABLES.some(name=>!raw[name]||typeof raw[name]!=='object'||Array.isArray(raw[name])))throw Error('MEMBER_STORAGE_INVALID');
  const next=structuredClone(raw);
- for(const name of EXTRA_TABLES){if((raw.schema===1||name==='chargeRequests'&&raw.schema<3||name==='follows'&&raw.schema<4)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
+ for(const name of EXTRA_TABLES){if((['commentReactions','bookmarks','blocks','reposts','pollVotes'].includes(name)||raw.schema===1||name==='chargeRequests'&&raw.schema<3||name==='follows'&&raw.schema<4)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
  next.schema=4;state.memberHub=next;
 }
 function Fail(reason){const e=Error(reason);e.memberError=true;throw e;}
