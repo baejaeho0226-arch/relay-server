@@ -50,6 +50,7 @@ function Device(id,rooms){
   uiState:state.clientUiStates.get(id)?{status:state.clientUiStates.get(id).status,updatedAt:state.clientUiStates.get(id).updatedAt}:null};
 }
 function Read(p,body={},admin=false){
+ if(admin!==true)s.Fail('ADMIN_ONLY');
  const db=s.DB(),ids=ClientIds(p),rooms=Rooms(p),linked=rows=>rows.filter(x=>x.accountId===p.id);
  const devices=()=>ids.map(id=>{const row=Device(id,rooms);if(!admin)delete row.note;return row;});
  const qr=()=>require('../qrApproval').List().filter(q=>ids.includes(q.clientId)).map(({deviceKey,lastIP,...q})=>q);

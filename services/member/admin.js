@@ -76,7 +76,7 @@ function Write(action,body,actor){
             if(body.revision!==undefined&&body.revision!==(row.revision||0))s.Fail('CONTENT_CHANGED');
             if(action.endsWith('.save')){
                 const post=action.startsWith('post.');row.body=s.Text(body.body,post?2000:600,!post);
-                if(post){Object.assign(row,require('./media').PostFields(body.image,row));if(!row.body&&!row.image)s.Fail('INPUT_INVALID');}
+                if(post){Object.assign(row,require('./media').PostFields(body.image,row));row.imagePosition=require('./media').PostPosition(body.imagePosition,row);if(!row.body&&!row.image)s.Fail('INPUT_INVALID');}
             }else row.hidden=body.hidden===true;
             row.moderatedBy=actor;row.updatedAt=Date.now();row.revision=(row.revision||0)+1;return row;
         }

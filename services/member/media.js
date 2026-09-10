@@ -35,6 +35,10 @@ function Fields(value,previous={}){
  if(typeof value!=='string')s.Fail('CONTENT_IMAGE_INVALID');
  const image=Decode(value);return {image:Encoded(image,960,180000),imageThumb:Encoded(image,160,12000)};
 }
+function PostPosition(value,previous={}){
+ if(value===undefined)return previous.imagePosition==='before'?'before':'after';
+ if(!['before','after'].includes(value))s.Fail('INPUT_INVALID');return value;
+}
 function PostFields(value,previous={}){
  if(value===undefined)return {image:previous.image||'',imageFeed:previous.imageFeed||'',imageThumb:previous.imageThumb||''};
  if(value==='')return {image:'',imageFeed:'',imageThumb:''};
@@ -49,4 +53,4 @@ function GameDetails(value,previous={}){
 
  return result;
 }
-module.exports={Fields,PostFields,GameDetails};
+module.exports={Fields,PostFields,PostPosition,GameDetails};

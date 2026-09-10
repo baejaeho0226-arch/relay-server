@@ -195,7 +195,7 @@ function Handle(c, line) {
         if (Now() - (c.supportSyncAt || 0) < 100) { error('RATE_LIMIT'); return; }
         c.supportSyncAt = Now();
         PushInfo(c, t);
-        const reset = p[2] !== t.epoch || after >= t.nextSeq;
+        const reset = p[2] !== t.epoch || after >= t.nextSeq || after < Info(t).baseSeq;
         if (reset) SendLine(c.socket, `SUPPORT_RESET|${encode(Info(t))}`);
         const messages = t.messages.filter(m => m.seq > (reset ? 0 : after)).slice(0, 100);
         for (const m of messages) SendLine(c.socket, `SUPPORT_MESSAGE|${encode({ ...m, epoch: t.epoch })}`);
