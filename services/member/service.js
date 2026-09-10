@@ -10,8 +10,13 @@ function Execute(c,requestId,action,body={}){
  const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
  if(action==='records')s.Fail('ADMIN_ONLY');
  if(action.startsWith('topup.')||action.startsWith('coin.'))s.Fail('TOPUP_UNAVAILABLE');
- const read={gif:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,gif:require('./gifMedia').Public(post,true)}};},photo:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,image:post.image||''}};},gifs:()=>require('./gifs').List(),bookmarks:()=>require('./socialActions').Bookmarks(p,body),blocks:()=>require('./socialActions').Blocks(p,body),member:()=>require('./profiles').Read(p,body),follows:()=>require('./follows').List(p,body),charge:()=>require('./charges').Read(p),product:()=>commerce.Product(body,p),article:()=>social.Article(p,body),home:()=>require('./identity').Home(p),news:()=>social.News(p,body),catalog:()=>({...commerce.Catalog(body),profile:s.PublicProfile(p,true)}),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
- if(read[action])return {...read[action](),viewer:s.PublicProfile(p),memberProtocol:26};
+ const read={gif:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,gif:require('./gifMedia').Public(post,true)}};},photo:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,image:post.image||''}};},gifs:()=>require('./gifs').List(),bookmarks:()=>require('./socialActions').Bookmarks(p,body),blocks:()=>require('./socialActions').Blocks(p,body),member:()=>require('./profiles').Read(p,body),follows:()=>require('./follows').List(p,body),charge:()=>require('./charges').Read(p),product:()=>commerce.Product(body,p),article:()=>social.Article(p,body),home:()=>require('./identity').Home(p),news:()=>social.News(p,body),catalog:()=>({...commerce.Catalog(body,p),profile:s.PublicProfile(p,true)}),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
+ if(read[action]){
+  // Execute visibility checks and daily impressions before accepting a cached revision.
+  const data=read[action]();
+  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:27};
+  return {...data,viewer:s.PublicProfile(p),memberProtocol:27,revision:s.DB().revision};
+ }
  const mutations={
   'block.set':()=>require('./socialActions').Block(p,body),
   'bookmark.set':()=>require('./socialActions').Bookmark(p,body),
@@ -28,24 +33,24 @@ function Execute(c,requestId,action,body={}){
   react:()=>social.React(p,body),report:()=>social.Report(p,body)
  };
  if(!mutations[action])s.Fail('UNKNOWN_ACTION');
- return s.Operation(p,requestId,action,body,mutations[action],action==='order.activate'?['licenses','licenseRevision']:[]);
+ return s.Operation(p,requestId,action,body,()=>{const result=mutations[action]();return body._delta?require('./wire').Compact(result,action):result;},action==='order.activate'?['licenses','licenseRevision']:[]);
 }
-function Reply(c,id,action,data){
- let encoded=Buffer.from(JSON.stringify(data),'utf8').toString('base64');
- if(encoded.length>6000000)encoded=Buffer.from(JSON.stringify({ok:false,reason:'RESPONSE_LIMIT',message:'조회 범위를 줄여주세요.'})).toString('base64');
- const size=12000,total=Math.ceil(encoded.length/size);
- for(let index=0;index<total;index++){
-  const fields=[id,action,index,total,encoded.slice(index*size,(index+1)*size)],mac=protocol.Sign(c,'HUB_RESPONSE',fields);
-  if(!mac)return;
-  SendLine(c.socket,'HUB_CHUNK|'+fields.join('|')+'|'+mac);
- }
+function Reply(c,id,action,data,compressed=false){
+ let wire;try{wire=require('./wire').Encode(data,compressed);}catch(_){wire=require('./wire').Encode({ok:false,reason:'RESPONSE_LIMIT',message:'조회 범위를 줄여주세요.'},false);}
+ const {encoded,prefix,signature}=wire,size=12000,total=Math.ceil(encoded.length/size);
+ if(total>512){Reply(c,id,action,{ok:false,reason:'RESPONSE_LIMIT',message:'조회 범위를 줄여주세요.'});return;}
+ c.socket.cork?.();
+ try{for(let index=0;index<total;index++){
+  const fields=[id,action,index,total,encoded.slice(index*size,(index+1)*size)],mac=protocol.Sign(c,signature,fields);
+  if(!mac)return;SendLine(c.socket,prefix+'|'+fields.join('|')+'|'+mac);
+ }}finally{c.socket.uncork?.();}
 }
 function Handle(c,line){
- let id,action,encoded;
- if(line.startsWith('HUB_UPLOAD|')){
+ let id,action,encoded,compressed=false;
+ if(line.startsWith('HUB_UPLOAD|')||line.startsWith('HUB_ZUPLOAD|')){
   if(!Allowed(c)){c.hubUpload=null;return true;}
   const assembled=require('./uploads').Accept(c,line.split('|'));if(!assembled)return true;
-  ({id,action,encoded}=assembled);
+  ({id,action,encoded,compressed}=assembled);
  }else{
   if(!line.startsWith('HUB|'))return false;
   const parts=line.split('|');id=parts[1]||'';action=parts[2]||'';encoded=parts[3]||'';
@@ -53,17 +58,17 @@ function Handle(c,line){
   if(!protocol.Verify(c,[id,action,encoded],parts[4]))return true;
  }
  try{
-  const body=JSON.parse(Buffer.from(encoded,'base64').toString('utf8'));if(!body||Array.isArray(body)||typeof body!=='object')s.Fail('INPUT_INVALID');
+  const body=JSON.parse(require('./wire').Decode(encoded,compressed));if(!body||Array.isArray(body)||typeof body!=='object')s.Fail('INPUT_INVALID');
   const now=Date.now();if(!c.hubRate||now-c.hubRate.at>10000)c.hubRate={at:now,count:0};if(++c.hubRate.count>45)s.Fail('PLEASE_WAIT');
-  const data=Execute(c,id,action,body);Reply(c,id,action,{ok:true,data});
+  const data=Execute(c,id,action,body);Reply(c,id,action,{ok:true,data},body._wire==='zlib');
   if(action==='order.activate')commerce.AfterActivation(c);
-  if(action.includes('.')||['purchase','react','report'].includes(action))NotifyChanged();
+  if(action.includes('.')||['purchase','react','report'].includes(action))NotifyChanged(c);
  }catch(e){const reason=e.memberError?e.message:'INPUT_INVALID';Reply(c,id,action,{ok:false,reason,message:messages[reason]||'요청을 처리하지 못했습니다.'});}
  return true;
 }
 function AdminRead(body={}){return require('./admin').Read(body);}
-function NotifyChanged(){
- for(const c of state.clients.values())if(Allowed(c)){
+function NotifyChanged(except=null){
+ for(const c of state.clients.values())if(c!==except&&Allowed(c)){
   const revision=String(s.DB().revision),mac=protocol.Sign(c,'HUB_EVENT',[revision]);
   if(mac)SendLine(c.socket,'HUB_EVENT|'+revision+'|'+mac);
  }
