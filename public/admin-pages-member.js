@@ -16,9 +16,9 @@ function memberFilters(view){
  if(view==='orders')return [['PAID','미사용'],['ACTIVE','사용 중'],['REFUNDED','환불 완료']];
  return [];
 }
-function memberDescription(text){
+function memberDescription(text,formats){
  if(!text)return '';
- return `<div class="member-preview">${esc(text)}</div>${text.length>100?`<details class="member-body"><summary>내용 더 보기</summary><p>${esc(text)}</p></details>`:''}`;
+ return `<div class="member-preview">${formats?memberRichHTML(text,formats):esc(text)}</div>${text.length>100?`<details class="member-body"><summary>내용 더 보기</summary><p>${formats?memberRichHTML(text,formats):esc(text)}</p></details>`:''}`;
 }
 function memberRow(row,view){
  let title=row.title||row.nickname||row.id,meta='',body='',actions='';
@@ -35,7 +35,7 @@ function memberRow(row,view){
  }
  if(['products','news'].includes(view)&&!row.deleted)actions+=memberButton('content.'+(row.published?'unpublish':'publish'),row.id,row.published?'비공개':'공개');
  const category=view==='news'?row.category:view==='products'?(row.details?.genre||'게임'):'';
- return `<tr ${category?`class="member-category-row" data-category-tone="${memberCategoryTone(category)}"`:''}>${memberEditable(view)?`<td><input type="checkbox" class="member-check" aria-label="${esc(title)} 선택" data-id="${esc(row.id)}" ${memberSelected.has(row.id)?'checked':''}></td>`:''}<td class="member-item">${row.imageThumb?`<img class="member-content-thumb" src="${esc(row.imageThumb)}" alt="등록 사진">`:""}${category?`<span class="member-category-badge">${esc(memberStatus[category]||category)}</span>`:''}<strong>${esc(title)}</strong><div class="small-note">${esc(fmtTime(row.updatedAt||row.at||row.createdAt))}</div><span class="member-badge">${esc(memberState(row,view))}</span></td><td class="member-detail">${meta?`<div class="member-meta">${esc(meta)}</div>`:''}${memberDescription(body)}</td>${view==='posts'?`<td class="member-views">${Number(row.views||0).toLocaleString('ko-KR')}</td>`:''}<td><div class="actions">${actions||'—'}</div></td></tr>`;
+ return `<tr ${category?`class="member-category-row" data-category-tone="${memberCategoryTone(category)}"`:''}>${memberEditable(view)?`<td><input type="checkbox" class="member-check" aria-label="${esc(title)} 선택" data-id="${esc(row.id)}" ${memberSelected.has(row.id)?'checked':''}></td>`:''}<td class="member-item">${row.imageThumb?`<img class="member-content-thumb" src="${esc(row.imageThumb)}" alt="등록 사진">`:""}${category?`<span class="member-category-badge">${esc(memberStatus[category]||category)}</span>`:''}<strong>${esc(title)}</strong><div class="small-note">${esc(fmtTime(row.updatedAt||row.at||row.createdAt))}</div><span class="member-badge">${esc(memberState(row,view))}</span></td><td class="member-detail">${meta?`<div class="member-meta">${esc(meta)}</div>`:''}${memberDescription(body,view==='posts'?row.bodyFormats:undefined)}</td>${view==='posts'?`<td class="member-views">${Number(row.views||0).toLocaleString('ko-KR')}</td>`:''}<td><div class="actions">${actions||'—'}</div></td></tr>`;
 }
 function memberCanAutoRefresh(){
  const search=content.querySelector('#member-search');
