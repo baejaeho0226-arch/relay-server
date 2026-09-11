@@ -38,6 +38,8 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  async function post(peer,account,fields,id){own(account).last_post=0;return run(peer,'post.create',{...fast,...fields},id);}
  async function comment(peer,account,fields){own(account).last_comment=0;return run(peer,'comment.create',{...fast,...fields});}
  const source=(await post(author,a.id,{title:'원본 제목',body:'원본 이야기',image:avatar(60),poll:{question:'한 번만 선택',options:['첫 번째','두 번째']}})).post;
+ // Source clocks and rows survive both other-member and own reposts.
+ source.at-=180000;store.Atomic(()=>{store.DB().posts[source.id].at=source.at;});
  // Duplicate captions are permitted: the option ID, not its text, owns votes.
  const duplicate=(await post(author,a.id,{body:'동일 문구 투표',poll:{question:'같은 문구 허용',options:['선택','선택']}})).post;
  assert.deepEqual(duplicate.poll.options.map(x=>x.text),['선택','선택']);
@@ -62,6 +64,8 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  const q1=await post(viewer,b.id,qBody,qId);assert.deepEqual(await run(viewer,'post.create',{...fast,...qBody},qId),q1);
  const q2=await post(viewer,b.id,{quotePostId:source.id,body:'두 번째 이야기'});
  assert.notEqual(q1.post.id,q2.post.id);assert.equal(q1.post.author.id,b.id);assert.equal(q1.post.body,'내 의견');
+ assert.equal(q1.post.quote.at,source.at);assert.equal(q1.post.repostedBy.at,q1.post.at);
+ assert.ok(q1.post.repostedBy.at-source.at>=180000);assert.notEqual(q1.post.id,source.id);
  assert.equal(q1.post.quote.body,'원본 이야기');assert.ok(q1.post.quote.image);assert.equal(q1.post.quote.poll.options.length,2);
  assert.equal(q2.quoteSource.reposts,2);assert.equal(q2.post.repostedBy.id,b.id);assert.ok(q2.post.repostedBy.at>0);
  assert.equal((await run(viewer,'me',fast)).posts.total,2,'quotes belong to the writer profile');
@@ -78,6 +82,10 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal(selfQuote.post.author.id,selfQuote.post.quote.author.id,'self repost retains the original author for the flat native layout');
  assert.equal(selfQuote.post.repostedBy.id,a.id);assert.equal(selfQuote.quoteSource.repostedBy,null,'a source is not mislabeled as somebody else reposting it');
  assert.equal(selfQuote.post.quote.body,'원본 이야기');
+ assert.equal(selfQuote.post.quote.at,source.at);assert.equal(selfQuote.post.repostedBy.at,selfQuote.post.at);
+ const preserved=(await run(author,'feed',fast)).items.find(x=>x.id===source.id);
+ assert.ok(preserved);assert.equal(preserved.at,source.at);assert.equal(preserved.repostedBy,null);
+ assert.ok(selfQuote.post.repostedBy.at-preserved.at>=180000);
 
  const root=(await comment(author,a.id,{postId:source.id,body:'첫 댓글'})).comment;
  const replyResult=await comment(viewer,b.id,{postId:source.id,parentId:root.id,body:'직접 답글'}),reply=replyResult.comment;
@@ -89,6 +97,17 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  for(const id of [root.id,reply.id,nested.id])assert.equal(thread.comments.items.find(x=>x.id===id).replies,1);
  assert.equal(thread.comments.items.find(x=>x.id===deeper.comment.id).replies,0);
  const removal=await run(third,'comment.delete',{id:nested.id});assert.equal(removal.replyCounts[0].id,reply.id);assert.equal(removal.replyCounts[0].replies,0);
+ assert.equal(removal.comments,3);assert.equal(removal.alreadyDeleted,false);
+ const again=await run(third,'comment.delete',{id:nested.id});assert.equal(again.alreadyDeleted,true);assert.equal(again.comments,3);
+ assert.equal((await request(viewer,'comment.delete',{id:root.id})).reason,'NOT_OWNER');
+ const beforeDelete=JSON.stringify(store.DB().comments[root.id]);db.SaveDatabase=()=>false;
+ try{assert.equal((await request(author,'comment.delete',{id:root.id})).reason,'STORAGE_SAVE_FAILED');}finally{db.SaveDatabase=save;}
+ assert.equal(JSON.stringify(store.DB().comments[root.id]),beforeDelete);
+ const deleteRoot=await run(author,'comment.delete',{id:root.id});assert.equal(deleteRoot.comments,2);
+ thread=await run(author,'thread',{...fast,postId:source.id});assert.ok(!thread.comments.items.some(x=>x.id===root.id));
+ assert.ok(thread.comments.items.some(x=>x.id===reply.id),'replies remain visible after their parent is removed');
+ // Restore this fixture only for the following independent block-count scenario.
+ store.Atomic(()=>{Object.assign(store.DB().comments[root.id],JSON.parse(beforeDelete));});
  await run(author,'block.set',{id:b.id,blocked:true});thread=await run(author,'thread',{...fast,postId:source.id});assert.equal(thread.comments.items.find(x=>x.id===root.id).replies,0);
  await run(author,'block.set',{id:b.id,blocked:false});
  // A hidden/deleted source is never smuggled inside another person's quoted post.
@@ -105,9 +124,13 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal((await run(viewer,'thread',{...fast,postId:source.id})).post.poll.total,2);
  assert.equal(store.DB().comments[reply.id].replyToId,root.id,'direct targets survive storage reload');
  assert.equal(store.DB().posts[q1.post.id].quotePostId,source.id);
- await run(author,'post.delete',{id:source.id});
+ const removedPost=await run(author,'post.delete',{id:source.id});assert.equal(removedPost.alreadyDeleted,false);
+ assert.equal((await run(author,'post.delete',{id:source.id})).alreadyDeleted,true);
+ assert.equal((await request(viewer,'post.delete',{id:source.id})).reason,'NOT_OWNER');
+ assert.equal((await request(author,'thread',{...fast,postId:source.id})).reason,'POST_NOT_FOUND');
+ assert.ok(!(await run(author,'feed',fast)).items.some(x=>x.id===source.id));
  thread=await run(viewer,'thread',{...fast,postId:q1.post.id});assert.deepEqual(thread.post.quote,{id:source.id,unavailable:true});
  assert.equal((await request(viewer,'photo',{id:source.id})).reason,'POST_NOT_FOUND');
  await run(viewer,'post.edit',{...fast,id:q1.post.id,revision:2,body:'원글 삭제 후에도 내 글 편집',quotePostId:source.id});
- console.log('FIX32 PASS: duplicate-option IDs, self repost/source navigation and attribution,  stable-account one-time votes, replay and rollback, repeatable quoted posts, edits and source privacy, nested quote limits, direct reply counts, deletion/block deltas, storage reload.');
+ console.log('FIX33 PASS: repost/source clocks, independent rows, idempotent deletion and rollback, duplicate-option IDs, self repost/source navigation and attribution,  stable-account one-time votes, replay and rollback, repeatable quoted posts, edits and source privacy, nested quote limits, direct reply counts, deletion/block deltas, storage reload.');
 }finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
