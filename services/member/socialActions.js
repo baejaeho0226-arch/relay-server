@@ -17,7 +17,6 @@ function PollInput(value,previous,postId){
  if(value===null){if(previous&&Object.values(s.DB().pollVotes).some(x=>x.postId===postId))s.Fail('POLL_LOCKED');return null;}
  if(!value||!Array.isArray(value.options)||value.options.length<2||value.options.length>4)s.Fail('POLL_INVALID');
  const question=s.Text(value.question,90,true),options=value.options.map((x,i)=>({id:String(i),text:s.Text(typeof x==='string'?x:x.text,80,true)}));
- if(new Set(options.map(x=>x.text)).size!==options.length)s.Fail('POLL_INVALID');
  const result={question,options};if(previous&&JSON.stringify(previous)!==JSON.stringify(result)&&Object.values(s.DB().pollVotes).some(x=>x.postId===postId))s.Fail('POLL_LOCKED');return result;
 }
 function Poll(post,p){if(!post.poll)return null;const votes=Object.values(s.DB().pollVotes).filter(x=>x.postId===post.id);return {...post.poll,total:votes.length,myVote:s.DB().pollVotes[p.id+':'+post.id]?.optionId??'',options:post.poll.options.map(x=>({...x,votes:votes.filter(v=>v.optionId===x.id).length}))};}
