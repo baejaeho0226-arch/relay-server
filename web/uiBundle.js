@@ -36,6 +36,8 @@ const FILES = [
   "admin-actions-devices.js",
   "admin-actions-policy.js",
   "admin-actions-system.js",
+  "member-body-format.js",
+  "admin-rich-body.js",
   "admin-modal.js",
   "admin-device-actions.js",
   "admin-license-actions.js",

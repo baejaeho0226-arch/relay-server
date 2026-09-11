@@ -1,8 +1,8 @@
 {
-  "webAdminVersion": "4.16.0",
-  "uiRevision": "fix27",
+  "webAdminVersion": "4.17.0",
+  "uiRevision": "fix30",
   "files": {
-    "index.html": "66cd757d6045b0520487e98fa3a65ea0343490f0bef9214cd366ef038a375a40",
+    "index.html": "c0f79dd8e7e3d28673bd2aaf419b65fcfebc223b69bdf09c11637fce1fc07081",
     "admin.css": "5890f2b89126b2aa47cce79e2939402451d0f6aee1a7e657dbefff407987c58b",
     "admin-theme.css": "62f6ea85fae20540d82195d92cc965342d972a87a49228d2c969cbda84d7bc8b",
     "admin-appearance.css": "19f7a687c8eaa6dcf3caffb82956efab81abea142cd992a9fcd62787c5d3e3ed",
@@ -33,17 +33,19 @@
     "admin-actions-devices.js": "9aacc4bf119c4bd0c1e6cf2aff7e8f9528f9b955a91a77a9f75f8c804623840f",
     "admin-actions-policy.js": "da369877a721aa260fe0b1037e9e2c651cb67845cf19b19c0f258491bd6d314f",
     "admin-actions-system.js": "0da9fc22f39dd499674c3748289123eb7a1c44ebb0859f3d52e114fe38fa02be",
-    "admin-modal.js": "e3b07d6932b89ccb297aa4e99735bd74e9bea1d1902926b500a7d34a8969a7f8",
+    "member-body-format.js": "bf352ec34ed6a15a4a865fae66f145d278cb9dad811491f76ba9af2f0e322cba",
+    "admin-rich-body.js": "d45cbafe942cd9ee0a84a17230959bc50f1ab9f2f729bafc3ca3c765a8e8f450",
+    "admin-modal.js": "e35752a53c5363f2e1edf5bcfc8d37300539d0d23279da2cabeb74d82a66dc91",
     "admin-device-actions.js": "76c018ff991c3a3712e5623bf98d033471a18e48f55d2fe6a1b39058fa133143",
     "admin-license-actions.js": "6b31ebe8aa220d55aee9ceabb195847bd31e18058b147a3e1a0565a8ccd6127f",
     "admin-actions.js": "3c857707aa93c117a4d6f9e782c6031efdbd039368b8b6a794f26f1d615e31ee",
-    "admin-pages-member.js": "fb4450c06a5e925bb440ae0248a200a58b80e0802cbf410ca35042f2c7ae8f6e",
-    "admin-member-actions.js": "0d62f321971c0eaa9b1353dcbb115e75fb95b0b1486742a783d95753a8e66220",
-    "admin-member.css": "88479527aa621a9f8296f4b4395a66ced0e42a8df8cea86c511613a51e57e2b8",
+    "admin-pages-member.js": "1e4dbb8da476c5830a446a198655cd919010fa1031f1dfb3823ef8112532ad6a",
+    "admin-member-actions.js": "6663a021624c401d054ffb5e9ec21304e636a60182b3b8f378b307c6a26aa303",
+    "admin-member.css": "04bb73bb81e1025b54000ddcba23f2f6a7dbf1f8eca6c86d2bc2ea3b74d39d5c",
     "admin-palette.js": "592501c81ded079397e06e08124163e0bdb7d62c12befb334656e68c1bcbf73c",
     "admin-pages-production.js": "b0c9d7d19b88ab4756849e0c57289c22e57b5f4a61a61eef46566764856653c4",
-    "service-worker.js": "cb7aca688a498de6a74d29e7c672bd7243a8d90bd47d0956e1b578daa9361f71",
-    "ui-refresh.html": "ce5698f890137ccdeba6f92254903e451a817233f6994c506b2282a7b400d951",
+    "service-worker.js": "5253ec7f3746b519edf4698df920172913198b8bdca054e29d26e50bccc11f92",
+    "ui-refresh.html": "44cf128dbbf991509a475a5fa3db227fedc11de8931b7b09431b21b8df715829",
     "ui-refresh.js": "18c00a09bdc6409509b42ce6a7d4e5480d6edd1e7feabcd575aafa6922e42dac"
   }
 }
