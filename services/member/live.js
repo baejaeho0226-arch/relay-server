@@ -5,6 +5,11 @@ function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s
 function Scope(p,action,query={}){
  if(action==='feed')return s.Page(social.FeedRows(p,query),query,8).items.map(x=>x.id+'/'+(x.revision||0));
  if(action==='me'&&query.postCards===true)return s.Page(require('./commerce').OwnPostRows(p),query,12).items.map(x=>x.id+'/'+(x.revision||0));
+ if(action==='member'&&query.postCards===true){
+  const target=require('./profiles').Target(p,query);
+  if(!target)return ['unavailable'];
+  return s.Page(require('./commerce').OwnPostRows(target),query,12).items.map(x=>x.id+'/'+(x.revision||0));
+ }
  if(action==='thread'){
   const post=s.DB().posts[query.postId];if(!extra.Visible(post,p))return [];
   return [post.id+'/'+(post.revision||0),...s.Page(social.ThreadRows(p,post),query,12).items.map(x=>x.id+'/'+(x.revision||0))];

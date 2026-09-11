@@ -52,10 +52,18 @@ function Refund(body,actor){
  const order=s.DB().orders[body.id];if(!order)s.Fail('ORDER_NOT_FOUND');if(order.status==='REFUNDED')return PublicOrder(order);if(order.activatedAt||order.source==='QR_CHARGE')s.Fail('ACTIVATED_REFUND_REVIEW');
  return s.Atomic(()=>{const p=s.ProfileById(order.accountId);s.Ledger(p,order.amount,'REFUND',order.id);order.status='REFUNDED';order.refundedAt=Date.now();order.refundedBy=actor;order.refundReason=s.Text(body.reason,200,true);const product=s.DB().products[order.productId];if(product&&product.stock>=0)product.stock++;return PublicOrder(order);});
 }
+function PurchasePayments(p){
+ const db=s.DB();
+ return Object.values(db.ledger).filter(x=>x.accountId===p.id&&x.kind==='PURCHASE')
+  .sort((a,b)=>b.at-a.at||b.id.localeCompare(a.id)).map(x=>{
+   const order=db.orders[x.reference],owned=order?.accountId===p.id;
+   return {...x,title:owned?order.title:'게임 이용권',days:owned?order.days:0,orderId:owned?order.id:''};
+  });
+}
 function OwnPostRows(p){return Object.values(s.DB().posts).filter(x=>x.accountId===p.id&&!x.deleted&&!x.hidden).sort((a,b)=>b.at-a.at||b.id.localeCompare(a.id));}
 function Mine(p,body){
  const db=s.DB(),page=s.Page(OwnPostRows(p),body,12);
  const posts={...page,items:page.items.map(x=>body.postCards===true?require('./social').PublicPost(x,p,false,body._wire==='zlib'):{id:x.id,title:x.title||'',body:(x.title||x.body||'GIF · 투표').slice(0,140),imageThumb:x.imageThumb||require('./gifs').Get(x.gifId)?.frames[0]||'',at:x.at,revision:x.revision||0})};
- return {profile:s.PublicProfile(p,true),posts,orders:s.Page(Object.values(db.orders).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at).map(PublicOrder),body,20),payments:s.Page(Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20)};
+ return {profile:s.PublicProfile(p,true),posts,orders:s.Page(Object.values(db.orders).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at).map(PublicOrder),body,20),payments:s.Page(body.purchasesOnly===true?PurchasePayments(p):Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20)};
 }
-module.exports={PublicGame,Product,Catalog,SaveProduct,Purchase,Activate,AfterActivation,Refund,Mine,OwnPostRows,PublicOrder};
+module.exports={PublicGame,Product,Catalog,SaveProduct,Purchase,Activate,AfterActivation,Refund,Mine,OwnPostRows,PurchasePayments,PublicOrder};

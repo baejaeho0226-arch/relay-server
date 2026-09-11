@@ -11,7 +11,7 @@ function Execute(c,requestId,action,body={}){
   if(!BaseAllowed(c)||!require('./testAccess').Enabled())s.Fail(state.serviceEnabled?'MEMBER_AUTH_REQUIRED':'SERVICE_DISABLED');
   const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
   if(!require('./testAccess').Grant(c))s.Fail('MEMBER_AUTH_REQUIRED');
-  return {testAccess:true,memberProtocol:29};
+  return {testAccess:true,memberProtocol:30};
  }
  if(!Allowed(c))s.Fail(state.serviceEnabled?'MEMBER_AUTH_REQUIRED':'SERVICE_DISABLED');
  const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
@@ -21,9 +21,9 @@ function Execute(c,requestId,action,body={}){
  if(read[action]){
   // Execute visibility checks and daily impressions before accepting a cached revision.
   const data=read[action]();
-  if(action==='live')return {...data,memberProtocol:29};
-  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:29};
-  return {...data,viewer:s.PublicProfile(p),memberProtocol:29,revision:s.DB().revision};
+  if(action==='live')return {...data,memberProtocol:30};
+  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:30};
+  return {...data,viewer:s.PublicProfile(p),memberProtocol:30,revision:s.DB().revision};
  }
  const mutations={
   'block.set':()=>require('./socialActions').Block(p,body),
