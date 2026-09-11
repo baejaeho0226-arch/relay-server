@@ -99,7 +99,7 @@ async function testWorker() {
   };
   vm.runInNewContext(source('public/service-worker.js'), {
     self: worker, URL, Request: BrowserRequest, Response,
-    caches: { open: async () => cache, keys: async () => ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.19.0-fix32', 'relay-admin-shell-v4.20.0-fix33', 'relay-admin-shell-v4.21.0-fix34', 'another-app-cache'], delete: async name => { removed.push(name); } },
+    caches: { open: async () => cache, keys: async () => ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.19.0-fix32', 'relay-admin-shell-v4.20.0-fix33', 'relay-admin-shell-v4.21.0-fix34', 'relay-admin-shell-v4.22.0-fix35', 'another-app-cache'], delete: async name => { removed.push(name); } },
     fetch: async request => {
       network.push(request);
       if (failNetwork) throw new Error('OFFLINE');
@@ -111,7 +111,7 @@ async function testWorker() {
     handlers[type]({ waitUntil: p => { work = p; } });
     await work;
   }
-  assert.deepEqual(removed, ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.19.0-fix32', 'relay-admin-shell-v4.20.0-fix33']);
+  assert.deepEqual(removed, ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.19.0-fix32', 'relay-admin-shell-v4.20.0-fix33', 'relay-admin-shell-v4.21.0-fix34']);
   async function request(url, mode) {
     let response;
     const work = [];
