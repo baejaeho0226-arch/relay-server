@@ -50,7 +50,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal(reaction.partial,true);assert.equal(reaction.post.likes,1);assert.equal(reaction.post.image,undefined);assert.equal(reaction.post.gif,undefined);assert.ok(deltaBytes<fullBytes/2);
  assert.deepEqual(await run(viewer,'react',reactionBody,req),reaction);assert.equal((await request(viewer,'react',{...reactionBody,value:0},req)).reason,'REQUEST_REUSED');
  const vote=(await run(viewer,'poll.vote',{...fast,postId:post.id,optionId:'1'})).post;assert.equal(vote.poll.myVote,'1');assert.equal(vote.poll.options[1].votes,1);
- const repost=(await run(viewer,'repost.set',{...fast,postId:post.id,value:true})).post;assert.equal(repost.repostedBy.id,b.id);assert.ok(repost.repostedBy.at>0);
+ const repost=(await run(viewer,'post.create',{...fast,quotePostId:post.id,body:'함께 나눠요'})).post;assert.equal(repost.repostedBy.id,b.id);assert.ok(repost.repostedBy.at>0);
  const saved=await run(viewer,'bookmark.set',{...fast,kind:'post',id:post.id,saved:true});assert.deepEqual(saved,{saved:true,kind:'post',id:post.id});
  const comment=(await run(author,'comment.create',{...fast,postId:post.id,body:'댓글'})).comment;
  const heart=(await run(viewer,'comment.react',{...fast,id:comment.id,value:1})).comment;assert.equal(heart.likes,1);assert.equal(heart.postId,post.id);assert.equal(heart.body,undefined);

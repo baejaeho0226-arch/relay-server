@@ -54,14 +54,14 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  await run(viewer,'comment.edit',{id:comment.id,body:'수정 댓글',revision:0});assert.equal((await request(viewer,'comment.edit',{id:comment.id,body:'오래된 수정',revision:0})).reason,'CONTENT_CHANGED');
  await run(viewer,'poll.vote',{postId:post.id,optionId:'1'},'FIX25-POLL');await run(viewer,'poll.vote',{postId:post.id,optionId:'1'},'FIX25-POLL');await run(author,'poll.vote',{postId:post.id,optionId:'0'});
  thread=await run(third,'thread',{postId:post.id});assert.equal(thread.post.poll.total,2);assert.equal(thread.post.poll.options[1].votes,1);
- await run(viewer,'poll.vote',{postId:post.id,optionId:'2'});assert.equal((await run(viewer,'thread',{postId:post.id})).post.poll.total,2);
+ assert.equal((await request(viewer,'poll.vote',{postId:post.id,optionId:'2'})).reason,'POLL_ALREADY_VOTED');assert.equal((await run(viewer,'thread',{postId:post.id})).post.poll.total,2);
  assert.equal((await request(author,'post.edit',{id:post.id,revision:0,body:'본문',poll:{question:'변경',options:['가','나']}})).reason,'POLL_LOCKED');
  await run(author,'post.edit',{id:post.id,revision:0,title:'새 제목',body:'새 본문'});assert.equal((await run(viewer,'thread',{postId:post.id})).post.title,'새 제목');
  await run(viewer,'bookmark.set',{kind:'post',id:post.id,saved:true});await run(viewer,'bookmark.set',{kind:'comment',id:reply.id,saved:true});assert.equal((await run(viewer,'bookmarks')).total,2);assert.equal((await run(author,'bookmarks')).total,0);
- await run(viewer,'repost.set',{postId:post.id,value:true});await run(viewer,'repost.set',{postId:post.id,value:true});const feed=await run(third,'feed');assert.equal(feed.items.filter(x=>x.id===post.id).length,1);assert.equal(feed.items[0].reposts,1);
+ const quoted=(await run(viewer,'post.create',{quotePostId:post.id,body:'내 이야기'})).post;const feed=await run(third,'feed');assert.equal(feed.items.filter(x=>x.id===post.id).length,1);assert.equal(feed.items.find(x=>x.id===post.id).reposts,1);assert.equal(feed.items.find(x=>x.id===quoted.id).quote.id,post.id);
  await run(viewer,'report',{kind:'comment',id:reply.id,reason:'댓글 신고'});const report=Object.values(store.DB().reports)[0];assert.equal(report.commentId,reply.id);
  await run(viewer,'follow.set',{id:a.id,following:true});await run(viewer,'block.set',{id:a.id,blocked:true});
- assert.equal((await run(viewer,'feed')).total,0);assert.equal((await run(viewer,'bookmarks')).total,0);assert.equal((await run(viewer,'blocks')).items[0].id,a.id);
+ const blockedFeed=await run(viewer,'feed');assert.equal(blockedFeed.total,1);assert.equal(blockedFeed.items[0].quote.unavailable,true);assert.equal((await run(viewer,'bookmarks')).total,0);assert.equal((await run(viewer,'blocks')).items[0].id,a.id);
  for(const [action,body] of [['photo',{id:post.id}],['thread',{postId:post.id}],['member',{id:a.id}],['follow.set',{id:a.id,following:true}],['comment.react',{id:reply.id,value:1}],['poll.vote',{postId:post.id,optionId:'0'}],['repost.set',{postId:post.id,value:true}],['bookmark.set',{kind:'post',id:post.id,saved:true}]])assert.equal((await request(viewer,action,body)).ok,false,action+' blocked');
  assert.equal((await run(author,'follows',{id:a.id,mode:'followers'})).items.length,0);
  const snapshot=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(snapshot),true);assert.equal((await run(viewer,'blocks')).total,1);
@@ -76,5 +76,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  const full=await run(third,'feed');assert.equal(full.items.length,8);assert.ok(Buffer.from(JSON.stringify({ok:true,data:full})).toString('base64').length<900000);
  const old=structuredClone(store.DB());for(const key of ['commentReactions','bookmarks','blocks','reposts','pollVotes'])delete old[key];store.Import({memberHub:old});for(const key of ['commentReactions','bookmarks','blocks','reposts','pollVotes'])assert.deepEqual(store.DB()[key],{});
  assert.equal(store.DB().orders[purchased.id].days,45);
- console.log('FIX25 TCP PASS: article reopen, custom paid periods, image/genre data, deduplicated views, GIF frames, title, post/comment hearts, author replies, ownership/revisions, poll vote change/idempotency, bookmarks privacy, repost dedup, comment reports, mutual block authorization, durable data migration and save rollback.');
+ console.log('FIX25 TCP PASS: article reopen, custom paid periods, image/genre data, deduplicated views, GIF frames, title, post/comment hearts, author replies, ownership/revisions, poll vote lock/idempotency, bookmarks privacy, quoted repost, comment reports, mutual block authorization, durable data migration and save rollback.');
 }finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

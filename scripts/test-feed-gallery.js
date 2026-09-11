@@ -40,7 +40,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal((await run(viewer,'gif',{id:post.id})).photo.gif.data,gifData);
  await run(author,'post.edit',{id:post.id,revision:0,title:'수정 제목',body:'사진 유지',gifId:post.gif.id,poll:{question:'어떤 게임?',options:['레이싱','RPG']}});
  assert.equal((await run(viewer,'gif',{id:post.id})).photo.gif.data,gifData);
- await run(viewer,'react',{postId:post.id,value:1});await run(viewer,'repost.set',{postId:post.id,value:true});
+ await run(viewer,'react',{postId:post.id,value:1});const quoted=(await run(viewer,'post.create',{quotePostId:post.id,body:'원글 공유'})).post;
  await run(viewer,'bookmark.set',{kind:'post',id:post.id,saved:true});
  await run(viewer,'poll.vote',{postId:post.id,optionId:'1'});detail=await run(viewer,'thread',{postId:post.id});assert.equal(detail.post.poll.myVote,'1');assert.equal(detail.post.poll.options[1].votes,1);assert.equal(detail.post.likes,1);assert.equal(detail.post.myRepost,true);
  const root1=(await run(author,'comment.create',{postId:post.id,body:'첫 댓글'})).comment;
@@ -65,6 +65,6 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  const snapshot=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(snapshot),true);assert.equal((await run(viewer,'gif',{id:post.id})).photo.gif.data,gifData);
  await run(author,'post.edit',{id:post.id,revision:1,title:'사진 제거',body:'투표 유지',image:'',gifData:'',gifId:''});
  detail=await run(viewer,'thread',{postId:post.id});assert.equal(detail.post.image,'');assert.equal(detail.post.gif,null);assert.equal(detail.post.poll.myVote,'1');
- await run(author,'post.delete',{id:post.id});assert.equal((await run(viewer,'feed')).total,0);assert.equal((await request(viewer,'gif',{id:post.id})).reason,'POST_NOT_FOUND');
+ await run(author,'post.delete',{id:post.id});const remaining=await run(viewer,'feed');assert.equal(remaining.total,1);assert.equal(remaining.items[0].quote.unavailable,true);await run(viewer,'post.delete',{id:quoted.id});assert.equal((await run(viewer,'feed')).total,0);assert.equal((await request(viewer,'gif',{id:post.id})).reason,'POST_NOT_FOUND');
  console.log('FIX26 PASS: gallery GIF chunk upload/original/preview, photo edit/remove, two-choice poll selection, all social actions, grouped replies, ownership, persistence and malformed GIF rollback.');
 }finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

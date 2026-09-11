@@ -1,0 +1,12 @@
+ 'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const {JSDOM}=require('jsdom'),root=path.resolve(__dirname,'..');
+const source=fs.readFileSync(path.join(root,'public/admin-pages-member.js'),'utf8');
+const fn=source.slice(source.indexOf('function memberQuotePreview('));
+const context={esc:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))};vm.createContext(context);vm.runInContext(fn,context);
+const quote={id:'POST-1',title:'<script>bad()</script>',body:'<img src=x onerror=bad()>\n본문',author:{nickname:'<svg/onload=bad()>'},at:1};
+const dom=new JSDOM(context.memberQuotePreview(quote));assert.equal(dom.window.document.querySelectorAll('script,svg,img').length,0);assert.ok(dom.window.document.body.textContent.includes(quote.body));
+const deleted=new JSDOM(context.memberQuotePreview({...quote,deleted:true}));assert.ok(deleted.window.document.body.textContent.includes('삭제된 원글'));assert.ok(!deleted.window.document.body.textContent.includes(quote.body));
+for(const file of ['member-body-format.js','admin-rich-body.js'])assert.equal(fs.existsSync(path.join(root,'public',file)),false);
+const actions=fs.readFileSync(path.join(root,'public/admin-member-actions.js'),'utf8');assert.ok(!actions.includes('richtext'));assert.ok(actions.includes("label:'내용',type:'textarea'"));
+console.log('FIX31 admin quote preview escapes text, hides deleted originals, uses plain themed editing.');
