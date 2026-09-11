@@ -38,6 +38,16 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  async function post(peer,account,fields,id){own(account).last_post=0;return run(peer,'post.create',{...fast,...fields},id);}
  async function comment(peer,account,fields){own(account).last_comment=0;return run(peer,'comment.create',{...fast,...fields});}
  const source=(await post(author,a.id,{title:'원본 제목',body:'원본 이야기',image:avatar(60),poll:{question:'한 번만 선택',options:['첫 번째','두 번째']}})).post;
+ // Duplicate captions are permitted: the option ID, not its text, owns votes.
+ const duplicate=(await post(author,a.id,{body:'동일 문구 투표',poll:{question:'같은 문구 허용',options:['선택','선택']}})).post;
+ assert.deepEqual(duplicate.poll.options.map(x=>x.text),['선택','선택']);
+ assert.deepEqual(duplicate.poll.options.map(x=>x.id),['0','1']);
+ await run(author,'post.edit',{...fast,id:duplicate.id,revision:0,body:'중복 문구 수정도 허용',poll:{question:'수정된 질문',options:['동일','동일']}});
+ await run(viewer,'poll.vote',{...fast,postId:duplicate.id,optionId:'1'});
+ await run(third,'poll.vote',{...fast,postId:duplicate.id,optionId:'0'});
+ const duplicatePoll=(await run(viewer,'thread',{...fast,postId:duplicate.id})).post.poll;
+ assert.equal(duplicatePoll.total,2);assert.deepEqual(duplicatePoll.options.map(x=>x.votes),[1,1]);assert.equal(duplicatePoll.myVote,'1');
+ assert.equal((await request(viewer,'poll.vote',{...fast,postId:duplicate.id,optionId:'0'})).reason,'POLL_ALREADY_VOTED');
  const voteBody={...fast,postId:source.id,optionId:'0'},voteId='FIX31-VOTE-REPLAY';
  const first=await run(viewer,'poll.vote',voteBody,voteId);
  assert.deepEqual(await run(viewer,'poll.vote',voteBody,voteId),first,'same request replay is idempotent');
@@ -63,6 +73,12 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal((await request(viewer,'repost.set',{postId:source.id,value:true})).reason,'REPOST_COMPOSE_REQUIRED');
  assert.equal((await request(viewer,'post.edit',{...fast,id:q1.post.id,revision:1,body:'순환',quotePostId:q1.post.id})).reason,'INPUT_INVALID');
  const detached=await run(viewer,'post.edit',{...fast,id:q2.post.id,revision:0,body:'인용 제거',quotePostId:''});assert.equal(detached.quoteSources[0].reposts,1);
+ const originalFromCard=await run(viewer,'thread',{...fast,postId:q1.post.quote.id});assert.equal(originalFromCard.post.id,source.id);
+ const selfQuote=await post(author,a.id,{quotePostId:source.id});
+ assert.equal(selfQuote.post.author.id,selfQuote.post.quote.author.id,'self repost retains the original author for the flat native layout');
+ assert.equal(selfQuote.post.repostedBy.id,a.id);assert.equal(selfQuote.quoteSource.repostedBy,null,'a source is not mislabeled as somebody else reposting it');
+ assert.equal(selfQuote.post.quote.body,'원본 이야기');
+
  const root=(await comment(author,a.id,{postId:source.id,body:'첫 댓글'})).comment;
  const replyResult=await comment(viewer,b.id,{postId:source.id,parentId:root.id,body:'직접 답글'}),reply=replyResult.comment;
  assert.equal(reply.replyToId,root.id);assert.deepEqual(replyResult.replyCounts,[{id:root.id,postId:source.id,replies:1}]);
@@ -93,5 +109,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  thread=await run(viewer,'thread',{...fast,postId:q1.post.id});assert.deepEqual(thread.post.quote,{id:source.id,unavailable:true});
  assert.equal((await request(viewer,'photo',{id:source.id})).reason,'POST_NOT_FOUND');
  await run(viewer,'post.edit',{...fast,id:q1.post.id,revision:2,body:'원글 삭제 후에도 내 글 편집',quotePostId:source.id});
- console.log('FIX31 PASS: stable-account one-time votes, replay and rollback, repeatable quoted posts, edits and source privacy, nested quote limits, direct reply counts, deletion/block deltas, storage reload.');
+ console.log('FIX32 PASS: duplicate-option IDs, self repost/source navigation and attribution,  stable-account one-time votes, replay and rollback, repeatable quoted posts, edits and source privacy, nested quote limits, direct reply counts, deletion/block deltas, storage reload.');
 }finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

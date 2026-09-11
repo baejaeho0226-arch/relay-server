@@ -99,7 +99,7 @@ async function testWorker() {
   };
   vm.runInNewContext(source('public/service-worker.js'), {
     self: worker, URL, Request: BrowserRequest, Response,
-    caches: { open: async () => cache, keys: async () => ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.18.0-fix31', 'another-app-cache'], delete: async name => { removed.push(name); } },
+    caches: { open: async () => cache, keys: async () => ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.19.0-fix32', 'another-app-cache'], delete: async name => { removed.push(name); } },
     fetch: async request => {
       network.push(request);
       if (failNetwork) throw new Error('OFFLINE');
