@@ -1,9 +1,10 @@
 'use strict';
 const s=require('./store'),social=require('./social'),extra=require('./socialActions');
 function Ids(value){if(value===undefined)return [];if(!Array.isArray(value)||value.length>64||value.some(x=>typeof x!=='string'||x.length>80))s.Fail('INPUT_INVALID');return [...new Set(value)];}
-function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s.Handle(p),nickname:p.nickname,bio:p.bio,isFollowing:require('./follows').IsFollowing(viewer.id,p.id),profileRevision:p.profileRevision||p.avatarRevision||0,...require('./follows').Counts(p.id)};}
+function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s.Handle(p),nickname:p.nickname,bio:p.bio,posts:require('./commerce').OwnPostRows(p).length,isFollowing:require('./follows').IsFollowing(viewer.id,p.id),profileRevision:p.profileRevision||p.avatarRevision||0,...require('./follows').Counts(p.id)};}
 function Scope(p,action,query={}){
  if(action==='feed')return s.Page(social.FeedRows(p,query),query,8).items.map(x=>x.id+'/'+(x.revision||0));
+ if(action==='me'&&query.postCards===true)return s.Page(require('./commerce').OwnPostRows(p),query,12).items.map(x=>x.id+'/'+(x.revision||0));
  if(action==='thread'){
   const post=s.DB().posts[query.postId];if(!extra.Visible(post,p))return [];
   return [post.id+'/'+(post.revision||0),...s.Page(social.ThreadRows(p,post),query,12).items.map(x=>x.id+'/'+(x.revision||0))];
