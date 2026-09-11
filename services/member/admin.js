@@ -75,7 +75,7 @@ function Write(action,body,actor){
             const row=db[action.startsWith('post.')?'posts':'comments'][body.id];if(!row||row.deleted)s.Fail('POST_NOT_FOUND');
             if(body.revision!==undefined&&body.revision!==(row.revision||0))s.Fail('CONTENT_CHANGED');
             if(action.endsWith('.save')){
-                const post=action.startsWith('post.');row.body=s.Text(body.body,post?2000:600,!post);
+                const post=action.startsWith('post.');if(post)Object.assign(row,require('../../public/member-body-format').prepare(body.body,body.bodyFormats,row));else row.body=s.Text(body.body,600,true);
                 if(post){Object.assign(row,require('./media').PostFields(body.image,row));row.imagePosition=require('./media').PostPosition(body.imagePosition,row);if(body.title!==undefined)row.title=s.Text(body.title,90);if(!row.title&&!row.body&&!row.image&&!row.gifId&&!row.poll)s.Fail('INPUT_INVALID');}
             }else row.hidden=body.hidden===true;
             row.moderatedBy=actor;row.updatedAt=Date.now();row.revision=(row.revision||0)+1;return row;
