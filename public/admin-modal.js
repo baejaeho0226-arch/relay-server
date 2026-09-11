@@ -8,13 +8,11 @@ function openModal(options) {
       if (f.type === 'plans') return `<fieldset class="modal-plans" data-modal-plans="${esc(f.name)}"><legend>${esc(f.label)}</legend><p class="small-note">1~3650일, 최대 24개. 가격 0원은 판매 준비 중입니다.</p><div data-plan-rows>${(f.value||[]).map(memberPlanRow).join('')}</div><button type="button" data-plan-add>기간 추가</button><p role="alert" data-plan-error></p></fieldset>`;
       if (f.type === 'section') return `<h3 class="modal-section">${esc(f.label)}</h3>`;
       if (f.type === 'image') return `<div class="modal-media"><label>${esc(f.label)}<input type="hidden" data-modal-field="${esc(f.name)}" value="${esc(f.value||'')}"><input type="file" accept="image/png,image/jpeg" data-modal-image="${esc(f.name)}" aria-label="${esc(f.label)} 선택"></label><img data-modal-preview="${esc(f.name)}" ${f.value?`src="${esc(f.value)}"`:'hidden'} alt="사진 미리보기"><button type="button" data-modal-image-remove="${esc(f.name)}">사진 삭제</button><p class="small-note" data-modal-image-status="${esc(f.name)}">PNG·JPEG 사진을 선택하세요. 앱 표시 크기로 최적화합니다.</p></div>`;
-      if (f.type === 'richtext') return memberRichField(f);
       if (f.type === 'textarea') return `<label>${esc(f.label)}<textarea ${f.readOnly?'readonly aria-readonly="true"':''} data-modal-field="${esc(f.name)}" placeholder="${esc(f.placeholder || '')}">${esc(f.value || '')}</textarea></label>`;
       if (f.type === 'select') return `<label>${esc(f.label)}<select data-modal-field="${esc(f.name)}">${(f.options || []).map(o => `<option value="${esc(o.value ?? o)}" ${String(o.value ?? o)===String(f.value ?? '')?'selected':''}>${esc(o.label ?? o)}</option>`).join('')}</select></label>`;
       if (f.type === 'password') return `<label>${esc(f.label)}<div class="password-input-row"><input data-modal-field="${esc(f.name)}" type="password" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}" inputmode="${esc(f.inputmode || 'numeric')}" autocomplete="new-password" maxlength="${Number(f.maxLength || 8)}"><button type="button" data-modal-reveal="${esc(f.name)}">보기</button></div></label>`;
       return `<label>${esc(f.label)}<input ${f.readOnly?'readonly aria-readonly="true"':''} data-modal-field="${esc(f.name)}" type="${esc(f.type || 'text')}" value="${esc(f.value || '')}" placeholder="${esc(f.placeholder || '')}"></label>`;
     }).join('')}`;
-    bindMemberRichEditor(modalBody,fields);
     modalConfirm.textContent = options.confirmLabel || '확인';
     modalConfirm.className = options.danger ? 'danger' : 'primary';
     modalEl.classList.remove('hidden');
@@ -62,7 +60,6 @@ function openModal(options) {
       if(pending)return;
       const values = {};
       modalBody.querySelectorAll('[data-modal-field]').forEach(el => values[el.dataset.modalField] = el.value);
-      for(const editor of modalBody.querySelectorAll('[data-rich-editor]')){const input=editor.querySelector('textarea');const prepared=MemberBodyFormat.prepare(input.value,editor.readFormats());values[editor.dataset.richEditor]=prepared.body;values.bodyFormats=prepared.bodyFormats;}
       for(const group of modalBody.querySelectorAll('[data-modal-plans]')){const rows=[...group.querySelectorAll('[data-plan-row]')].map(row=>({days:Number(row.querySelector('[data-plan-days]').value),price:Number(row.querySelector('[data-plan-price]').value)}));const valid=rows.length>0&&rows.length<=24&&new Set(rows.map(x=>x.days)).size===rows.length&&rows.every(x=>Number.isSafeInteger(x.days)&&x.days>=1&&x.days<=3650&&Number.isSafeInteger(x.price)&&x.price>=0&&x.price<=10000000);if(!valid){group.querySelector('[data-plan-error]').textContent='중복 없이 기간(1~3650일)과 금액(0~1천만 원)을 입력해주세요.';return;}values[group.dataset.modalPlans]=JSON.stringify(rows);}
       close(values);
     };

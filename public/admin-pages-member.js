@@ -16,9 +16,9 @@ function memberFilters(view){
  if(view==='orders')return [['PAID','미사용'],['ACTIVE','사용 중'],['REFUNDED','환불 완료']];
  return [];
 }
-function memberDescription(text,formats){
+function memberDescription(text){
  if(!text)return '';
- return `<div class="member-preview">${formats?memberRichHTML(text,formats):esc(text)}</div>${text.length>100?`<details class="member-body"><summary>내용 더 보기</summary><p>${formats?memberRichHTML(text,formats):esc(text)}</p></details>`:''}`;
+ return `<div class="member-preview">${esc(text)}</div>${text.length>100?`<details class="member-body"><summary>내용 더 보기</summary><p>${esc(text)}</p></details>`:''}`;
 }
 function memberRow(row,view){
  let title=row.title||row.nickname||row.id,meta='',body='',actions='';
@@ -35,7 +35,7 @@ function memberRow(row,view){
  }
  if(['products','news'].includes(view)&&!row.deleted)actions+=memberButton('content.'+(row.published?'unpublish':'publish'),row.id,row.published?'비공개':'공개');
  const category=view==='news'?row.category:view==='products'?(row.details?.genre||'게임'):'';
- return `<tr ${category?`class="member-category-row" data-category-tone="${memberCategoryTone(category)}"`:''}>${memberEditable(view)?`<td><input type="checkbox" class="member-check" aria-label="${esc(title)} 선택" data-id="${esc(row.id)}" ${memberSelected.has(row.id)?'checked':''}></td>`:''}<td class="member-item">${row.imageThumb?`<img class="member-content-thumb" src="${esc(row.imageThumb)}" alt="등록 사진">`:""}${category?`<span class="member-category-badge">${esc(memberStatus[category]||category)}</span>`:''}<strong>${esc(title)}</strong><div class="small-note">${esc(fmtTime(row.updatedAt||row.at||row.createdAt))}</div><span class="member-badge">${esc(memberState(row,view))}</span></td><td class="member-detail">${meta?`<div class="member-meta">${esc(meta)}</div>`:''}${memberDescription(body,view==='posts'?row.bodyFormats:undefined)}</td>${view==='posts'?`<td class="member-views">${Number(row.views||0).toLocaleString('ko-KR')}</td>`:''}<td><div class="actions">${actions||'—'}</div></td></tr>`;
+ return `<tr ${category?`class="member-category-row" data-category-tone="${memberCategoryTone(category)}"`:''}>${memberEditable(view)?`<td><input type="checkbox" class="member-check" aria-label="${esc(title)} 선택" data-id="${esc(row.id)}" ${memberSelected.has(row.id)?'checked':''}></td>`:''}<td class="member-item">${row.imageThumb?`<img class="member-content-thumb" src="${esc(row.imageThumb)}" alt="등록 사진">`:""}${category?`<span class="member-category-badge">${esc(memberStatus[category]||category)}</span>`:''}<strong>${esc(title)}</strong><div class="small-note">${esc(fmtTime(row.updatedAt||row.at||row.createdAt))}</div><span class="member-badge">${esc(memberState(row,view))}</span></td><td class="member-detail">${meta?`<div class="member-meta">${esc(meta)}</div>`:''}${memberDescription(body)}${view==='posts'&&row.quote?memberQuotePreview(row.quote):''}</td>${view==='posts'?`<td class="member-views">${Number(row.views||0).toLocaleString('ko-KR')}</td>`:''}<td><div class="actions">${actions||'—'}</div></td></tr>`;
 }
 function memberCanAutoRefresh(){
  const search=content.querySelector('#member-search');
@@ -138,3 +138,5 @@ function memberDeviceCard(d){
  return `<section class="member-panel"><h3>${esc(d.device.model||d.device.name||'등록 기기')} · ${d.online?'온라인':'오프라인'}</h3>${memberFacts(rows)}<div class="actions">${d.registered?`<button data-client-action="detail" data-id="${esc(d.id)}">기기 상세 / 관리</button><button data-client-action="biometric" data-id="${esc(d.id)}">생체인증 관리</button>`:''}</div></section>`;
 }
 function memberCapabilityName(key){return {DEVICE_HMAC:'기기 서명 인증',QR_DEVICE_APPROVAL:'QR 출입증 인증',STRONG_BIOMETRIC:'생체인증',MEMBER_HUB:'회원 서비스',SUPPORT_CENTER:'고객센터',REMOTE_COMMANDS:'원격 명령',REMOTE_DIAGNOSTICS:'진단 수집',UI_STATE:'화면 상태',CONFIG_UPDATE:'설정 동기화',AUTO_UPDATE:'자동 업데이트',DEVICE_HMAC_ENFORCE:'기기 서명 필수',ADVANCED_NOTICE:'확장 알림',PROCESS_RESULT:'처리 결과',PROTOCOL_V3_PREVIEW:'차세대 통신 시험',EVENT_SEQUENCE:'이벤트 순서 확인'}[key]||key;}
+
+function memberQuotePreview(quote){return `<aside class="member-quote-preview"><span class="small-note">리포스트 원글 · ${esc(quote.id)}</span>${quote.deleted?'<p>삭제된 원글입니다.</p>':`${quote.hidden?'<p class="small-note">숨김 처리된 원글</p>':''}<strong>${esc(quote.author?.nickname||'회원')}</strong>${quote.image?`<img class="member-content-thumb" src="${esc(quote.image)}" alt="원글 사진">`:''}${quote.title?`<b>${esc(quote.title)}</b>`:''}<div>${esc(quote.body||'')}</div>`}</aside>`;}
