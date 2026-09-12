@@ -11,7 +11,7 @@ function Execute(c,requestId,action,body={}){
   if(!BaseAllowed(c)||!require('./testAccess').Enabled())s.Fail(state.serviceEnabled?'MEMBER_AUTH_REQUIRED':'SERVICE_DISABLED');
   const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
   if(!require('./testAccess').Grant(c))s.Fail('MEMBER_AUTH_REQUIRED');
-  return {testAccess:true,memberProtocol:31};
+  return {testAccess:true,memberProtocol:32};
  }
  if(!Allowed(c))s.Fail(state.serviceEnabled?'MEMBER_AUTH_REQUIRED':'SERVICE_DISABLED');
  const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
@@ -19,11 +19,11 @@ function Execute(c,requestId,action,body={}){
  if(action.startsWith('topup.')||action.startsWith('coin.'))s.Fail('TOPUP_UNAVAILABLE');
  const read={preferences:()=>({preferences:require('./preferences').Read(p),profile:s.PublicProfile(p,true)}),live:()=>require('./live').Read(p,body),gif:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,gif:require('./gifMedia').Public(post,true)}};},photo:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,image:post.image||''}};},gifs:()=>require('./gifs').List(),bookmarks:()=>require('./socialActions').Bookmarks(p,body),blocks:()=>require('./socialActions').Blocks(p,body),member:()=>require('./profiles').Read(p,body),follows:()=>require('./follows').List(p,body),charge:()=>require('./charges').Read(p),product:()=>commerce.Product(body,p),article:()=>social.Article(p,body),home:()=>require('./identity').Home(p),news:()=>social.News(p,body),catalog:()=>({...commerce.Catalog(body,p),profile:s.PublicProfile(p,true)}),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
  if(read[action]){
-  // Execute visibility checks and daily impressions before accepting a cached revision.
+  // Validate visibility (and explicit detail opens) before accepting a cached revision.
   const data=read[action]();
-  if(action==='live')return {...data,memberProtocol:31};
-  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:31};
-  return {...data,viewer:s.PublicProfile(p),memberProtocol:31,revision:s.DB().revision};
+  if(action==='live')return {...data,memberProtocol:32};
+  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:32};
+  return {...data,viewer:s.PublicProfile(p),memberProtocol:32,revision:s.DB().revision};
  }
  const mutations={
   'block.set':()=>require('./socialActions').Block(p,body),

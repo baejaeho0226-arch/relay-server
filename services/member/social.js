@@ -57,7 +57,7 @@ function FeedRows(p,body){
  return rows;
 }
 function Feed(p,body){
- const page=s.Page(FeedRows(p,body),body,8);require('./views').Impressions(p,page.items);return {...page,items:page.items.map(x=>PublicPost(x,p,false,body._wire==='zlib'))};
+ const page=s.Page(FeedRows(p,body),body,8);return {...page,items:page.items.map(x=>PublicPost(x,p,false,body._wire==='zlib'))};
 }
 function ThreadRows(p,post){
  const visible=Object.values(s.DB().comments).filter(x=>x.postId===post.id&&!x.deleted&&!x.hidden&&!extra.Blocked(p.id,x.accountId)&&!s.ProfileById(x.accountId)?.blocked);
@@ -69,7 +69,8 @@ function ThreadRows(p,post){
 function Thread(p,body){
  const post=extra.Post(p,body.postId);
  const comments=s.Page(ThreadRows(p,post),body,12),replyCounts=require('./commentThreads').Counts(post.id,p);
- require('./views').Impressions(p,[post]);
+ // Old clients identify a view by opening thread; current clients suppress background reads explicitly.
+ if(body.countView!==false)require('./views').OpenPost(p,post);
  return {post:PublicPost(post,p,true,body._wire==='zlib'),comments:{...comments,items:comments.items.map(x=>extra.PublicComment(x,p,replyCounts))}};
 }
 function Rate(p,kind,ms){const at=Date.now(),key='last_'+kind;if(at-(p[key]||0)<ms)s.Fail('PLEASE_WAIT');p[key]=at;}
