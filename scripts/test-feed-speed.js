@@ -43,7 +43,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  const stored=store.DB().posts[post.id];assert.equal(stored.image,photo,'do not recompress a validated JPEG original');
  assert.equal(jpeg.decode(Buffer.from(post.image.split(',')[1],'base64')).width,720);assert.equal(stored.gifMedia.previewVersion,2);
  assert.ok(stored.gifMedia.frames.every(x=>x.length<16000));
- let feed=await run(viewer,'feed',fast);const fullBytes=viewer.lastWire.downloadBytes;assert.equal(feed.memberProtocol,31);
+ let feed=await run(viewer,'feed',fast);const fullBytes=viewer.lastWire.downloadBytes;assert.equal(feed.memberProtocol,32);
  assert.equal((await run(viewer,'feed',{...fast,_since:feed.revision})).unchanged,true);
  const reactionBody={...fast,postId:post.id,value:1},req='FIX27-REACTION-IDEMPOTENT';
  const reaction=await run(viewer,'react',reactionBody,req),deltaBytes=viewer.lastWire.downloadBytes;
@@ -56,8 +56,8 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  const heart=(await run(viewer,'comment.react',{...fast,id:comment.id,value:1})).comment;assert.equal(heart.likes,1);assert.equal(heart.postId,post.id);assert.equal(heart.body,undefined);
  await run(author,'post.edit',{...fast,id:post.id,revision:0,title:'빠른 수정',body:'첨부 유지'});assert.equal(store.DB().posts[post.id].image,photo);assert.equal(store.DB().posts[post.id].gifMedia.data,gifData);
  const fetched=await run(viewer,'gif',{...fast,id:post.id});assert.equal(fetched.photo.gif.data,gifData);assert.equal(viewer.lastWire.compressed,true);
- // Cached reads still check visibility, daily impressions and time-sensitive announcements.
- feed=await run(viewer,'feed',fast);store.DB().viewHits[b.id+':post:'+post.id]='2000-01-01';const next=await run(viewer,'feed',{...fast,_since:feed.revision});assert.equal(next.unchanged,undefined);assert.ok(next.revision>feed.revision);
+ // Cached feed reads validate visibility but never create views, even across days.
+ feed=await run(viewer,'feed',fast);store.DB().viewHits[b.id+':post:'+post.id]='2000-01-01';const next=await run(viewer,'feed',{...fast,_since:feed.revision});assert.equal(next.unchanged,true);assert.equal(next.revision,feed.revision);
  const before=store.DB().posts[post.id].body;assert.equal((await request(viewer,'post.edit',{...fast,id:post.id,revision:1,body:'도용'})).reason,'NOT_OWNER');assert.equal(store.DB().posts[post.id].body,before);
  const database=require('../storage/database'),save=database.SaveDatabase;database.SaveDatabase=()=>false;
  assert.equal((await request(viewer,'react',{...fast,postId:post.id,value:0})).reason,'STORAGE_SAVE_FAILED');database.SaveDatabase=save;

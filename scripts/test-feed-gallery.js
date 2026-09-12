@@ -35,7 +35,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.ok(Buffer.from(JSON.stringify({gifData})).toString('base64').length>960000);
  const post=(await run(author,'post.create',{title:'갤러리 첨부',body:'사진 GIF 투표',image:avatar(20),gifData,poll:{question:'어떤 게임?',options:['레이싱','RPG']}})).post;
  assert.ok(post.image);assert.equal(post.poll.options.length,2);assert.equal(post.gif.frames.length,6);assert.equal(post.gif.data,undefined);
- let detail=await run(viewer,'thread',{postId:post.id});assert.equal(detail.memberProtocol,31);assert.equal(detail.post.poll.options.length,2);
+ let detail=await run(viewer,'thread',{postId:post.id});assert.equal(detail.memberProtocol,32);assert.equal(detail.post.poll.options.length,2);
  assert.equal((await run(viewer,'photo',{id:post.id})).photo.image,store.DB().posts[post.id].image);
  assert.equal((await run(viewer,'gif',{id:post.id})).photo.gif.data,gifData);
  await run(author,'post.edit',{id:post.id,revision:0,title:'수정 제목',body:'사진 유지',gifId:post.gif.id,poll:{question:'어떤 게임?',options:['레이싱','RPG']}});

@@ -53,7 +53,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal(require('../services/member/media').GameDetails({channels:{official:'javascript:alert(1)'}}).channels,undefined);
  const updated=save('news.save',{...news,image:''});assert.equal(updated.image,'');assert.equal(updated.imageThumb,'');
  const post=(await run(author,'post.create',{body:'회원 상세에서 여는 게시물'})).post;await run(viewer,'feed');await run(viewer,'follow.set',{id:a.id,following:true});
- const member=await run(viewer,'member',{id:a.id});assert.equal(member.profile.id,a.id);assert.equal(member.viewer.id,b.id);assert.equal(member.isFollowing,true);assert.equal(member.own,false);assert.equal(member.profile.followers,1);assert.equal(member.posts.items[0].id,post.id);assert.ok(member.profile.views>=1);assert.ok(member.profile.handle.startsWith('user_'));
+ const member=await run(viewer,'member',{id:a.id});assert.equal(member.profile.id,a.id);assert.equal(member.viewer.id,b.id);assert.equal(member.isFollowing,true);assert.equal(member.own,false);assert.equal(member.profile.followers,1);assert.equal(member.posts.items[0].id,post.id);assert.equal(member.profile.views,0,'profile and feed listing do not count as reading a post');assert.ok(member.profile.handle.startsWith('user_'));
  for(const privateKey of ['balance','subject','activeOrderId','readNews','blocked'])assert.equal(member.profile[privateKey],undefined,privateKey);
  assert.equal((await run(viewer,'follows',{id:a.id,mode:'followers'})).items[0].id,b.id);
  await run(viewer,'report',{postId:post.id,reason:'신고 동작 확인'});assert.equal(Object.values(store.DB().reports).length,1);
