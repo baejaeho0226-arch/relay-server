@@ -53,7 +53,16 @@ function PublicPost(post,p,detail=false,sharp=false,compact=false,depth=0){const
 function FeedRows(p,body){
  const latest=new Map();for(const row of Object.values(s.DB().reposts))if(!extra.Blocked(p.id,row.accountId)&&!s.ProfileById(row.accountId)?.blocked)latest.set(row.postId,Math.max(latest.get(row.postId)||0,row.at));
  const rows=Object.values(s.DB().posts).filter(x=>extra.Visible(x,p)&&(!body.mine||x.accountId===p.id)&&(!body.following||require('./follows').IsFollowing(p.id,x.accountId)));
- rows.sort((a,b)=>Math.max(b.at,latest.get(b.id)||0)-Math.max(a.at,latest.get(a.id)||0)||b.id.localeCompare(a.id));
+ if(body.sort&& !['latest','popular'].includes(body.sort))s.Fail('INPUT_INVALID');
+ const score=new Map();
+ if(body.sort==='popular'){
+  const visibleIds=new Set(rows.map(x=>x.id)),add=(id,value)=>{if(visibleIds.has(id))score.set(id,(score.get(id)||0)+value);};
+  const active=id=>!extra.Blocked(p.id,id)&&!s.ProfileById(id)?.blocked;
+  for(const x of Object.values(s.DB().reactions))if(x.value===1&&active(x.accountId))add(x.postId,3);
+  for(const x of Object.values(s.DB().comments))if(!x.deleted&&!x.hidden&&active(x.accountId))add(x.postId,2);
+  for(const x of rows)if(x.quotePostId)add(x.quotePostId,3);
+ }
+ rows.sort((a,b)=>(body.sort==='popular'?(score.get(b.id)||0)-(score.get(a.id)||0):0)||Math.max(b.at,latest.get(b.id)||0)-Math.max(a.at,latest.get(a.id)||0)||b.id.localeCompare(a.id));
  return rows;
 }
 function Feed(p,body){

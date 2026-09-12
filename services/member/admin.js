@@ -21,6 +21,7 @@ function Counter(row){
 }
 function Read(body={}){
     const db=s.DB(),view=body.view||'overview';
+    if(view==='policies')return require('./documents').AdminRead();
     if(view==='lookup'){const p=s.Resolve(body.handle||body.id||body.q);if(!p)s.Fail('MEMBER_NOT_FOUND');return require('./identity').Read(p,body,true);}
     const table={charges:()=>Object.values(db.chargeRequests).map(require('./charges').Public),products:()=>Object.values(db.products).map(p=>commerce.PublicGame(p,!!body.id)),news:()=>Object.values(db.news).map(row=>{if(body.id)return row;const {image,...rest}=row;return rest;}),orders:()=>Object.values(db.orders).map(commerce.PublicOrder),ledger:()=>Object.values(db.ledger),profiles:()=>Object.values(db.profiles).map(p=>({...s.PublicProfile(p,true),blocked:p.blocked})),posts:()=>Object.values(db.posts).map(post=>{const {image,imageFeed,bodyFormats,...rest}=post;return {...rest,...(body.id?{image:image||''}:{}),author:social.Author(post.accountId),quote:post.quotePostId?(()=>{const q=db.posts[post.quotePostId];return q?{id:q.id,title:q.title||'',body:q.deleted?'':q.body,author:social.Author(q.accountId),image:q.deleted?'':q.imageThumb||'',at:q.at,deleted:!!q.deleted,hidden:!!q.hidden}: {id:post.quotePostId,deleted:true};})():null};}),comments:()=>Object.values(db.comments).map(c=>({...c,author:social.Author(c.accountId)})),reports:()=>Object.values(db.reports),analytics:()=>Object.values(db.viewCounters).filter(x=>x.kind==='post').map(Counter)};
     if(['coins','topups'].includes(view))s.Fail('TOPUP_UNAVAILABLE');
@@ -56,6 +57,7 @@ function Content(body,actor){
     });
 }
 function Write(action,body,actor){
+    if(action==='policy.save')return require('./documents').Save(body,actor);
     if(action==='charge.scan')return require('./charges').Scan(body);
     if(action==='charge.approve')return require('./charges').Approve(body,actor);
     if(action==='charge.reject')return require('./charges').Reject(body,actor);

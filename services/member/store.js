@@ -33,7 +33,17 @@ function Resolve(value){if(typeof value!=='string')return;return ProfileById(val
 function PublicAvatar(p){if(!p.avatar)return '';if(p.avatarThumb&&p.avatarThumb.length<=16100)return p.avatarThumb;try{return p.avatarThumb=require('./social').AvatarThumb(p.avatar);}catch(_){return '';}}
 function PublicProfile(p,own=false){return {id:p.id,handle:Handle(p),nickname:p.nickname,bio:p.bio,pronouns:p.pronouns||'',avatar:own?p.avatar:PublicAvatar(p),avatarRevision:p.avatarRevision,profileRevision:p.profileRevision||p.avatarRevision||0,posts:Object.values(DB().posts).filter(x=>x.accountId===p.id&&!x.deleted&&!x.hidden).length,...require('./follows').Counts(p.id),...(own?{balance:p.balance,createdAt:p.createdAt,handleEditable:!p.handleChangedAt,nicknameChangeAt:p.nicknameChangedAt?p.nicknameChangedAt+30*86400000:0,gender:p.gender||'UNDISCLOSED',preferences:require('./preferences').Read(p)}: {})};}
 function ViewCount(kind,id){return DB().viewCounters?.[kind+':'+id]?.count||0;}
-function ProfileById(id){return Object.values(DB().profiles).find(p=>p.id===id);}
+let profileTable,profileRevision=-1,profileIndex=new Map();
+function ProfileById(id){
+ const db=DB();
+ if(profileTable!==db.profiles||profileRevision!==db.revision){
+  profileTable=db.profiles;profileRevision=db.revision;profileIndex=new Map(Object.values(profileTable).map(p=>[p.id,p]));
+ }
+ let p=profileIndex.get(id);
+ // New profiles may be projected inside an atomic write, before revision increments.
+ if(!p){p=Object.values(profileTable).find(x=>x.id===id);if(p)profileIndex.set(id,p);}
+ return p;
+}
 function Page(rows,body={},max=12){const offset=Math.max(0,Math.min(100000,Number(body.offset)||0));const limit=Math.max(1,Math.min(max,Number(body.limit)||max));return {items:rows.slice(offset,offset+limit),total:rows.length,nextOffset:offset+limit<rows.length?offset+limit:null};}
 function Atomic(fn,extras=[]){
  const previous=structuredClone(DB());const saved=extras.map(name=>[name,structuredClone(state[name])]);

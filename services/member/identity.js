@@ -31,7 +31,7 @@ function Home(p){
  const usable=orders.filter(x=>x.status==='PAID'||x.status==='ACTIVE');
  const visibleNews=Object.values(db.news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id));
  const unreadNews=visibleNews.filter(x=>(p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1)).length;
- return {settings:{},profile:s.PublicProfile(p,true),summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:payments.length,posts:s.PublicProfile(p).posts,unreadNews},recentOrders:usable.slice(0,2),recentPayments:payments.slice(0,2),latestPayment:payments[0]||null};
+ return {...require('./home').Extras(p),settings:{},profile:s.PublicProfile(p,true),summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:payments.length,posts:s.PublicProfile(p).posts,unreadNews},recentOrders:usable.slice(0,2),recentPayments:payments.slice(0,2),latestPayment:payments[0]||null};
 }
 const INFO_FIELDS=['name','manufacturer','product','model','os','architecture','appVersion','protocolVersion','phone','phoneStatus','serial','serialStatus','imei','imeiStatus'];
 function Device(id,rooms){
