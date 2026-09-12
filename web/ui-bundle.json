@@ -1,8 +1,8 @@
 {
-  "webAdminVersion": "4.23.0",
-  "uiRevision": "fix36",
+  "webAdminVersion": "4.24.0",
+  "uiRevision": "fix37",
   "files": {
-    "index.html": "0a4f330cfe8aa0d47a6d80ac4a635efa38e604bee4287c2e3dbac275e26cb868",
+    "index.html": "fee0a9727f81749a75388141af6123876a5ce6455f7f5f5dba99019720c6a35e",
     "admin.css": "5890f2b89126b2aa47cce79e2939402451d0f6aee1a7e657dbefff407987c58b",
     "admin-theme.css": "62f6ea85fae20540d82195d92cc965342d972a87a49228d2c969cbda84d7bc8b",
     "admin-appearance.css": "19f7a687c8eaa6dcf3caffb82956efab81abea142cd992a9fcd62787c5d3e3ed",
@@ -42,8 +42,8 @@
     "admin-member.css": "f0ee5e1a870012fad263dfef6a7d1915c973329b3d9547bee72a4f64ad99a99f",
     "admin-palette.js": "592501c81ded079397e06e08124163e0bdb7d62c12befb334656e68c1bcbf73c",
     "admin-pages-production.js": "b0c9d7d19b88ab4756849e0c57289c22e57b5f4a61a61eef46566764856653c4",
-    "service-worker.js": "793b2e27d367c8f7c72296886f5d4913b36b5839d121f67fd449598a9b8e61f6",
-    "ui-refresh.html": "7666b73d53bac14e23a19ee327f950d0ae433503496d6d5fa52c9b54baf0948a",
+    "service-worker.js": "97e3a0ec2df158c1712dfc96729287c215d6cc132622f8e5ef2e297eeb8b9203",
+    "ui-refresh.html": "5dd154d8dac77937ffdb4a931b4018c5fc8eb89c44966ed434407635c90a70c8",
     "ui-refresh.js": "18c00a09bdc6409509b42ce6a7d4e5480d6edd1e7feabcd575aafa6922e42dac"
   }
 }
