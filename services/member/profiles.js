@@ -6,7 +6,7 @@ function Target(viewer,body){
 }
 function Read(viewer,body){
  const target=Target(viewer,body);if(!target)s.Fail('MEMBER_NOT_FOUND');
- const rows=commerce.OwnPostRows(target),page=s.Page(rows,body,12);
- return {profile:{...s.PublicProfile(target),avatar:target.avatar||'',joinedAt:target.createdAt,views:rows.reduce((n,p)=>n+s.ViewCount('post',p.id),0)},own:target.id===viewer.id,isFollowing:follows.IsFollowing(viewer.id,target.id),posts:{...page,items:page.items.map(p=>body.postCards===true?require('./social').PublicPost(p,viewer,false,body._wire==='zlib'):{id:p.id,title:p.title||'',body:(p.title||p.body||'GIF · 투표').slice(0,140),imageThumb:p.imageThumb||require('./gifs').Get(p.gifId)?.frames[0]||'',at:p.at,revision:p.revision||0})}};
+ const rows=commerce.OwnPostRows(target),hidden=!require('./preferences').CanReadPosts(viewer,target),page=s.Page(hidden?[]:rows,body,12);
+ return {profile:{...s.PublicProfile(target),avatar:target.avatar||'',joinedAt:target.createdAt,views:rows.reduce((n,p)=>n+s.ViewCount('post',p.id),0)},profilePostsHidden:hidden,own:target.id===viewer.id,isFollowing:follows.IsFollowing(viewer.id,target.id),posts:{...page,items:page.items.map(p=>body.postCards===true?require('./social').PublicPost(p,viewer,false,body._wire==='zlib'):{id:p.id,title:p.title||'',body:(p.title||p.body||'GIF · 투표').slice(0,140),imageThumb:p.imageThumb||require('./gifs').Get(p.gifId)?.frames[0]||'',at:p.at,revision:p.revision||0})}};
 }
 module.exports={Read,Target};

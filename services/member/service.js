@@ -11,19 +11,19 @@ function Execute(c,requestId,action,body={}){
   if(!BaseAllowed(c)||!require('./testAccess').Enabled())s.Fail(state.serviceEnabled?'MEMBER_AUTH_REQUIRED':'SERVICE_DISABLED');
   const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
   if(!require('./testAccess').Grant(c))s.Fail('MEMBER_AUTH_REQUIRED');
-  return {testAccess:true,memberProtocol:30};
+  return {testAccess:true,memberProtocol:31};
  }
  if(!Allowed(c))s.Fail(state.serviceEnabled?'MEMBER_AUTH_REQUIRED':'SERVICE_DISABLED');
  const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
  if(action==='records')s.Fail('ADMIN_ONLY');
  if(action.startsWith('topup.')||action.startsWith('coin.'))s.Fail('TOPUP_UNAVAILABLE');
- const read={live:()=>require('./live').Read(p,body),gif:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,gif:require('./gifMedia').Public(post,true)}};},photo:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,image:post.image||''}};},gifs:()=>require('./gifs').List(),bookmarks:()=>require('./socialActions').Bookmarks(p,body),blocks:()=>require('./socialActions').Blocks(p,body),member:()=>require('./profiles').Read(p,body),follows:()=>require('./follows').List(p,body),charge:()=>require('./charges').Read(p),product:()=>commerce.Product(body,p),article:()=>social.Article(p,body),home:()=>require('./identity').Home(p),news:()=>social.News(p,body),catalog:()=>({...commerce.Catalog(body,p),profile:s.PublicProfile(p,true)}),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
+ const read={preferences:()=>({preferences:require('./preferences').Read(p),profile:s.PublicProfile(p,true)}),live:()=>require('./live').Read(p,body),gif:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,gif:require('./gifMedia').Public(post,true)}};},photo:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,image:post.image||''}};},gifs:()=>require('./gifs').List(),bookmarks:()=>require('./socialActions').Bookmarks(p,body),blocks:()=>require('./socialActions').Blocks(p,body),member:()=>require('./profiles').Read(p,body),follows:()=>require('./follows').List(p,body),charge:()=>require('./charges').Read(p),product:()=>commerce.Product(body,p),article:()=>social.Article(p,body),home:()=>require('./identity').Home(p),news:()=>social.News(p,body),catalog:()=>({...commerce.Catalog(body,p),profile:s.PublicProfile(p,true)}),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
  if(read[action]){
   // Execute visibility checks and daily impressions before accepting a cached revision.
   const data=read[action]();
-  if(action==='live')return {...data,memberProtocol:30};
-  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:30};
-  return {...data,viewer:s.PublicProfile(p),memberProtocol:30,revision:s.DB().revision};
+  if(action==='live')return {...data,memberProtocol:31};
+  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:31};
+  return {...data,viewer:s.PublicProfile(p),memberProtocol:31,revision:s.DB().revision};
  }
  const mutations={
   'block.set':()=>require('./socialActions').Block(p,body),
@@ -34,7 +34,7 @@ function Execute(c,requestId,action,body={}){
   'comment.edit':()=>require('./socialActions').CommentEdit(p,body),
   purchase:()=>commerce.Purchase(p,body),
   'follow.set':()=>require('./follows').Set(p,body),
-  'profile.save':()=>social.SaveProfile(p,body),
+  'profile.save':()=>social.SaveProfile(p,body),'preferences.save':()=>require('./preferences').Save(p,body),
   'charge.new':()=>{require('./charges').Issue(p,false);return require('./charges').Read(p);},'order.activate':()=>commerce.Activate(p,c,body),
   'post.edit':()=>social.EditPost(p,body),'post.create':()=>social.Post(p,body),'post.delete':()=>social.Remove(p,body,'posts'),
   'comment.create':()=>social.Comment(p,body),'comment.delete':()=>social.Remove(p,body,'comments'),

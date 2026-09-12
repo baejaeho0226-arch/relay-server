@@ -20,4 +20,12 @@ function Counts(postId,p){
  return counts;
 }
 function Delta(row,p){const counts=Counts(row.postId,p),id=Parent(row,counts.parents),parent=s.DB().comments[id];return Visible(parent,p)?[{id,postId:row.postId,replies:counts.get(id)||0}]:[];}
-module.exports={Visible,Parent,Counts,Delta};
+function Page(p,post,body={},focusId=''){
+ const rows=require('./social').ThreadRows(p,post),limit=Math.min(40,Math.max(1,Math.trunc(Number(body.limit)||12)));
+ let offset=Math.max(0,Math.trunc(Number(body.offset)||0));
+ const index=focusId?rows.findIndex(x=>x.id===focusId):-1;
+ if(index>=0&&(index<offset||index>=offset+limit))offset=Math.max(0,index-limit+1);
+ const page=s.Page(rows,{offset,limit},limit),counts=Counts(post.id,p);
+ return {...page,offset,items:page.items.map(x=>require('./socialActions').PublicComment(x,p,counts))};
+}
+module.exports={Visible,Parent,Counts,Delta,Page};

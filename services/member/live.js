@@ -1,13 +1,14 @@
 'use strict';
 const s=require('./store'),social=require('./social'),extra=require('./socialActions');
 function Ids(value){if(value===undefined)return [];if(!Array.isArray(value)||value.length>64||value.some(x=>typeof x!=='string'||x.length>80))s.Fail('INPUT_INVALID');return [...new Set(value)];}
-function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s.Handle(p),nickname:p.nickname,bio:p.bio,posts:require('./commerce').OwnPostRows(p).length,isFollowing:require('./follows').IsFollowing(viewer.id,p.id),profileRevision:p.profileRevision||p.avatarRevision||0,...require('./follows').Counts(p.id)};}
+function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s.Handle(p),nickname:p.nickname,bio:p.bio,pronouns:p.pronouns||'',posts:require('./commerce').OwnPostRows(p).length,isFollowing:require('./follows').IsFollowing(viewer.id,p.id),profileRevision:p.profileRevision||p.avatarRevision||0,...require('./follows').Counts(p.id)};}
 function Scope(p,action,query={}){
  if(action==='feed')return s.Page(social.FeedRows(p,query),query,8).items.map(x=>x.id+'/'+(x.revision||0));
  if(action==='me'&&query.postCards===true)return s.Page(require('./commerce').OwnPostRows(p),query,12).items.map(x=>x.id+'/'+(x.revision||0));
  if(action==='member'&&query.postCards===true){
   const target=require('./profiles').Target(p,query);
   if(!target)return ['unavailable'];
+  if(!require('./preferences').CanReadPosts(p,target))return [];
   return s.Page(require('./commerce').OwnPostRows(target),query,12).items.map(x=>x.id+'/'+(x.revision||0));
  }
  if(action==='thread'){
@@ -32,6 +33,12 @@ function Read(p,body){
  }
  for(const id of Ids(body.profiles)){const row=s.ProfileById(id);if(row&&!extra.Blocked(p.id,id))profile(id);}
  const query=body.query&&typeof body.query==='object'&&!Array.isArray(body.query)?body.query:{};
- return {posts,comments,profiles:[...profiles.values()],removedPosts,removedComments,scope:Scope(p,body.scope,query),revision:s.DB().revision};
+ const scope=Scope(p,body.scope,query);let commentPage;
+ if(body.scope==='thread'&&Array.isArray(body.knownComments)&&body.knownComments.length<=40&&extra.Visible(s.DB().posts[query.postId],p)){
+  const rows=s.Page(social.ThreadRows(p,s.DB().posts[query.postId]),query,12).items;
+  if(JSON.stringify(rows.map(x=>x.id+'/'+(x.revision||0)))!==JSON.stringify(body.knownComments))
+   commentPage=require('./commentThreads').Page(p,s.DB().posts[query.postId],query);
+ }
+ return {posts,comments,profiles:[...profiles.values()],removedPosts,removedComments,scope,commentPage,revision:s.DB().revision};
 }
 module.exports={Read,Scope};
