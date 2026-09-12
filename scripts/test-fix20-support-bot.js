@@ -33,6 +33,7 @@ async function api(role,method,url,body){
  const response={writeHead(status){this.status=status;},end(text){this.body=JSON.parse(text);}};
  await require('../web/webApi').HandleApiRequest(req,response,{role,ip:'127.0.0.1'});return response;
 }
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const a=await login(),b=await login();
  a.send('SUPPORT_HELP|'+b.c.clientId);assert.equal(await a.wait('SUPPORT_ERROR|'),'SUPPORT_ERROR|CLIENT_NOT_OWNER');
@@ -80,4 +81,5 @@ async function api(role,method,url,body){
  assert.equal((await api('admin','POST','/api/support/knowledge/delete',{revision:rev,id:updated.id})).status,200);
  assert.ok(!knowledge.Admin().items.some(x=>x.id===updated.id));
  console.log('FIX20 BOT/FAQ PASS: real TCP help-before-chat, bot replies and dedupe, atomic rollback, admin-only FAQ edits/hide/delete, restart persistence, ownership isolation, offline human handoff, history retention and stale requests after deletion');
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

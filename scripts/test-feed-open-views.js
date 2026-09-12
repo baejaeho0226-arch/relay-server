@@ -30,6 +30,7 @@ async function request(p,action,body={},id='FIX38-REQUEST-'+(++seq)){
 async function run(p,action,body,id){const r=await request(p,action,body,id);assert.equal(r.ok,true,JSON.stringify(r));return r.data;}
 async function changed(p,revision){for(;;){const parts=(await p.wait('HUB_EVENT|')).split('|');assert.equal(parts[2],mac(p,'HUB_EVENT',[parts[1]]));if(Number(parts[1])>=revision)return;}}
 function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height:64});for(let i=0;i<png.data.length;i+=4){png.data[i]=color;png.data[i+1]=240-color;png.data[i+2]=90;png.data[i+3]=255;}return 'data:image/png;base64,'+PNG.sync.write(png).toString('base64');}
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const [a,b,c]=[await login(),await login(),await login()],fast={_wire:'zlib',_delta:true};
@@ -73,4 +74,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  for(let i=0;i<2;i++){await run(b,'article',{id:news.id});await run(b,'product',{id:game.id});}
  assert.equal(store.ViewCount('news',news.id),1);assert.equal(store.ViewCount('product',game.id),1);
  console.log('FIX38 PASS: 3 signed TCP clients, list/profile/live/bookmark/media reads have no view side effects, explicit opens and legacy detail compatibility, quote isolation, day deduplication, rollback, blocked access and unchanged news/game rules.');
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

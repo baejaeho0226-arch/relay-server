@@ -24,6 +24,7 @@ async function request(p,action,body={},id='FIX21-REQUEST-'+(++seq)){
 async function run(p,action,body,id){const r=await request(p,action,body,id);assert.equal(r.ok,true,JSON.stringify(r));return r.data;}
 async function changed(p,revision){for(;;){const parts=(await p.wait('HUB_EVENT|')).split('|');assert.equal(parts[2],mac(p,'HUB_EVENT',[parts[1]]));if(Number(parts[1])>=revision)return;}}
 function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height:64});for(let i=0;i<png.data.length;i+=4){png.data[i]=color;png.data[i+1]=240-color;png.data[i+2]=90;png.data[i+3]=255;}return 'data:image/png;base64,'+PNG.sync.write(png).toString('base64');}
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const author=await login(),viewer=await login();
  const a=(await run(author,'me')).profile,b=(await run(viewer,'me')).profile,hub=require('../services/member/service');
@@ -60,4 +61,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  save('profile.block',{id:a.id,blocked:true});assert.equal((await request(viewer,'member',{id:a.id})).reason,'MEMBER_NOT_FOUND');assert.equal((await request(viewer,'follows',{id:a.id,mode:'followers'})).reason,'MEMBER_NOT_FOUND');
  const snapshot=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(snapshot),true);assert.equal(store.DB().products[game.id].image,product.image);assert.deepEqual(store.DB().products[game.id].details,Object.fromEntries(Object.entries(gameDetails).filter(([k])=>k!=='channels')));
  console.log('FIX21 CONTENT TCP PASS: summary privacy, authorized article photos and deduplicated views, signed large photo chunks, metadata preservation/validation, save rollback, public member profile/follow lists and reports');
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -24,6 +24,7 @@ async function request(p,action,body={},id='FIX26-REQUEST-'+(++seq)){
 async function run(p,action,body,id){const r=await request(p,action,body,id);assert.equal(r.ok,true,JSON.stringify(r));return r.data;}
 async function changed(p,revision){for(;;){const parts=(await p.wait('HUB_EVENT|')).split('|');assert.equal(parts[2],mac(p,'HUB_EVENT',[parts[1]]));if(Number(parts[1])>=revision)return;}}
 function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height:64});for(let i=0;i<png.data.length;i+=4){png.data[i]=color;png.data[i+1]=240-color;png.data[i+2]=90;png.data[i+3]=255;}return 'data:image/png;base64,'+PNG.sync.write(png).toString('base64');}
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const author=await login(),viewer=await login();
  const a=(await run(author,'me')).profile,b=(await run(viewer,'me')).profile,own=()=>store.ProfileById(a.id),other=()=>store.ProfileById(b.id);
@@ -35,7 +36,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.ok(Buffer.from(JSON.stringify({gifData})).toString('base64').length>960000);
  const post=(await run(author,'post.create',{title:'갤러리 첨부',body:'사진 GIF 투표',image:avatar(20),gifData,poll:{question:'어떤 게임?',options:['레이싱','RPG']}})).post;
  assert.ok(post.image);assert.equal(post.poll.options.length,2);assert.equal(post.gif.frames.length,6);assert.equal(post.gif.data,undefined);
- let detail=await run(viewer,'thread',{postId:post.id});assert.equal(detail.memberProtocol,32);assert.equal(detail.post.poll.options.length,2);
+ let detail=await run(viewer,'thread',{postId:post.id});assert.equal(detail.memberProtocol,33);assert.equal(detail.post.poll.options.length,2);
  assert.equal((await run(viewer,'photo',{id:post.id})).photo.image,store.DB().posts[post.id].image);
  assert.equal((await run(viewer,'gif',{id:post.id})).photo.gif.data,gifData);
  await run(author,'post.edit',{id:post.id,revision:0,title:'수정 제목',body:'사진 유지',gifId:post.gif.id,poll:{question:'어떤 게임?',options:['레이싱','RPG']}});
@@ -67,4 +68,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  detail=await run(viewer,'thread',{postId:post.id});assert.equal(detail.post.image,'');assert.equal(detail.post.gif,null);assert.equal(detail.post.poll.myVote,'1');
  await run(author,'post.delete',{id:post.id});const remaining=await run(viewer,'feed');assert.equal(remaining.total,1);assert.equal(remaining.items[0].quote.unavailable,true);await run(viewer,'post.delete',{id:quoted.id});assert.equal((await run(viewer,'feed')).total,0);assert.equal((await request(viewer,'gif',{id:post.id})).reason,'POST_NOT_FOUND');
  console.log('FIX26 PASS: gallery GIF chunk upload/original/preview, photo edit/remove, two-choice poll selection, all social actions, grouped replies, ownership, persistence and malformed GIF rollback.');
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

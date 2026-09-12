@@ -30,6 +30,7 @@ async function request(p,action,body={},id='FIX37-REQUEST-'+(++seq)){
 async function run(p,action,body,id){const r=await request(p,action,body,id);assert.equal(r.ok,true,JSON.stringify(r));return r.data;}
 async function changed(p,revision){for(;;){const parts=(await p.wait('HUB_EVENT|')).split('|');assert.equal(parts[2],mac(p,'HUB_EVENT',[parts[1]]));if(Number(parts[1])>=revision)return;}}
 function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height:64});for(let i=0;i<png.data.length;i+=4){png.data[i]=color;png.data[i+1]=240-color;png.data[i+2]=90;png.data[i+3]=255;}return 'data:image/png;base64,'+PNG.sync.write(png).toString('base64');}
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const [a,b,c]=[await login(),await login(),await login()],fast={_wire:'zlib',_delta:true};
@@ -102,4 +103,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  try{db.SaveDatabase=()=>false;assert.equal((await request(a,'block.set',{...fast,id:pb.id,blocked:false})).reason,'STORAGE_SAVE_FAILED');}finally{db.SaveDatabase=save;}
  assert.equal((await run(a,'blocks')).total,1,'failed unblock keeps the member blocked');
  console.log('FIX37 PASS: signed TCP privacy/profile validation and rollback, feed remains public, nested reply ACK pages, cross-device live updates, paging, idempotency and final unblock state.');
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

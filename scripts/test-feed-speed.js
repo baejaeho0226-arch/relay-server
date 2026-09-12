@@ -30,6 +30,7 @@ async function request(p,action,body={},id='FIX27-REQUEST-'+(++seq)){
 async function run(p,action,body,id){const r=await request(p,action,body,id);assert.equal(r.ok,true,JSON.stringify(r));return r.data;}
 async function changed(p,revision){for(;;){const parts=(await p.wait('HUB_EVENT|')).split('|');assert.equal(parts[2],mac(p,'HUB_EVENT',[parts[1]]));if(Number(parts[1])>=revision)return;}}
 function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height:64});for(let i=0;i<png.data.length;i+=4){png.data[i]=color;png.data[i+1]=240-color;png.data[i+2]=90;png.data[i+3]=255;}return 'data:image/png;base64,'+PNG.sync.write(png).toString('base64');}
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const author=await login(),viewer=await login();
  const a=(await run(author,'me')).profile,b=(await run(viewer,'me')).profile;
@@ -43,7 +44,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  const stored=store.DB().posts[post.id];assert.equal(stored.image,photo,'do not recompress a validated JPEG original');
  assert.equal(jpeg.decode(Buffer.from(post.image.split(',')[1],'base64')).width,720);assert.equal(stored.gifMedia.previewVersion,2);
  assert.ok(stored.gifMedia.frames.every(x=>x.length<16000));
- let feed=await run(viewer,'feed',fast);const fullBytes=viewer.lastWire.downloadBytes;assert.equal(feed.memberProtocol,32);
+ let feed=await run(viewer,'feed',fast);const fullBytes=viewer.lastWire.downloadBytes;assert.equal(feed.memberProtocol,33);
  assert.equal((await run(viewer,'feed',{...fast,_since:feed.revision})).unchanged,true);
  const reactionBody={...fast,postId:post.id,value:1},req='FIX27-REACTION-IDEMPOTENT';
  const reaction=await run(viewer,'react',reactionBody,req),deltaBytes=viewer.lastWire.downloadBytes;
@@ -69,4 +70,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.throws(()=>require('../services/member/wire').Decode(zlib.deflateSync(Buffer.alloc(6000001)).toString('base64'),true),/limit|large/i);
  await run(author,'post.delete',{...fast,id:post.id});assert.equal((await request(viewer,'thread',{...fast,postId:post.id,_since:store.DB().revision})).reason,'POST_NOT_FOUND');
  console.log(`FIX27 PASS: signed compressed upload/download, legacy requests, compact replies (${deltaBytes} vs ${fullBytes} encoded bytes), idempotency, ownership, persistence rollback, daily cache freshness, original JPEG preservation, sharper previews, repost metadata and per-member game unread state.`);
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

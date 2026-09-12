@@ -26,6 +26,7 @@ async function changed(p,revision){for(;;){const parts=(await p.wait('HUB_EVENT|
 function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height:64});for(let i=0;i<png.data.length;i+=4){png.data[i]=color;png.data[i+1]=240-color;png.data[i+2]=90;png.data[i+3]=255;}return 'data:image/png;base64,'+PNG.sync.write(png).toString('base64');}
 
 async function web(role,url,body){const req=require('node:stream').Readable.from(body?[Buffer.from(JSON.stringify(body))]:[]);Object.assign(req,{url,method:body?'POST':'GET',headers:{},socket:{remoteAddress:'127.0.0.1'}});let status,payload;await require('../web/webApi').HandleApiRequest(req,{writeHead(n){status=n;},end(data){payload=JSON.parse(data);}},{role,id:'FIX22'});return {status,payload};}
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const author=await login(),viewer=await login();
  const a=(await run(author,'me')).profile,b=(await run(viewer,'me')).profile;
@@ -78,4 +79,5 @@ async function web(role,url,body){const req=require('node:stream').Readable.from
  const persistent=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(persistent),true);assert.equal(store.Resolve('@ROUND.MEMBER').id,a.id);assert.ok(store.ProfileById(a.id).handleChangedAt);assert.ok(Object.values(store.DB().posts).some(x=>x.imageFeed));assert.equal(store.DB().posts[posted.post.id].imagePosition,'after');
  author.c.biometricVerified=false;assert.equal((await request(author,'records',{handle:'@round.member'})).reason,'MEMBER_AUTH_REQUIRED');
  console.log('FIX22 TCP/API PASS: one-time unique handle, 30-day nickname gate, reserved legacy handle, signed photo upload/edit/delete/replay, response bound, admin-only records, registered phone/biometric links, admin role and alias operations, home summary and durable import');
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -24,6 +24,7 @@ async function request(p,action,body={},id='FIX25-REQUEST-'+(++seq)){
 async function run(p,action,body,id){const r=await request(p,action,body,id);assert.equal(r.ok,true,JSON.stringify(r));return r.data;}
 async function changed(p,revision){for(;;){const parts=(await p.wait('HUB_EVENT|')).split('|');assert.equal(parts[2],mac(p,'HUB_EVENT',[parts[1]]));if(Number(parts[1])>=revision)return;}}
 function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height:64});for(let i=0;i<png.data.length;i+=4){png.data[i]=color;png.data[i+1]=240-color;png.data[i+2]=90;png.data[i+3]=255;}return 'data:image/png;base64,'+PNG.sync.write(png).toString('base64');}
+let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){console.error('TCP regression ended before completing assertions');process.exitCode=1;}});
 (async()=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const author=await login(),viewer=await login(),third=await login();
  const a=(await run(author,'me')).profile,b=(await run(viewer,'me')).profile,c=(await run(third,'me')).profile,hub=require('../services/member/service');
@@ -72,9 +73,10 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  // still fit the signed response envelope (900000 base64 characters).
  const noise=Buffer.alloc(320*320*4);let seed=25;for(let i=0;i<noise.length;i++){seed=(seed*1664525+1013904223)>>>0;noise[i]=i%4===3?255:seed>>>24;}
  const noisy='data:image/jpeg;base64,'+require('jpeg-js').encode({width:320,height:320,data:noise},72).data.toString('base64');
- const large=[];for(let i=0;i<8;i++){row(a.id).last_post=0;large.push(store.Atomic(()=>require('../services/member/social').Post(row(a.id),{title:'가'.repeat(90),body:'나'.repeat(2000),image:noisy,gifId:pack[0].id,poll:{question:'다'.repeat(90),options:['라'.repeat(80),'마'.repeat(80),'바'.repeat(80),'사'.repeat(80)]}})).post.id);store.DB().reposts[b.id+':'+large[i]]={accountId:b.id,postId:large[i],at:Date.now()};}
+ const large=[];for(let i=0;i<8;i++){row(a.id).last_post=0;large.push(store.Atomic(()=>require('../services/member/social').Post(row(a.id),{title:'가'.repeat(90),body:'나'.repeat(2000),image:noisy,gifId:pack[0].id,poll:{question:'다'.repeat(90),options:['라'.repeat(12),'마'.repeat(12),'바'.repeat(12),'사'.repeat(12)]}})).post.id);store.DB().reposts[b.id+':'+large[i]]={accountId:b.id,postId:large[i],at:Date.now()};}
  const full=await run(third,'feed');assert.equal(full.items.length,8);assert.ok(Buffer.from(JSON.stringify({ok:true,data:full})).toString('base64').length<900000);
  const old=structuredClone(store.DB());for(const key of ['commentReactions','bookmarks','blocks','reposts','pollVotes'])delete old[key];store.Import({memberHub:old});for(const key of ['commentReactions','bookmarks','blocks','reposts','pollVotes'])assert.deepEqual(store.DB()[key],{});
  assert.equal(store.DB().orders[purchased.id].days,45);
  console.log('FIX25 TCP PASS: article reopen, custom paid periods, image/genre data, deduplicated views, GIF frames, title, post/comment hearts, author replies, ownership/revisions, poll vote lock/idempotency, bookmarks privacy, quoted repost, comment reports, mutual block authorization, durable data migration and save rollback.');
-}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
+ regressionCompleted=true;
+}catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
