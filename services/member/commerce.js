@@ -35,6 +35,7 @@ function Activate(p,c,body){
  const order=s.DB().orders[body.orderId];if(!order||order.accountId!==p.id)s.Fail('ORDER_NOT_FOUND');if(order.status==='REFUNDED')s.Fail('ORDER_REFUNDED');
  const now=Date.now();if(order.expiresAt && order.expiresAt<=now)s.Fail('PASS_EXPIRED');
  if(!order.activatedAt){order.activatedAt=now;order.expiresAt=now+order.days*86400000;}
+ order.lastUsedAt=now;
  p.activeOrderId=order.id;
  const bound=require('../../license/licenseManager').GetBoundLicenseEntry(c.clientId);
  if(!bound)s.Fail('MEMBER_AUTH_REQUIRED');
@@ -54,8 +55,8 @@ function Refund(body,actor){
 }
 function PurchasePayments(p){
  const db=s.DB();
- return Object.values(db.ledger).filter(x=>x.accountId===p.id&&x.kind==='PURCHASE')
-  .sort((a,b)=>b.at-a.at||b.id.localeCompare(a.id)).map(x=>{
+ return Object.values(db.ledger).filter(x=>x.accountId===p.id&&x.kind==='PURCHASE').reverse()
+  .sort((a,b)=>b.at-a.at).map(x=>{
    const order=db.orders[x.reference],owned=order?.accountId===p.id;
    return {...x,title:owned?order.title:'게임 이용권',days:owned?order.days:0,orderId:owned?order.id:''};
   });

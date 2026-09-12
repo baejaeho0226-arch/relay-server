@@ -28,12 +28,13 @@ function ResolveSupport(handle,selected=''){
 }
 function Home(p){
  const db=s.DB(),commerce=require('./commerce'),orders=Object.values(db.orders).filter(x=>x.accountId===p.id).map(commerce.PublicOrder),payments=commerce.PurchasePayments(p);
- const usable=orders.filter(x=>x.status==='PAID'||x.status==='ACTIVE').sort((a,b)=>Number(!a.activatedAt)-Number(!b.activatedAt)||(a.activatedAt||a.at)-(b.activatedAt||b.at));
- const firstPayments=[...payments].sort((a,b)=>a.at-b.at);
+ // Recently used passes lead; a newly purchased, unused pass is the fallback.
+ const usable=orders.filter(x=>x.status!=='REFUNDED').reverse().sort((a,b)=>Number(!a.activatedAt)-Number(!b.activatedAt)||(b.lastUsedAt||b.activatedAt||b.at)-(a.lastUsedAt||a.activatedAt||a.at));
+ const latestPayments=payments;
  const extras=require('./home').Extras(p);
  return {...extras,settings:{},profile:s.PublicProfile(p,true),counts:{...extras.counts,orders:orders.length,payments:payments.length},
   summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:payments.length,posts:extras.counts.posts,unreadNews:require('./social').UnreadNewsCount(p)},
-  recentOrders:usable.slice(0,1),recentPayments:firstPayments.slice(0,1),latestPayment:firstPayments[0]||null};
+  recentOrders:usable.slice(0,1),recentPayments:latestPayments.slice(0,1),latestPayment:latestPayments[0]||null};
 }
 
 const INFO_FIELDS=['name','manufacturer','product','model','os','architecture','appVersion','protocolVersion','phone','phoneStatus','serial','serialStatus','imei','imeiStatus'];

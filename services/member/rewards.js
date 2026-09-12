@@ -3,7 +3,7 @@ const crypto=require('node:crypto'),s=require('./store');
 const Day=at=>new Date(at+9*3600000).toISOString().slice(0,10);
 const defaults={revision:1,enabled:true,attendanceDays:7,attendancePoints:100,chargeUnit:1000,
  prizes:[{points:10,weight:40},{points:20,weight:25},{points:30,weight:18},{points:50,weight:10},{points:100,weight:6},{points:300,weight:1}]};
-function Rules(){return structuredClone(s.DB().settings.rewards||defaults);}
+function Rules(){const rules=structuredClone(s.DB().settings.rewards||defaults);return {...rules,pointExchange:require('./points').Rules(rules.pointExchange)};}
 function Wallet(p){return {points:p.points||0,spins:p.eventSpins||0};}
 function Credit(p,amount,kind,reference){
  const key=p.id+':'+kind+':'+reference,old=s.DB().pointLedger[key];if(old)return old;
@@ -56,7 +56,8 @@ function SaveRules(body,actor){
  const attendanceDays=s.Money(body.attendanceDays,1,31),attendancePoints=s.Money(body.attendancePoints,1,100000),chargeUnit=s.Money(body.chargeUnit,1,10000000);
  if(!Array.isArray(body.prizes)||body.prizes.length!==6)s.Fail('INPUT_INVALID');
  const prizes=body.prizes.map(x=>({points:s.Money(x.points,1,100000),weight:s.Money(x.weight,1,10000)}));
- return s.Atomic(()=>{s.DB().settings.rewards={enabled:body.enabled,attendanceDays,attendancePoints,chargeUnit,prizes,revision:previous.revision+1,updatedAt:Date.now(),updatedBy:actor};return Rules();});
+ const pointExchange=require('./points').Validate(body.pointExchange,previous.pointExchange);
+ return s.Atomic(()=>{s.DB().settings.rewards={enabled:body.enabled,attendanceDays,attendancePoints,chargeUnit,prizes,pointExchange,revision:previous.revision+1,updatedAt:Date.now(),updatedBy:actor};return Rules();});
 }
 function Admin(body={}){
  const rows=Object.values(s.DB().pointLedger).sort((a,b)=>b.at-a.at||b.id.localeCompare(a.id));

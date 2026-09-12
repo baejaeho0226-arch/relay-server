@@ -20,6 +20,8 @@ function Execute(c,requestId,action,body={}){
   return {...data,viewer:s.PublicProfile(p),memberProtocol:35,revision:s.DB().revision};
  }
  const mutations={
+  'points.recharge':()=>require('./points').Convert(p,body,'recharge'),
+  'points.exchange':()=>require('./points').Convert(p,body,'exchange'),
   'attendance.check':()=>require('./rewards').Check(p),
   'event.spin':()=>require('./rewards').Spin(p,body),
   'block.set':()=>require('./socialActions').Block(p,body),
