@@ -46,8 +46,39 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  const post=(await run(a,'post.create',{...fast,body:'전체 피드에 그대로 공개'})).post;
  let view=await run(b,'member',{...fast,id:pa.id,postCards:true});assert.equal(view.posts.items.length,1);
  const initialRevision=view.profile.profileRevision;
+ // Three devices exercise profile-only audiences, including the direction of
+ // the follow edge. Following the owner does not grant yourself access.
+ let audience=await run(a,'preferences.save',{...fast,profilePostsVisibility:'FOLLOWING'});
+ assert.equal(audience.preferences.profilePostsVisibility,'FOLLOWING');
+ assert.equal(audience.preferences.profilePostsPrivate,true,'older clients see a restricted profile');
+ await run(b,'follow.set',{id:pa.id,following:true});
+ assert.equal((await run(b,'member',{id:pa.id,postCards:true})).profilePostsHidden,true);
+ await run(a,'follow.set',{id:pb.id,following:true});
+ assert.equal((await run(b,'member',{id:pa.id,postCards:true})).posts.items[0].id,post.id);
+ assert.equal((await run(c,'member',{id:pa.id,postCards:true})).profilePostsHidden,true);
+ assert.equal((await run(a,'member',{id:pa.id,postCards:true})).posts.items[0].id,post.id);
+ assert.ok((await run(c,'feed')).items.some(x=>x.id===post.id),'profile audience does not restrict the feed');
+ assert.equal((await run(c,'thread',{postId:post.id})).post.id,post.id);
+ let audienceLive=await run(b,'live',{scope:'member',query:{id:pa.id,postCards:true}});
+ assert.equal(audienceLive.scope.length,1);
+ await run(a,'follow.set',{id:pb.id,following:false});
+ audienceLive=await run(b,'live',{scope:'member',query:{id:pa.id,postCards:true}});
+ assert.deepEqual(audienceLive.scope,[],'unfollowing removes profile posts at the next live update');
+ const beforeInvalid=JSON.stringify((await run(a,'preferences')).preferences);
+ assert.equal((await request(a,'preferences.save',{profilePostsVisibility:'INVALID',notifyApproval:false})).reason,'INPUT_INVALID');
+ assert.equal(JSON.stringify((await run(a,'preferences')).preferences),beforeInvalid,'validate the entire write before mutating');
+ let audienceSave=db.SaveDatabase;
+ try{db.SaveDatabase=()=>false;assert.equal((await request(a,'preferences.save',{profilePostsVisibility:'PUBLIC'})).reason,'STORAGE_SAVE_FAILED');}finally{db.SaveDatabase=audienceSave;}
+ assert.equal((await run(a,'preferences')).preferences.profilePostsVisibility,'FOLLOWING','failed audience save rolls back');
+ db.SaveDatabase();store.Import({memberHub:JSON.parse(JSON.stringify(store.DB()))});
+ assert.equal((await run(a,'preferences')).preferences.profilePostsVisibility,'FOLLOWING','audience survives reload');
+ // Explicit audience is authoritative if a mixed-version client sends both.
+ audience=await run(a,'preferences.save',{profilePostsVisibility:'PUBLIC',profilePostsPrivate:true});
+ assert.equal(audience.preferences.profilePostsPrivate,false);
+ assert.equal((await run(c,'member',{id:pa.id,postCards:true})).posts.items[0].id,post.id);
  const prefs=await run(a,'preferences.save',{...fast,profilePostsPrivate:true});
  assert.equal(prefs.preferences.profilePostsPrivate,true);assert.ok(prefs.profile.profileRevision>initialRevision);
+ assert.equal(prefs.preferences.profilePostsVisibility,'PRIVATE','legacy boolean write remains supported');
  assert.equal('preferences' in prefs.publicProfile,false);assert.equal('gender' in prefs.publicProfile,false);
  for(const viewer of [b,c]){
   view=await run(viewer,'member',{...fast,id:'@profile_once',postCards:true});
@@ -64,6 +95,7 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  let save=db.SaveDatabase;try{db.SaveDatabase=()=>false;assert.equal((await request(a,'preferences.save',{...fast,profilePostsPrivate:false})).reason,'STORAGE_SAVE_FAILED');}finally{db.SaveDatabase=save;}
  assert.equal((await run(a,'preferences')).preferences.profilePostsPrivate,true,'failed privacy save rolls back');
  await run(a,'preferences.save',{...fast,profilePostsPrivate:false});
+ assert.equal((await run(a,'preferences')).preferences.profilePostsVisibility,'PUBLIC');
  assert.equal((await run(b,'member',{...fast,id:pa.id,postCards:true})).posts.items.length,1);
  // Stored preferences survive a database export/import, independent of local UI state.
  const originalProfiles=Object.keys(store.DB().profiles);assert.ok(originalProfiles.length>=2);
@@ -102,6 +134,6 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  await run(a,'block.set',{...fast,id:pb.id,blocked:true});save=db.SaveDatabase;
  try{db.SaveDatabase=()=>false;assert.equal((await request(a,'block.set',{...fast,id:pb.id,blocked:false})).reason,'STORAGE_SAVE_FAILED');}finally{db.SaveDatabase=save;}
  assert.equal((await run(a,'blocks')).total,1,'failed unblock keeps the member blocked');
- console.log('FIX37 PASS: signed TCP privacy/profile validation and rollback, feed remains public, nested reply ACK pages, cross-device live updates, paging, idempotency and final unblock state.');
+ console.log('FIX41 PASS: three-device public/following/private audiences, legacy migration, validation and rollback, persistence, public feed, nested replies, live updates, paging, idempotency and final unblock state.');
  regressionCompleted=true;
 }catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -27,7 +27,8 @@ const implemented=[...units.matchAll(/\b(?:procedure|function)\s+TForm1\.(\w+)/g
 assert.equal(new Set(implemented).size,implemented.length,'Duplicate form methods');
 for(const name of declared)assert.ok(implemented.includes(name),'Missing '+name);
 for(const name of implemented)assert.ok(declared.includes(name),'Undeclared '+name);
-for(const name of ['ApkMemberClient.pas'])assert.deepEqual(require('./native-declarations').Check(read(name)),[]);
+for(const [name,type] of [['ApkMemberClient.pas','TApkMemberClient'],['ApkMemberSwitch.pas','TApkMemberSwitch'],['ApkMemberMemo.pas','TApkMemberMemo']])
+ assert.deepEqual(require('./native-declarations').Check(read(name),type),[],name);
 // Cross-layer invariants for the lifecycle bugs: no editor exit saves a partially destroyed form.
 const flow=read('ApkWinSock.Member.Flow.inc'),motion=read('ApkWinSock.Member.Motion.inc'),compose=read('ApkWinSock.Member.Compose.inc'),social=read('ApkWinSock.Member.Social.inc');
 assert.match(flow,/if FHubRendering or not Assigned\(FHubDrafts\)/);
