@@ -105,7 +105,7 @@ function Stop(actor = 'ADMIN') {
   const summary = { servers: state.serverIdentities.size, clients: state.clientIdentities.size,
     licenses: state.licenses.size, sessions: state.buildSessions.size, conversations: state.supportThreads.size };
   for (const server of state.servers.values()) {
-    // Older WinSockServer also understands CLIENT_UNAUTHORIZED.
+    // Older MoaPlayConnect also understands CLIENT_UNAUTHORIZED.
     const ids = new Set([...(server.clients || []), ...(server.buildClients || [])]);
     for (const session of state.buildSessions.values()) if (session.serverId === server.serverId) ids.add(session.clientId);
     for (const id of ids) SendLine(server.socket, `CLIENT_UNAUTHORIZED|${id}|SERVICE_DISABLED`);

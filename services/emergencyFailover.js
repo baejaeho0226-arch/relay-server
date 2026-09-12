@@ -362,7 +362,7 @@ function Evaluate() {
         }
         let record = state.clientFailoverRecords.get(clientId);
 
-        // A successful Build permanently binds this APK to its WinSockServer.
+        // A successful Build permanently binds this APK to its MoaPlayConnect.
         // Automatic failover/return must never rewrite that binding. Only the
         // explicit Web Admin rebind operation may move a Build-bound client.
         if (GetFixedBuildBinding(clientId)) {

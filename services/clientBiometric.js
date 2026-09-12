@@ -69,7 +69,6 @@ function NotifyAuthorized(connection, accessType) {
         .GetUsableLicenseForConnection(connection);
     if (!active) {
         connection.biometricVerified = false;
-        require('./member/testAccess').Revoke(connection);
         SendLine(connection.socket, 'BIOMETRIC_ERROR|LICENSE_REQUIRED');
         return false;
     }
@@ -178,7 +177,6 @@ function Reset(clientId, actor = 'WEB_ADMIN') {
     if (connection && connection.connected && connection.socket &&
         !connection.socket.destroyed) {
         connection.biometricVerified = false;
-        require('./member/testAccess').Revoke(connection);
         SendLine(connection.socket, 'BIOMETRIC_RESET|ADMIN');
         require('../relay/notifications').NotifyServerUnauthorized(clientId,
             'BIOMETRIC_RESET');

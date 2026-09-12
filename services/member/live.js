@@ -4,6 +4,7 @@ function Ids(value){if(value===undefined)return [];if(!Array.isArray(value)||val
 function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s.Handle(p),nickname:p.nickname,bio:p.bio,pronouns:p.pronouns||'',posts:require('./commerce').OwnPostRows(p).length,isFollowing:require('./follows').IsFollowing(viewer.id,p.id),profileRevision:p.profileRevision||p.avatarRevision||0,...(p.id===viewer.id?{preferences:require('./preferences').Read(p)}:{}),...require('./follows').Counts(p.id)};}
 function Scope(p,action,query={}){
  if(action==='feed')return s.Page(social.FeedRows(p,query),query,8).items.map(x=>x.id+'/'+(x.revision||0));
+ if(action==='me'&&query.commentsOnly===true)return s.Page(require('./activity').CommentRows(p),query,12).items.map(x=>x.id+'/'+(x.revision||0));
  if(action==='me'&&query.postCards===true)return s.Page(require('./commerce').OwnPostRows(p),query,12).items.map(x=>x.id+'/'+(x.revision||0));
  if(action==='member'&&query.postCards===true){
   const target=require('./profiles').Target(p,query);

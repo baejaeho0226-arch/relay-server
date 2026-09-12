@@ -229,8 +229,8 @@ function Approve(requestId, approvalToken, options = {}, actor = 'admin') {
     if (!require('./clientPermissions').Ready(permissionClient)) return { ok: false, reason: 'PERMISSIONS_REQUIRED' };
 
     // QR/biometric enrollment belongs to the APK and never depends on a running
-    // WinSockServer. A returning client keeps its fixed server identity; a new
-    // client remains unassigned until an authenticated WinSockServer claims
+    // MoaPlayConnect. A returning client keeps its fixed server identity; a new
+    // client remains unassigned until an authenticated MoaPlayConnect claims
     // its pending Build request.
     const existingSaved = require('../identity/identityManager').GetSavedClientByID(record.clientId);
     record.serverId = existingSaved ? NormalizeID(existingSaved.serverId) : '';

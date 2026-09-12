@@ -64,6 +64,6 @@ function OwnPostRows(p){return Object.values(s.DB().posts).filter(x=>x.accountId
 function Mine(p,body){
  const db=s.DB(),page=s.Page(OwnPostRows(p),body,12);
  const posts={...page,items:page.items.map(x=>body.postCards===true?require('./social').PublicPost(x,p,false,body._wire==='zlib'):{id:x.id,title:x.title||'',body:(x.title||x.body||'GIF · 투표').slice(0,140),imageThumb:x.imageThumb||require('./gifs').Get(x.gifId)?.frames[0]||'',at:x.at,revision:x.revision||0})};
- return {profile:s.PublicProfile(p,true),posts,orders:s.Page(Object.values(db.orders).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at).map(PublicOrder),body,20),payments:s.Page(body.purchasesOnly===true?PurchasePayments(p):Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20)};
+ return {profile:s.PublicProfile(p,true),posts,...(body.commentsOnly?{comments:require('./activity').Comments(p,body)}:{}),orders:s.Page(Object.values(db.orders).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at).map(PublicOrder),body,20),payments:s.Page(body.purchasesOnly===true?PurchasePayments(p):Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20)};
 }
 module.exports={PublicGame,Product,Catalog,SaveProduct,Purchase,Activate,AfterActivation,Refund,Mine,OwnPostRows,PurchasePayments,PublicOrder};

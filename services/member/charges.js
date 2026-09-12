@@ -42,6 +42,7 @@ function Approve(body,actor){
  return s.Atomic(()=>{
   const payment=s.Ledger(p,amount,'QR_TOPUP',row.id);
   Object.assign(row,{mode:'WALLET',status:'APPROVED',amount,memo,paymentId:payment.id,balance:payment.balance,approvedAt:Date.now(),approvedBy:actor,fingerprint});
+  require('./rewards').GrantCharge(p,row);
   return Public(row);
  });
 }

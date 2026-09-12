@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const state = require('../../core/state');
-const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests','follows','commentReactions','bookmarks','blocks','reposts','pollVotes'];
+const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests','follows','commentReactions','bookmarks','blocks','reposts','pollVotes','pointLedger','eventSpins'];
 const TABLES = ['profiles','products','news','orders','topups','ledger','posts','comments','reactions','reports','operations'];
 function Empty() {
  const db={schema:4,revision:0,settings:{topupInstructions:'충전 방식은 준비 중입니다.',topupEnabled:false}};
@@ -13,7 +13,7 @@ function Import(data){
  const raw=data && data.memberHub;if(!raw)return void(state.memberHub=Empty());
  if(![1,2,3,4].includes(raw.schema) || TABLES.some(name=>!raw[name]||typeof raw[name]!=='object'||Array.isArray(raw[name])))throw Error('MEMBER_STORAGE_INVALID');
  const next=structuredClone(raw);
- for(const name of EXTRA_TABLES){if((['commentReactions','bookmarks','blocks','reposts','pollVotes'].includes(name)||raw.schema===1||name==='chargeRequests'&&raw.schema<3||name==='follows'&&raw.schema<4)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
+ for(const name of EXTRA_TABLES){if((['commentReactions','bookmarks','blocks','reposts','pollVotes','pointLedger','eventSpins'].includes(name)||raw.schema===1||name==='chargeRequests'&&raw.schema<3||name==='follows'&&raw.schema<4)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
  next.schema=4;state.memberHub=next;
 }
 function Fail(reason){const e=Error(reason);e.memberError=true;throw e;}
@@ -31,7 +31,7 @@ function Handle(p){return p.handle||DefaultHandle(p);}
 function NormalizeHandle(value){const v=String(value||'').trim().replace(/^@/,'').toLowerCase();if(!/^[a-z0-9_][a-z0-9_.]{2,23}$/.test(v))Fail('HANDLE_INVALID');return v;}
 function Resolve(value){if(typeof value!=='string')return;return ProfileById(value)||Object.values(DB().profiles).find(p=>[Handle(p),DefaultHandle(p)].includes(value.trim().replace(/^@/,'').toLowerCase()));}
 function PublicAvatar(p){if(!p.avatar)return '';if(p.avatarThumb&&p.avatarThumb.length<=16100)return p.avatarThumb;try{return p.avatarThumb=require('./social').AvatarThumb(p.avatar);}catch(_){return '';}}
-function PublicProfile(p,own=false){return {id:p.id,handle:Handle(p),nickname:p.nickname,bio:p.bio,pronouns:p.pronouns||'',avatar:own?p.avatar:PublicAvatar(p),avatarRevision:p.avatarRevision,profileRevision:p.profileRevision||p.avatarRevision||0,posts:Object.values(DB().posts).filter(x=>x.accountId===p.id&&!x.deleted&&!x.hidden).length,...require('./follows').Counts(p.id),...(own?{balance:p.balance,createdAt:p.createdAt,handleEditable:!p.handleChangedAt,nicknameChangeAt:p.nicknameChangedAt?p.nicknameChangedAt+30*86400000:0,gender:p.gender||'UNDISCLOSED',preferences:require('./preferences').Read(p)}: {})};}
+function PublicProfile(p,own=false){return {id:p.id,handle:Handle(p),nickname:p.nickname,bio:p.bio,pronouns:p.pronouns||'',avatar:own?p.avatar:PublicAvatar(p),avatarRevision:p.avatarRevision,profileRevision:p.profileRevision||p.avatarRevision||0,posts:Object.values(DB().posts).filter(x=>x.accountId===p.id&&!x.deleted&&!x.hidden).length,...require('./follows').Counts(p.id),...(own?{balance:p.balance,points:p.points||0,eventSpins:p.eventSpins||0,createdAt:p.createdAt,handleEditable:!p.handleChangedAt,nicknameChangeAt:p.nicknameChangedAt?p.nicknameChangedAt+30*86400000:0,gender:p.gender||'UNDISCLOSED',preferences:require('./preferences').Read(p)}: {})};}
 function ViewCount(kind,id){return DB().viewCounters?.[kind+':'+id]?.count||0;}
 let profileTable,profileRevision=-1,profileIndex=new Map();
 function ProfileById(id){

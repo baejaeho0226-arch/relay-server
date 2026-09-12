@@ -24,14 +24,11 @@ function AvatarThumb(value){
 }
 function SaveProfile(p,body){const revision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1;const nickname=s.Text(body.nickname,24,true),now=Date.now();if(nickname!==p.nickname){if(p.nicknameChangedAt&&now<p.nicknameChangedAt+30*86400000)s.Fail('NICKNAME_COOLDOWN');p.nickname=nickname;p.nicknameChangedAt=now;}if(body.handle!==undefined){const handle=s.NormalizeHandle(body.handle);if(handle!==s.Handle(p)){if(p.handleChangedAt)s.Fail('HANDLE_LOCKED');if(s.Resolve(handle))s.Fail('HANDLE_TAKEN');p.handle=handle;p.handleChangedAt=now;}}p.bio=s.Text(body.bio,160);if(body.pronouns!==undefined)p.pronouns=s.Text(body.pronouns,40);if(body.gender!==undefined){if(!['MALE','FEMALE','UNDISCLOSED'].includes(body.gender))s.Fail('INPUT_INVALID');p.gender=body.gender;}if(body.avatar!==undefined){p.avatar=Avatar(body.avatar);p.avatarThumb=AvatarThumb(p.avatar);p.avatarRevision++;}p.profileRevision=revision;return {profile:s.PublicProfile(p,true),publicProfile:s.PublicProfile(p)};}
 function Author(id){const p=s.ProfileById(id);return p?s.PublicProfile(p):{id,nickname:'탈퇴 회원',avatar:''};}
+function NewsRows(p,body={}){return Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at);}
+function NewsUnread(p,x){return (p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1);}
+function UnreadNewsCount(p){return NewsRows(p).filter(x=>NewsUnread(p,x)).length;}
 function News(p,body={}){
- const rows=Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category))
-  .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at);
- return s.Page(rows.map(x=>({
-  ...Object.fromEntries(Object.entries(x).filter(([k])=>k!=='image'&&(!body.summary||k!=='body'))),
-  views:s.ViewCount('news',x.id),
-  unread:(p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1)
- })),body);
+ return s.Page(NewsRows(p,body).map(x=>({...Object.fromEntries(Object.entries(x).filter(([k])=>k!=='image'&&(!body.summary||k!=='body'))),views:s.ViewCount('news',x.id),unread:NewsUnread(p,x)})),body);
 }
 function Article(p,body){
  const row=s.DB().news[body.id];
@@ -88,4 +85,4 @@ function Comment(p,body){const post=extra.Post(p,body.postId);Rate(p,'comment',1
 function Remove(p,body,table){const item=s.DB()[table][body.id];if(!item||item.accountId!==p.id)s.Fail('NOT_OWNER');const alreadyDeleted=!!item.deleted;item.deleted=true;item.deletedByMember=true;item.body='';if(table==='posts'){delete item.bodyFormats;item.image='';item.imageFeed='';item.imageThumb='';item.gifMedia=null;item.gifId='';item.poll=null;}return {removed:true,alreadyDeleted,comments:table==='comments'?Object.values(s.DB().comments).filter(x=>x.postId===item.postId&&!x.deleted&&!x.hidden&&!extra.Blocked(p.id,x.accountId)&&!s.ProfileById(x.accountId)?.blocked).length:undefined,id:item.id,kind:table==='posts'?'post':'comment',replyCounts:table==='comments'?require('./commentThreads').Delta(item,p):[],quoteSource:table==='posts'?require('./reposts').Delta(item,p,false):null,postId:table==='posts'?item.id:item.postId};}
 function React(p,body){const post=extra.Post(p,body.postId);const value=Number(body.value);if(![0,1].includes(value))s.Fail('REACTION_INVALID');const key=p.id+':'+post.id;if(value===0)delete s.DB().reactions[key];else s.DB().reactions[key]={postId:post.id,accountId:p.id,value};return {post:PublicPost(post,p,false,body._wire==='zlib',body._delta===true)};}
 function Report(p,body){return extra.Report(p,body);}
-module.exports={FeedRows,ThreadRows,AvatarThumb,Article,EditPost,Avatar,SaveProfile,News,SaveNews,Feed,Thread,Post,Comment,Remove,React,Report,PublicPost,Author};
+module.exports={UnreadNewsCount,FeedRows,ThreadRows,AvatarThumb,Article,EditPost,Avatar,SaveProfile,News,SaveNews,Feed,Thread,Post,Comment,Remove,React,Report,PublicPost,Author};
