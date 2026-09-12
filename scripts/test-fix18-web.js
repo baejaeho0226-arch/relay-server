@@ -37,9 +37,9 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  await click(w.document.querySelector('[data-view="member-news"]'));await click(w.document.querySelector('[data-member-action="news.new"]'));
  field('image',testPhoto);field('title','공지 테스트');field('body','다음 업데이트를 안내합니다.');field('published','true');await click(w.document.getElementById('modal-confirm'));await wait();assert.equal(Object.values(store.DB().news).length,1);assert.ok(Object.values(store.DB().news)[0].image);
  await click(w.document.querySelector('[data-member-action="news.edit"]'));assert.ok(w.document.querySelector('[data-modal-preview="image"]').src.startsWith('data:image/jpeg;'));await click(w.document.querySelector('[data-modal-image-remove="image"]'));await click(w.document.getElementById('modal-confirm'));assert.equal(Object.values(store.DB().news)[0].image,'');
- for(const view of ['overview','products','news','orders','ledger','profiles','posts','comments','reports','policies']){await click(w.document.querySelector('[data-view="member-'+view+'"]'));assert.ok(w.document.getElementById('content').textContent.trim());}
+ for(const view of ['overview','rewards','products','news','orders','ledger','profiles','posts','comments','reports','policies']){await click(w.document.querySelector('[data-view="member-'+view+'"]'));assert.ok(w.document.getElementById('content').textContent.trim());}
 
- assert.equal(w.document.querySelectorAll('#nav [data-view^="member-"]').length,10);assert.equal(w.document.querySelector('.member-tabs'),null);
+ assert.equal(w.document.querySelectorAll('#nav [data-view^="member-"]').length,11);assert.equal(w.document.querySelector('.member-tabs'),null);
  const theme=w.document.getElementById('theme-toggle');await click(theme);assert.equal(w.document.documentElement.dataset.theme,'dark');assert.equal(w.localStorage.getItem('relay-admin-theme'),'dark');assert.equal(theme.getAttribute('aria-pressed'),'true');
  await click(w.document.querySelector('[data-view="member-news"]'));assert.equal(w.document.documentElement.dataset.theme,'dark');
  await click(theme);assert.equal(w.document.documentElement.dataset.theme,'light');assert.equal(w.localStorage.getItem('relay-admin-theme'),'light');

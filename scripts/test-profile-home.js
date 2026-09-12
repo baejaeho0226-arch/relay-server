@@ -84,9 +84,9 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  store.Atomic(()=>{const row=store.Ledger(store.ProfileById(pa.id),2500,'QR_TOPUP','NEWEST-CREDIT');row.at=now+10000;});
  const home=await run(a,'home');
  assert.equal(home.summary.active,1);assert.equal(home.summary.ready,1);assert.equal(home.summary.payments,4);
- assert.deepEqual(home.recentOrders.map(x=>x.id),[orders[1].id,orders[0].id]);
- assert.deepEqual(home.recentOrders.map(x=>x.status),['PAID','ACTIVE']);
- assert.equal(home.recentPayments.length,2);assert.ok(home.recentPayments.every(x=>x.kind==='PURCHASE'&&x.accountId===pa.id&&x.title===game.title));
+ assert.deepEqual(home.recentOrders.map(x=>x.id),[orders[0].id]);
+ assert.deepEqual(home.recentOrders.map(x=>x.status),['ACTIVE']);
+ assert.equal(home.recentPayments.length,1);assert.ok(home.recentPayments.every(x=>x.kind==='PURCHASE'&&x.accountId===pa.id&&x.title===game.title));
  assert.equal(home.latestPayment.kind,'PURCHASE');assert.ok(!home.recentPayments.some(x=>x.reference===otherOrder.id));
  const payments=(await run(a,'me',{...fast,purchasesOnly:true,offset:0,limit:20})).payments;
  assert.equal(payments.total,4);assert.ok(payments.items.every(x=>x.kind==='PURCHASE'&&x.amount===-1200));

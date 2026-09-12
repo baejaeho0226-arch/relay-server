@@ -1,0 +1,36 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),os=require('os'),vm=require('vm');
+const {JSDOM,VirtualConsole}=require('jsdom');
+const root=path.resolve(__dirname,'..'),temp=fs.mkdtempSync(path.join(os.tmpdir(),'relay-fix39-documents-dom-'));
+process.env.DATA_DIR=temp;process.env.STORAGE_ENGINE='json';
+require('../core/utils').EnsureDirs();
+const api=require('../web/webApi'),manager=require('../license/licenseManager');
+const keys=[manager.CreateLicense(30,'USER_TEXT warning online 그대로').key,manager.CreateLicense(30,'두 번째').key];
+const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
+const originalHtml=fs.readFileSync(root+'/public/index.html','utf8');
+const dom=new JSDOM(originalHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/g,'').replace(/<link[^>]*>/g,''),{url:'https://fixture.invalid',runScripts:'outside-only',virtualConsole:vc});
+const w=dom.window;w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.matchMedia=()=>({matches:false,addListener(){}});w.EventSource=class{addEventListener(){}close(){}};
+const backend=[];
+w.fetch=async(url,options={})=>{
+ if(url==='/api/session')return {status:200,ok:true,text:async()=>JSON.stringify({role:'admin',csrf:'TEST',expiresAt:Date.now()+100000})};
+ const req=require('node:stream').Readable.from(options.body?[Buffer.from(options.body)]:[]);Object.assign(req,{url,method:options.method||'GET',headers:{},socket:{remoteAddress:'127.0.0.1'}});
+ let status,text;await api.HandleApiRequest(req,{writeHead(n){status=n;},end(t){text=t;}},{role:'admin',id:'TEST_ADMIN'});
+ backend.push({url,status});return {status,ok:status>=200&&status<300,text:async()=>text};
+};
+for(const m of originalHtml.matchAll(/<script src="\/([^?]+)\?/g))new vm.Script(fs.readFileSync(root+'/public/'+m[1],'utf8')).runInContext(dom.getInternalVMContext());
+Object.defineProperty(w.document,'hidden',{get:()=>false});
+const wait=()=>new Promise(r=>setTimeout(r,35));
+const click=async el=>{assert.ok(el);el.click();await wait();};
+(async()=>{try{
+ await wait();await click(w.document.querySelector('[data-view="member-rewards"]'));await w.renderMember();
+ assert.equal(w.document.querySelector('#page-title').textContent,'이벤트·포인트');
+ assert.match(w.document.querySelector('.member-shell').textContent,/연속 출석 보상/);
+ await click(w.document.querySelector('[data-member-action="rewards.edit"]'));
+ const field=n=>w.document.querySelector('[data-modal-field="'+n+'"]');
+ assert.equal(field('attendanceDays').value,'7');field('attendanceDays').value='5';field('attendancePoints').value='80';field('chargeUnit').value='2000';field('points0').value='25';
+ await click(w.document.querySelector('#modal-confirm'));await wait();
+ const rewards=require('../services/member/rewards');assert.equal(rewards.Rules().attendanceDays,5);assert.equal(rewards.Rules().attendancePoints,80);assert.equal(rewards.Rules().chargeUnit,2000);assert.equal(rewards.Rules().prizes[0].points,25);
+ await click(w.document.querySelector('[data-member-action="rewards.edit"]'));assert.equal(field('attendanceDays').value,'5');field('enabled').value='false';await click(w.document.querySelector('#modal-confirm'));await wait();assert.equal(rewards.Rules().enabled,false);
+ assert.match(w.document.querySelector('.member-shell').textContent,/일시 중지/);assert.ok(backend.some(x=>x.url==='/api/member/action'&&x.status===200));assert.deepEqual(errors,[]);
+ console.log('FIX42 WEB DOM PASS: event navigation, real reward rules editor, typed values, publication toggle and persisted API state.');
+}finally{w.close();fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

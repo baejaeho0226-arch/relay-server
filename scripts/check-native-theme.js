@@ -1,9 +1,9 @@
 'use strict';
 // Verify the actual palette and source coverage. This is not FMX/device rendering.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
-function Check(apk=path.resolve(__dirname,'../../ApkWinSock_Android64')){
+function Check(apk=path.resolve(__dirname,'../../MoaPlayApp_Android64')){
  const read=n=>fs.readFileSync(path.join(apk,n),'utf8');
- const theme=read('ApkMemberTheme.pas').split(/\bimplementation\b/i)[1];
+ const theme=read('MoaPlayMemberTheme.pas').split(/\bimplementation\b/i)[1];
  function color(name,dark){
   const body=new RegExp('function '+name+':TAlphaColor;\\s*begin ([^\\n]+)end;','i').exec(theme)?.[1];
   assert.ok(body,'Missing palette role '+name);
@@ -30,7 +30,7 @@ function Check(apk=path.resolve(__dirname,'../../ApkWinSock_Android64')){
   for(const m of category.matchAll(/if MemberDark then (?:Exit\(|Result:=)\$([\da-f]{8})\)?;? else (?:Exit\(|Result:=)\$([\da-f]{8})/gi))
    assert.ok(contrast(color('MemberText',dark),parseInt(m[dark?1:2],16))>=4.5,'Category badge text');
  }
- const files=fs.readdirSync(apk).filter(n=>/^ApkWinSock.*\.(inc|pas)$/.test(n));
+ const files=fs.readdirSync(apk).filter(n=>/^MoaPlayApp.*\.(inc|pas)$/.test(n));
  for(const name of files){
   const code=read(name);
   assert.doesNotMatch(code,/COLOR_(?:QR_BG|QR_TEXT|USER_BG)|SetAndroidBarsDark\(False\)/,name+' bypasses theme');
@@ -38,16 +38,16 @@ function Check(apk=path.resolve(__dirname,'../../ApkWinSock_Android64')){
    if(/(?:Fill\.Color|FontColor|UiLabel\(|UiRect\(|HubLabel\()/.test(line))
     assert.doesNotMatch(line,/\$[\da-f]{8}|TAlphaColorRec\./i,name+' fixed UI color');
  }
- assert.match(read('ApkMemberSvg.pas'),/MemberOnPrimary/);assert.match(read('ApkSmoothGlyphs.pas'),/MemberText/);
- assert.match(read('ApkMemberMemo.pas'),/MemberSoft/);assert.match(read('ApkMemberMemo.pas'),/MemberSelection/);
- assert.doesNotMatch(read('ApkWinSock.Theme.inc'),/for \w+ in \w+\.Children\b/,'No unsafe recursive style enumeration');
+ assert.match(read('MoaPlayMemberSvg.pas'),/MemberOnPrimary/);assert.match(read('MoaPlaySmoothGlyphs.pas'),/MemberText/);
+ assert.match(read('MoaPlayMemberMemo.pas'),/inherited GetStyleObject/);assert.match(read('MoaPlayMemberMemo.pas'),/MemberSelection/);
+ assert.doesNotMatch(read('MoaPlayApp.Theme.inc'),/for \w+ in \w+\.Children\b/,'No unsafe recursive style enumeration');
  assert.match(read('AndroidManifest.full.xml'),/configChanges="[^"]*\buiMode\b/,'Theme changes must not recreate the authenticated activity');
- assert.doesNotMatch(read('ApkSystemBars.pas'),/\.setNightMode\(/,'Use app-local mode only');
- const night=read('AndroidResources/res/values-night/relay_colors.xml'),day=read('AndroidResources/res/values/relay_colors.xml');
- assert.notEqual(night,day);assert.match(night,/relay_light_bars">false/);assert.match(day,/relay_light_bars">true/);
- for(const n of ['values/relay_launch_theme.xml','values-v31/relay_launch_theme.xml','drawable/relay_splash.xml','drawable/relay_launch_icon.xml'])
+ assert.doesNotMatch(read('MoaPlaySystemBars.pas'),/\.setNightMode\(/,'Use app-local mode only');
+ const night=read('AndroidResources/res/values-night/moaplay_colors.xml'),day=read('AndroidResources/res/values/moaplay_colors.xml');
+ assert.notEqual(night,day);assert.match(night,/moaplay_light_bars">false/);assert.match(day,/moaplay_light_bars">true/);
+ for(const n of ['values/moaplay_launch_theme.xml','values-v31/moaplay_launch_theme.xml','drawable/moaplay_splash.xml','drawable/moaplay_launch_icon.xml'])
   assert.doesNotMatch(read('AndroidResources/res/'+n),/#[\da-f]{6}/i,'Launch color must follow day/night resource: '+n);
- for(const n of ['values','values-v31'])assert.match(read('AndroidResources/res/'+n+'/relay_launch_theme.xml'),/forceDarkAllowed">false/,'Do not auto-invert a theme drawn by FMX');
+ for(const n of ['values','values-v31'])assert.match(read('AndroidResources/res/'+n+'/moaplay_launch_theme.xml'),/forceDarkAllowed">false/,'Do not auto-invert a theme drawn by FMX');
  return files.length;
 }
 if(require.main===module)console.log(`Native theme source check passed: ${Check()} form files, light/dark text contrast, primary icons and Android night resources (device rendering not run).`);

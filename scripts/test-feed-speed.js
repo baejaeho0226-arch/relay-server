@@ -44,7 +44,7 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  const stored=store.DB().posts[post.id];assert.equal(stored.image,photo,'do not recompress a validated JPEG original');
  assert.equal(jpeg.decode(Buffer.from(post.image.split(',')[1],'base64')).width,720);assert.equal(stored.gifMedia.previewVersion,2);
  assert.ok(stored.gifMedia.frames.every(x=>x.length<16000));
- let feed=await run(viewer,'feed',fast);const fullBytes=viewer.lastWire.downloadBytes;assert.equal(feed.memberProtocol,33);
+ let feed=await run(viewer,'feed',fast);const fullBytes=viewer.lastWire.downloadBytes;assert.equal(feed.memberProtocol,35);
  assert.equal((await run(viewer,'feed',{...fast,_since:feed.revision})).unchanged,true);
  const reactionBody={...fast,postId:post.id,value:1},req='FIX27-REACTION-IDEMPOTENT';
  const reaction=await run(viewer,'react',reactionBody,req),deltaBytes=viewer.lastWire.downloadBytes;

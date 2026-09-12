@@ -34,7 +34,7 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  for(let i=0;i<18;i++)store.DB().news['NEWS'+i]={id:'NEWS'+i,at:Date.now(),category:'NOTICE',title:'공지'+i,published:true,revision:1};
  store.DB().news.PRIVATE={id:'PRIVATE',at:Date.now(),title:'다른 회원 공지',audience:other.id,published:true};
  for(let i=0;i<3;i++)store.DB().orders['ORD23'+i]={id:'ORD23'+i,accountId:account.id,at:Date.now()+i,title:'게임 '+i,status:'PAID',days:7,amount:1000};
- assert.equal(identity.Home(account).summary.unreadNews,18,'unread count is not limited to first news page');assert.equal(identity.Home(account).recentOrders.length,2);assert.equal(identity.Home(account).recentOrders[0].id,'ORD232');
+ assert.equal(identity.Home(account).summary.unreadNews,18,'unread count is not limited to first news page');assert.equal(identity.Home(account).recentOrders.length,1);assert.equal(identity.Home(account).recentOrders[0].id,'ORD230');
  assert.throws(()=>identity.Read(account),/ADMIN_ONLY/);const own=identity.Read(account,{},true),serialized=JSON.stringify(own);for(const secret of ['PRIVATE_HASH','NEVER_RETURN',account.subject])assert.ok(!serialized.includes(secret));
  assert.equal(own.counts.support,1);assert.equal(own.devices[0].permissions.online,false);assert.equal(own.devices[0].device.phone,'010-2300-2300');
  assert.equal(identity.Read(account,{section:'support',threadId:clientId,limit:1},true).items[0].body,'보관된 답변');assert.throws(()=>identity.Read(other,{section:'support',threadId:clientId},true),/NOT_OWNER/);

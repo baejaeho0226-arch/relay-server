@@ -54,7 +54,7 @@ async function run(){
   const login=passkey.LoginBegin('admin',req);const cdata=clientData('webauthn.get',login.publicKey.challenge),adata=authData('relay.test',2);const signed=Buffer.concat([Buffer.from(adata,'base64url'),crypto.createHash('sha256').update(Buffer.from(cdata,'base64url')).digest()]);const signature=crypto.sign('sha256',signed,keys.privateKey).toString('base64url');
   const authenticated=passkey.LoginFinish(req,{challengeId:login.challengeId,credentialId,clientDataJSON:cdata,authenticatorData:adata,signature});assert.ok(authenticated.ok,authenticated.reason);
 
-  const apk=fs.readFileSync(path.resolve(__dirname,'../../ApkWinSock_Android64/ApkWinSock.Lifecycle.Construction.inc'),'utf8');const immersive=apk.slice(apk.indexOf('procedure TForm1.ApplyImmersiveFullscreen'),apk.indexOf('procedure TForm1.FormActivated'));
+  const apk=fs.readFileSync(path.resolve(__dirname,'../../MoaPlayApp_Android64/MoaPlayApp.Lifecycle.Construction.inc'),'utf8');const immersive=apk.slice(apk.indexOf('procedure TMoaPlayForm.ApplyImmersiveFullscreen'),apk.indexOf('procedure TMoaPlayForm.FormActivated'));
   assert.ok(immersive.includes('FullScreen := False'));assert.ok(immersive.includes('ShowAndroidSystemBars'));assert.ok(!/Androidapi|JNI|WindowManager/.test(immersive));
   const web=fs.readFileSync(path.resolve(__dirname,'../public/admin-pages-production.js'),'utf8');assert.ok(web.includes('renderProductionHardening'));assert.ok(web.includes('navigator.credentials'));
   console.log('PRODUCTION HARDENING 28-43 PASS');

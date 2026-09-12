@@ -217,19 +217,19 @@ async function testPushManagerWithMock() {
 
 async function run() {
     await testPushManagerWithMock();
-    const androidDir = path.join(PRODUCT_ROOT, 'ApkWinSock_Android64');
+    const androidDir = path.join(PRODUCT_ROOT, 'MoaPlayApp_Android64');
     const android = fs.readdirSync(androidDir)
-        .filter(name => name === 'ApkWinSock.pas' || /^ApkWinSock\..+\.inc$/i.test(name))
+        .filter(name => name === 'MoaPlayApp.pas' || /^MoaPlayApp\..+\.inc$/i.test(name))
         .sort().map(name => fs.readFileSync(path.join(androidDir, name), 'utf8')).join('\n');
-    const constructorText = android.slice(android.indexOf('constructor TForm1.Create'), android.indexOf('destructor TForm1.Destroy'));
+    const constructorText = android.slice(android.indexOf('constructor TMoaPlayForm.Create'), android.indexOf('destructor TMoaPlayForm.Destroy'));
     assert.ok(constructorText.includes('FStartupTimer.Enabled := True'));
-    assert.ok(!constructorText.includes('TApkRelayRuntime.Create'));
-    assert.ok(!constructorText.includes('TApkDeviceSecurity.Create'));
+    assert.ok(!constructorText.includes('TMoaPlayRelayRuntime.Create'));
+    assert.ok(!constructorText.includes('TMoaPlayDeviceSecurity.Create'));
     assert.ok(!constructorText.includes('GetClientDeviceKey'));
     assert.ok(!constructorText.includes('RequestPermission'));
     assert.ok(android.includes("FStartupTimer.Interval := 16"));
 
-    const winProcessor = fs.readFileSync(path.join(PRODUCT_ROOT, 'WinSockServer_Win64', 'NumberProcessor.pas'), 'utf8');
+    const winProcessor = fs.readFileSync(path.join(PRODUCT_ROOT, 'MoaPlayConnect_Win64', 'MoaPlayConnectNumberProcessor.pas'), 'utf8');
     assert.ok(winProcessor.includes('NUMBER_BELOW_MIN'));
     assert.ok(winProcessor.includes('NUMBER_ABOVE_MAX'));
     assert.ok(winProcessor.includes('NUMBER_BLOCKED'));

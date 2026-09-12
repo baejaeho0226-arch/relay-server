@@ -23,7 +23,7 @@ function TopLevelComma(type) {
     return false;
 }
 
-function Check(source, className='TApkMemberClient') {
+function Check(source, className='TMoaPlayMemberClient') {
     if(!/^T\w+$/.test(className))throw Error('Invalid class name');
     const code = CodeOnly(source).replace(/\buses\b[\s\S]*?;/gi, ' ');
     const match = new RegExp('\\b'+className+'\\s*=\\s*class\\b([\\s\\S]*?)^\\s*end\\s*;','mi').exec(code);
@@ -48,7 +48,7 @@ function Check(source, className='TApkMemberClient') {
 }
 
 if (require.main === module) {
-    const file = process.argv[2] || path.join(__dirname, '../..', 'ApkWinSock_Android64', 'ApkMemberClient.pas');
+    const file = process.argv[2] || path.join(__dirname, '../..', 'MoaPlayApp_Android64', 'MoaPlayMemberClient.pas');
     const issues = Check(fs.readFileSync(file, 'utf8'));
     if (issues.length) {
         for (const issue of issues) console.error(issue);

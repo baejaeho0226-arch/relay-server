@@ -360,8 +360,8 @@ async function run() {
     console.log('BUILD SESSION 24-27 PASS');
     console.log('- Signed expiring Build lease and TYPE routing: PASS');
     console.log('- Replay/active-session rejection: PASS');
-    console.log('- Fixed APK to WinSockServer binding: PASS');
-    console.log('- Absolute one APK to one WinSockServer pairing: PASS');
+    console.log('- Fixed APK to MoaPlayConnect binding: PASS');
+    console.log('- Absolute one APK to one MoaPlayConnect pairing: PASS');
     console.log('- Three live PCs/phones pair independently; stale offline rows skipped: PASS');
     console.log('- Multiple authenticated APKs wait first; later verified PCs claim one each FIFO: PASS');
     console.log('- Synced legacy Windows device ID collision migration: PASS');

@@ -89,13 +89,13 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  store.Atomic(()=>{store.Ledger(store.ProfileById(pa.id),90000,'QR_TOPUP','A');store.Ledger(store.ProfileById(pb.id),70000,'QR_TOPUP','B');store.Ledger(store.ProfileById(pc.id),30000,'QR_TOPUP','C');});
  const game=hub.AdminWrite('product.save',{title:'구매 활동 테스트',description:'본문',accessType:'TYPE1',published:true,plans:[{days:3,price:500}]},'TEST');
  const purchase=(await run(b,'purchase',{...fast,productId:game.id,days:3,price:500,revision:game.revision})).order;
- let data=await run(c,'home');assert.equal(data.balanceRanking[0].member.id,pa.id);assert.ok(data.recentPurchases.some(x=>x.member.id===pb.id&&x.title===game.title));
- assert.deepEqual(data.events.map(x=>x.id),[event.id]);assert.ok(!data.events.some(x=>x.id===other.id));
- for(const rows of [data.balanceRanking,data.recentPurchases])for(const row of rows){assert.ok(!('amount'in row)&&!('balance'in row));for(const key of ['balance','subject','phone','devices','gender','preferences'])assert.equal(row.member[key],undefined);}
+ let data=await run(c,'home');assert.equal(data.balanceRanking,undefined);assert.ok(data.popular.length<=10);assert.ok(data.recentPurchases.some(x=>x.member.id===pb.id&&x.title===game.title));
+ assert.deepEqual(data.events.items.map(x=>x.id),[event.id]);assert.ok(!data.events.items.some(x=>x.id===other.id));
+ for(const rows of [data.recentPurchases])for(const row of rows){assert.ok(!('amount'in row)&&!('balance'in row));for(const key of ['balance','subject','phone','devices','gender','preferences'])assert.equal(row.member[key],undefined);}
  await run(a,'preferences.save',{balanceRankingVisible:false});await run(b,'preferences.save',{purchaseActivityVisible:false});
- data=await run(c,'home');assert.ok(!data.balanceRanking.some(x=>x.member.id===pa.id));assert.equal(data.recentPurchases.length,0);
+ data=await run(c,'home');assert.equal(data.balanceRanking,undefined);assert.equal(data.recentPurchases.length,0);
  await run(b,'preferences.save',{purchaseActivityVisible:true});await run(c,'block.set',{id:pb.id,blocked:true});
- data=await run(c,'home');assert.ok(!data.balanceRanking.some(x=>x.member.id===pb.id));assert.ok(!data.popular.some(x=>x.author.id===pb.id));assert.equal(data.recentPurchases.length,0);
+ data=await run(c,'home');assert.equal(data.balanceRanking,undefined);assert.ok(!data.popular.some(x=>x.author.id===pb.id));assert.equal(data.recentPurchases.length,0);
  await run(c,'block.set',{id:pb.id,blocked:false});hub.AdminWrite('order.refund',{id:purchase.id,reason:'취소'},'TEST');assert.equal((await run(c,'home')).recentPurchases.length,0);
  assert.equal((await run(c,'policies',{kind:'terms'})).document.body,'');
  assert.equal((await request(c,'policy.save',{kind:'terms'})).reason,'UNKNOWN_ACTION','member cannot publish legal documents');
@@ -105,6 +105,6 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  hub.AdminWrite('policy.save',{kind:'terms',body:doc.body,published:false,revision:1},'TEST');assert.equal((await run(c,'policies',{kind:'terms'})).document.body,'');
  assert.equal((await request(c,'policies',{kind:'bad'})).reason,'INPUT_INVALID');
  store.Import({memberHub:JSON.parse(JSON.stringify(store.DB()))});assert.equal((await run(a,'preferences')).preferences.language,'en');assert.equal((await run(a2,'home')).attendance.count,3);
- console.log('FIX39 PASS: signed multi-device check-in, Korean date boundary, retry/rollback, private preferences, real latest/popular/live scopes, multilingual poll limits, hidden-amount rankings, purchase/privacy/block filters, admin-only documents and persistence.');
+ console.log('FIX39 PASS: signed multi-device check-in, Korean date boundary, retry/rollback, private preferences, real latest/popular/live scopes, multilingual poll limits, popular feed ranking, purchase/privacy/block filters, admin-only documents and persistence.');
  regressionCompleted=true;
 }catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -45,16 +45,16 @@ function connect(port) {
  // deliberate service reset, not an administrator deleting a single phone.
  const disk=JSON.parse(fs.readFileSync(require('../config/config').DB_FILE));assert.equal(disk.serviceEnabled,false);
  installation.ImportPersisted(disk);
- const waitingApk=await connect(port);waitingApk.send(`CONNECT_INSTALLATION|2|2.11.0|${key}|${token}`);await waitingApk.wait('SERVICE_STATE|DISABLED');
+ const waitingMoaPlay=await connect(port);waitingMoaPlay.send(`CONNECT_INSTALLATION|2|2.11.0|${key}|${token}`);await waitingMoaPlay.wait('SERVICE_STATE|DISABLED');
  const waitingPc=await connect(port);waitingPc.send('REGISTER|2|2.6.1|FIX12-PC');await waitingPc.wait('SERVICE_STATE|DISABLED');
  assert.equal(state.clientIdentities.size,0);assert.equal(state.serverIdentities.size,0);
  const start=performance.now();assert.equal(lifecycle.Start('TCP_TEST').ok,true);
- await Promise.all([pc,apk,waitingApk,waitingPc].map(p=>p.wait('SERVICE_STATE|ONLINE')));
+ await Promise.all([pc,apk,waitingMoaPlay,waitingPc].map(p=>p.wait('SERVICE_STATE|ONLINE')));
  const elapsed=performance.now()-start;assert.ok(elapsed<1500, 'No scheduled reconnect backoff on start');
  // Native applications close the control transport and register afresh.
- for(const peer of [pc,apk,waitingApk,waitingPc])peer.socket.destroy();
+ for(const peer of [pc,apk,waitingMoaPlay,waitingPc])peer.socket.destroy();
  const newPc=await connect(port);newPc.send('REGISTER|2|2.6.1|FIX12-PC');const newPcId=(await newPc.wait('REGISTERED|')).split('|')[1];
- const newApk=await connect(port);newApk.send(`CONNECT_INSTALLATION|2|2.11.0|${key}|${token}`);const newId=(await newApk.wait('CONNECTED|')).split('|')[1];
+ const newMoaPlay=await connect(port);newMoaPlay.send(`CONNECT_INSTALLATION|2|2.11.0|${key}|${token}`);const newId=(await newMoaPlay.wait('CONNECTED|')).split('|')[1];
  assert.equal(state.clients.size,1);assert.equal(state.servers.size,1);assert.notEqual(newId,oldId);assert.notEqual(newPcId,pcId);
  assert.equal(state.clients.get(newId).licenseAuthorized,false);assert.equal(state.clients.get(newId).permissionsGranted,false);
  assert.equal(state.licenses.size,0);assert.equal(state.buildSessions.size,0);

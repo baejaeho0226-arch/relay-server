@@ -18,12 +18,12 @@ const nodes = [];
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 function staticSourceChecks() {
-    const apkDir = path.join(PRODUCT_ROOT, 'ApkWinSock_Android64');
+    const apkDir = path.join(PRODUCT_ROOT, 'MoaPlayApp_Android64');
     const apk = fs.readdirSync(apkDir)
-        .filter(name => name === 'ApkWinSock.pas' || /^ApkWinSock\..+\.inc$/i.test(name))
+        .filter(name => name === 'MoaPlayApp.pas' || /^MoaPlayApp\..+\.inc$/i.test(name))
         .sort().map(name => fs.readFileSync(path.join(apkDir, name), 'utf8')).join('\n');
-    const send = apk.slice(apk.indexOf('procedure TForm1.SendButtonClick'), apk.indexOf('\nend;', apk.indexOf('procedure TForm1.SendButtonClick')) + 5);
-    assert.ok(apk.includes('procedure TForm1.BuildWebStyleUI'));
+    const send = apk.slice(apk.indexOf('procedure TMoaPlayForm.SendButtonClick'), apk.indexOf('\nend;', apk.indexOf('procedure TMoaPlayForm.SendButtonClick')) + 5);
+    assert.ok(apk.includes('procedure TMoaPlayForm.BuildWebStyleUI'));
     assert.ok(apk.includes('FQrImage: TImage'));
     assert.ok(apk.includes("ALine.StartsWith('QR_AUTH_CHALLENGE|')"));
     assert.ok(apk.includes('BuildBuildLine(RequestID, FState.ClientID)'));
@@ -32,7 +32,7 @@ function staticSourceChecks() {
     assert.ok(apk.includes('FMX.BiometricAuth'));
     assert.ok(apk.includes('TBiometricStrength.Weak'));
     assert.ok(apk.includes('FBiometricLaunchTimer.Interval := 350'));
-    assert.ok(apk.includes('procedure TForm1.CancelBiometricPrompt'));
+    assert.ok(apk.includes('procedure TMoaPlayForm.CancelBiometricPrompt'));
     assert.ok(apk.includes('FBiometricFingerprint: TSkSvg'));
     assert.ok(apk.includes('FBiometricProgressTimer.Interval := 400'));
     assert.ok(apk.includes('QR_COUNTDOWN_MAX_MS = 60 * 1000'));
@@ -40,15 +40,15 @@ function staticSourceChecks() {
     assert.ok(!apk.includes('FBrightness'));
     assert.ok(apk.includes('Result.StyledSettings := []'));
     assert.ok(apk.includes('FSupportButton: TRectangle'));
-    assert.ok(apk.includes('procedure TForm1.ShowMainPage'));
+    assert.ok(apk.includes('procedure TMoaPlayForm.ShowMainPage'));
     assert.ok(!apk.includes('FFinalCheckBox'));
     assert.equal((apk.match(/TCheckBox/g) || []).length, 0);
     assert.ok(!apk.includes('FLicenseEdit'));
     assert.ok(!send.includes('NumberText'));
     assert.ok(!apk.includes('{$R *.fmx}'));
 
-    const update = fs.readFileSync(path.join(PRODUCT_ROOT, 'WinSockServer_Win64', 'UpdateAgent.pas'), 'utf8');
-    const allWin = fs.readdirSync(path.join(PRODUCT_ROOT, 'WinSockServer_Win64')).filter(x => x.endsWith('.pas')).map(x => fs.readFileSync(path.join(PRODUCT_ROOT, 'WinSockServer_Win64', x), 'utf8')).join('\n');
+    const update = fs.readFileSync(path.join(PRODUCT_ROOT, 'MoaPlayConnect_Win64', 'MoaPlayConnectUpdateAgent.pas'), 'utf8');
+    const allWin = fs.readdirSync(path.join(PRODUCT_ROOT, 'MoaPlayConnect_Win64')).filter(x => x.endsWith('.pas')).map(x => fs.readFileSync(path.join(PRODUCT_ROOT, 'MoaPlayConnect_Win64', x), 'utf8')).join('\n');
     assert.ok(update.includes("Status := 'STAGED_RESTART_REQUIRED'"));
     assert.ok(update.includes("'pending-update.json'"));
     assert.ok(!/ShellExecute|cmd\.exe|tasklist|ExitProcess/.test(allWin));

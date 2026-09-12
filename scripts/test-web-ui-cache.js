@@ -14,11 +14,15 @@ function testBundle() {
   assert.equal(bundle.Check().ready, true);
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-ui-bundle-'));
   try {
-    for (const name of bundle.FILES) fs.copyFileSync(path.join(root, 'public', name), path.join(temp, name));
+    for (const name of bundle.FILES) { fs.mkdirSync(path.dirname(path.join(temp,name)),{recursive:true});fs.copyFileSync(path.join(root, 'public', name), path.join(temp, name)); }
     assert.equal(bundle.Check(temp).ready, true);
     fs.writeFileSync(path.join(temp, 'index.html'), source('public/index.html').replace(/\r?\n/g, '\r\n'));
     assert.equal(bundle.Check(temp).ready, true, 'Windows line endings are compatible');
-    fs.writeFileSync(path.join(temp, 'admin.js'), source('public/admin.js').replace("'fix27'", "'biometric1'"));
+    const currentRevision = require('../config/config').WEB_UI_REVISION;
+    const originalAdmin = source('public/admin.js');
+    const corruptedAdmin = originalAdmin.replace(`'${currentRevision}'`, "'corrupted'");
+    assert.notEqual(originalAdmin, corruptedAdmin, 'Corruption fixture must alter the released revision');
+    fs.writeFileSync(path.join(temp, 'admin.js'), corruptedAdmin);
     assert.deepEqual(bundle.Check(temp).issues, ['public/admin.js']);
     fs.unlinkSync(path.join(temp, 'admin-pages-support.js'));
     assert.deepEqual(bundle.Check(temp).issues, ['public/admin.js', 'public/admin-pages-support.js']);
@@ -78,6 +82,9 @@ async function testRefresh(ready) {
 
 async function testWorker() {
   const handlers = {}, removed = [], puts = [], reads = [], network = [];
+  const { WEB_ADMIN_VERSION, WEB_UI_REVISION } = require('../config/config');
+  const currentCache = `relay-admin-shell-v${WEB_ADMIN_VERSION}-${WEB_UI_REVISION}`;
+  const oldCaches = ['relay-admin-shell-old', 'relay-admin-shell-v4.26.0-fix39', 'relay-admin-shell-v5.0.0-fix42'];
   let failNetwork = false, responseStatus = 200;
   const cache = {
     addAll: async requests => { for (const r of requests) assert.equal(r.cache, 'no-store'); },
@@ -99,7 +106,7 @@ async function testWorker() {
   };
   vm.runInNewContext(source('public/service-worker.js'), {
     self: worker, URL, Request: BrowserRequest, Response,
-    caches: { open: async () => cache, keys: async () => ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.19.0-fix32', 'relay-admin-shell-v4.20.0-fix33', 'relay-admin-shell-v4.21.0-fix34', 'relay-admin-shell-v4.22.0-fix35', 'relay-admin-shell-v4.23.0-fix36', 'relay-admin-shell-v4.24.0-fix37', 'relay-admin-shell-v4.25.0-fix38', 'relay-admin-shell-v4.26.0-fix39', 'another-app-cache'], delete: async name => { removed.push(name); } },
+    caches: { open: async () => cache, keys: async () => [...oldCaches, currentCache, 'another-app-cache'], delete: async name => { removed.push(name); } },
     fetch: async request => {
       network.push(request);
       if (failNetwork) throw new Error('OFFLINE');
@@ -111,7 +118,7 @@ async function testWorker() {
     handlers[type]({ waitUntil: p => { work = p; } });
     await work;
   }
-  assert.deepEqual(removed, ['relay-admin-shell-old', 'relay-admin-shell-v4.14.0-fix25', 'relay-admin-shell-v4.16.0-fix27', 'relay-admin-shell-v4.19.0-fix32', 'relay-admin-shell-v4.20.0-fix33', 'relay-admin-shell-v4.21.0-fix34', 'relay-admin-shell-v4.22.0-fix35', 'relay-admin-shell-v4.23.0-fix36', 'relay-admin-shell-v4.24.0-fix37', 'relay-admin-shell-v4.25.0-fix38']);
+  assert.deepEqual(removed, oldCaches, 'Only prior app caches are removed; current and unrelated caches survive');
   async function request(url, mode) {
     let response;
     const work = [];

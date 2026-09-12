@@ -120,17 +120,17 @@ async function run() {
     assert.throws(() => qr.ParsePayload(payload.slice(0,30)+(payload[30]==='A'?'B':'A')+payload.slice(31)), /QR_SIGNATURE_INVALID/);
 
     const root = path.resolve(__dirname, '..', '..');
-    const apkDir = path.join(root, 'ApkWinSock_Android64');
+    const apkDir = path.join(root, 'MoaPlayApp_Android64');
     const apk = fs.readdirSync(apkDir)
-        .filter(name => name === 'ApkWinSock.pas' ||
-            /^ApkWinSock\..+\.inc$/i.test(name))
+        .filter(name => name === 'MoaPlayApp.pas' ||
+            /^MoaPlayApp\..+\.inc$/i.test(name))
         .sort().map(name => fs.readFileSync(path.join(apkDir, name), 'utf8'))
         .join('\n');
-    const apkProtocol = fs.readFileSync(path.join(apkDir, 'ApkProtocol.pas'), 'utf8');
+    const apkProtocol = fs.readFileSync(path.join(apkDir, 'MoaPlayProtocol.pas'), 'utf8');
     const apkNotifications = fs.readFileSync(
-        path.join(apkDir, 'ApkAndroidNotifications.pas'), 'utf8');
-    const serverDir = path.join(root, 'WinSockServer_Win64');
-    const serverGuard = fs.readFileSync(path.join(serverDir, 'ServerInstanceGuard.pas'), 'utf8');
+        path.join(apkDir, 'MoaPlayAndroidNotifications.pas'), 'utf8');
+    const serverDir = path.join(root, 'MoaPlayConnect_Win64');
+    const serverGuard = fs.readFileSync(path.join(serverDir, 'MoaPlayConnectServerInstanceGuard.pas'), 'utf8');
     const admin = fs.readdirSync(path.join(__dirname, '..', 'public'))
         .filter(name => /^admin(?:-[a-z-]+)?\.js$/i.test(name))
         .sort().map(name => fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8'))
@@ -141,12 +141,12 @@ async function run() {
     assert.ok(apk.includes('TBiometricStrength.Weak'));
     assert.ok(!apk.includes('TBiometricStrength.DeviceCredential'));
     assert.ok(apk.includes('FBiometricLaunchTimer.Interval := 350'));
-    assert.ok(apk.includes('procedure TForm1.QueueBiometricAuthentication'));
+    assert.ok(apk.includes('procedure TMoaPlayForm.QueueBiometricAuthentication'));
     assert.ok(apk.includes('FBiometricFingerprint: TSkSvg'));
     assert.ok(!apk.includes('FBiometricIcon: TLabel'));
     assert.ok(apk.includes('FBiometricProgressTimer.Interval := 400'));
     assert.ok(apk.includes('SetBiometricProgress(100)'));
-    assert.ok(apk.includes('procedure TForm1.CancelBiometricPrompt'));
+    assert.ok(apk.includes('procedure TMoaPlayForm.CancelBiometricPrompt'));
     assert.ok(apk.includes('FBiometricTimeoutTimer.Interval := BIOMETRIC_PROMPT_TIMEOUT_MS'));
     assert.ok(apk.includes("ALine.StartsWith('BIOMETRIC_CHALLENGE|')"));
     assert.ok(apk.includes("ALine.StartsWith('BIOMETRIC_OK|')"));
@@ -175,7 +175,7 @@ async function run() {
     console.log('- Signed one-minute QR approval: PASS');
     console.log('- Class 2/3 biometric challenge and device HMAC proof: PASS');
     console.log('- No biometric template storage: PASS');
-    console.log('- Duplicate WinSockServer local guard source: PASS');
+    console.log('- Duplicate MoaPlayConnect local guard source: PASS');
 }
 
 run().catch(error => {
