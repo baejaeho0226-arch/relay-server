@@ -131,9 +131,9 @@ function HandleClientConnect(connection, deviceKey, protocolVersion, appVersion,
             LogEvent(enrollment.rejected ? 'CLIENT_ENROLLMENT_REJECTED' : 'CLIENT_ENROLLMENT_PENDING', `${deviceKey} ${requestId}`);
             return;
         }
-        // QR enrollment belongs to Relay, not to a live WinSockServer session.
+        // QR enrollment belongs to Relay, not to a live MoaPlayConnect session.
         // Prefer a usable persisted binding, but allow a first device to remain
-        // unassigned until the first WinSockServer registers.
+        // unassigned until the first MoaPlayConnect registers.
         saved = CreateClientIdentity(deviceKey, FindAssignableServerId());
         require('../services/deviceEnrollment').MarkBound('CLIENT', deviceKey, saved.id);
         SaveDatabase();
@@ -375,8 +375,8 @@ function HandleClientLine(connection, line) {
 
     if (/^(LICENSE_AUTH|QR_AUTH_RESUME|QR_AUTH_STATUS|BIOMETRIC_BEGIN|BIOMETRIC_PROOF|BUILD|SEND)\|/.test(line) &&
         !require('../services/clientPermissions').Ready(connection)) {
-        const oldApk = connection.appVersion && !require('../core/utils').IsVersionAtLeast(connection.appVersion, '2.10.0');
-        SendLine(connection.socket, oldApk ? 'ERROR|CLIENT_UPDATE_REQUIRED|2.10.0' : 'ERROR|PERMISSIONS_REQUIRED'); return;
+        const oldMoaPlay = connection.appVersion && !require('../core/utils').IsVersionAtLeast(connection.appVersion, '2.10.0');
+        SendLine(connection.socket, oldMoaPlay ? 'ERROR|CLIENT_UPDATE_REQUIRED|2.10.0' : 'ERROR|PERMISSIONS_REQUIRED'); return;
     }
 
     if (line.startsWith('LICENSE_AUTH|')) {

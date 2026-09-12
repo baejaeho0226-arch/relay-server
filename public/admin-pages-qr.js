@@ -17,7 +17,7 @@ async function renderQrAuth() {
   if(serial!==qrRenderSerial||currentView!=='qrauth')return;
   const scanned = qrScanResult && qrScanResult.request ? qrScanResult.request : null;
   const wallet=scanned?.purpose==='WALLET';
-  const selectedFileName = qrSelectedFile ? `${qrSelectedFile.name} · ${fmtBytes(qrSelectedFile.size)}` : 'APK 화면을 촬영하거나 전달받은 사진을 올리세요.';
+  const selectedFileName = qrSelectedFile ? `${qrSelectedFile.name} · ${fmtBytes(qrSelectedFile.size)}` : '모아플레이 화면을 촬영하거나 전달받은 사진을 올리세요.';
   const selectedPreview = qrSelectedPreviewDataUrl
     ? `<img id="qr-auth-preview" src="${esc(qrSelectedPreviewDataUrl)}" alt="선택한 QR 사진 미리보기">`
     : '<img id="qr-auth-preview" class="hidden" alt="선택한 QR 사진 미리보기">';

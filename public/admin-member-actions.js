@@ -1,6 +1,7 @@
 'use strict';
 async function handleMemberAction(event){
  const b=event.target.closest('[data-member-action]');if(!b)return false;const action=b.dataset.memberAction;let row=memberRows.get(b.dataset.id)||{};
+ if(action==='rewards.edit'){await editMemberRewards();return true;}
  if(action==='profile.lookup'){memberLookupHandle=row.handle||b.dataset.id;memberLookupSection='';memberLookupOffset=0;await renderMemberLookup();return true;}
  if(action==='lookup.support'){supportSelectedClient=b.dataset.id;memberLookupHandle='';currentView='support';document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view==='support'));await renderCurrent();return true;}
  if(action==='lookup.qr'){qrMemberQuery='@'+memberLookupHandle.replace(/^@/,'');switchView('qrauth');await renderQrAuth();return true;}

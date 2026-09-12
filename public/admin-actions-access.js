@@ -3,7 +3,7 @@ async function handleAccessAction(event) {
     const openViewBtn = event.target.closest('[data-open-view]');
     if (openViewBtn) { switchView(openViewBtn.dataset.openView); await renderCurrent(); return true; }
     if (event.target.id === 'pairing-repair-btn') {
-      const v = await openModal({ title: "1:1 기기 연결 복구", message: "존재하지 않는 서버 바인딩과 중복 배정을 정리하고, 현재 온라인 상태인 빈 PC와 대기 APK를 다시 1:1로 연결합니다. 오프라인이지만 등록이 남아 있는 정상 고정 쌍은 임의로 이동하지 않습니다.", confirmLabel: "복구" });
+      const v = await openModal({ title: "1:1 기기 연결 복구", message: "존재하지 않는 서버 바인딩과 중복 배정을 정리하고, 현재 온라인 상태인 빈 PC와 대기 모아플레이를 다시 1:1로 연결합니다. 오프라인이지만 등록이 남아 있는 정상 고정 쌍은 임의로 이동하지 않습니다.", confirmLabel: "복구" });
       if (!v) return true;
       const r = await api('/api/pairing/repair', { method: 'POST', body: {} });
       toast(`1:1 복구 완료 · orphan ${r.repair.orphaned} · 중복 ${r.repair.duplicate} · 배정됨 ${r.repair.assigned}`);
@@ -61,7 +61,7 @@ async function handleAccessAction(event) {
       }});
       qrScanResult = null;
       clearQrSelectedFile();
-      toast(wallet?'잔액 충전 완료 · 앱에 자동 반영됩니다.':result.delivered?'출입증 승인 완료 · APK 인증을 계속합니다.':'출입증 승인 완료 · APK 연결 시 자동 인증됩니다.');
+      toast(wallet?'잔액 충전 완료 · 앱에 자동 반영됩니다.':result.delivered?'출입증 승인 완료 · 모아플레이 인증을 계속합니다.':'출입증 승인 완료 · 모아플레이 연결 시 자동 인증됩니다.');
       await updateQrAuthBadge();
       await renderQrAuth();
       return true;
@@ -97,7 +97,7 @@ async function handleAccessAction(event) {
     if (buildRevoke) {
       const values = await openModal({
         title: "실행 세션 즉시 해제",
-        message: `${buildRevoke.dataset.buildRevoke}\nAPK와 WinSockServer가 즉시 다시 잠기며 실행를 다시 수행해야 합니다.`,
+        message: `${buildRevoke.dataset.buildRevoke}\n모아플레이와 MoaPlayConnect가 즉시 다시 잠기며 실행를 다시 수행해야 합니다.`,
         fields: [{ name: 'reason', label: '해제 사유', value: 'ADMIN_REVOKE' }],
         danger: true,
         confirmLabel: "해제 지금"
@@ -111,12 +111,12 @@ async function handleAccessAction(event) {
     const buildRebind = event.target.closest('[data-build-rebind]');
     if (buildRebind) {
       const options = buildSessionServers.map(server => server.id);
-      if (!options.length) throw new Error('등록된 WinSockServer가 없습니다.');
+      if (!options.length) throw new Error('등록된 MoaPlayConnect가 없습니다.');
       const current = options.includes(buildRebind.dataset.currentServer) ? buildRebind.dataset.currentServer : options[0];
       const values = await openModal({
-        title: "APK ↔ WinSockServer 배정 변경",
+        title: "모아플레이 ↔ MoaPlayConnect 배정 변경",
         message: `${buildRebind.dataset.buildRebind}\n기존 활성 실행 세션은 즉시 해제됩니다. 다른 서버를 선택하면 앱 기기도 해당 서버로 안전하게 이동합니다.`,
-        fields: [{ name: 'serverId', label: '새 WinSockServer', type: 'select', value: current, options }],
+        fields: [{ name: 'serverId', label: '새 MoaPlayConnect', type: 'select', value: current, options }],
         danger: true,
         confirmLabel: "배정 변경"
       });

@@ -1,6 +1,6 @@
 {
-  "name": "Relay 관리자",
-  "short_name": "Relay Admin",
+  "name": "모아플레이 관리자",
+  "short_name": "MoaPlay Admin",
   "description": "기기와 고객 상담 관리",
   "id": "/index.html",
   "start_url": "/index.html",

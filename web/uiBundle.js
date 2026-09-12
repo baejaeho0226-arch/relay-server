@@ -42,6 +42,8 @@ const FILES = [
   "admin-actions.js",
   "admin-pages-member.js",
   "admin-member-actions.js",
+  "admin-member-rewards.js",
+  "icons/moaplay.svg",
   "admin-member.css",
   "admin-palette.js",
   "admin-pages-production.js",

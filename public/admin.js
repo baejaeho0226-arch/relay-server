@@ -25,7 +25,7 @@ const qrAuthBadge = document.getElementById('qr-auth-badge');
 const navFilter = document.getElementById('nav-filter');
 const installPwaBtn = document.getElementById('install-pwa-btn');
 const webVersionLabel = document.getElementById('web-version-label');
-const WEB_UI_REVISION = 'fix27';
+const WEB_UI_REVISION = 'fix43';
 const menuToggle = document.getElementById('menu-toggle');
 function closeMobileMenu() {
   app.classList.remove('menu-open');
@@ -93,6 +93,7 @@ function clearQrSelectedFile() {
 }
 
 const titles = {
+  'member-rewards': ['이벤트·포인트', ''],
   'member-overview': ['운영 요약', ''],
   'member-policies': ['약관·개인정보', ''],
   'member-news': ['소식', ''],
@@ -103,7 +104,7 @@ const titles = {
   'member-reports': ['신고', ''],
   'member-orders': ['이용권 내역', ''],
   'member-ledger': ['결제 원장', ''],
-  support: ['고객센터', 'APK 사용자와 대화합니다. 미접속 기기에는 다음 고객센터 연결 시 답변이 전달됩니다.'],
+  support: ['고객센터', '모아플레이 사용자와 대화합니다. 미접속 기기에는 다음 고객센터 연결 시 답변이 전달됩니다.'],
   reinstallblocks: ['재설치 차단', "앱 기기 삭제·바인딩 변경과 관계없이 유지되는 재설치 차단을 관리합니다."],
   dashboard: ['대시보드', "중계 서버 전체 상태와 최근 이벤트를 확인합니다."],
   console: ['실시간 이벤트', "중계 서버 이벤트가 실시간으로 스트리밍됩니다."],
@@ -117,12 +118,12 @@ const titles = {
   processors: ['처리 정책', "숫자 허용 범위·차단값 정책과 처리기 처리 통계를 관리합니다."],
   reports: ['푸시 · 보고서', "웹 앱 푸시 알림 구독과 날짜별 중계 서버 상태 리포트를 관리합니다."],
   production: ['운영 설정', '1:1 승인, 배포 무결성, 패스키, 감사 체인과 운영 복원력을 통합 관리합니다.'],
-  servers: ['서버 기기', 'WinSockServer 연결과 상태를 관리합니다.'],
-  clients: ['앱 기기', "APK 앱 기기 연결, 라이선스와 배정을 확인합니다."],
-  clientbiometrics: ['생체인증 관리', 'APK의 Android 시스템 생체인증 상태와 재등록을 관리합니다.'],
-  buildsessions: ["실행 세션", "실행 이용 권한, APK↔서버 고정 바인딩, 즉시 해제를 관리합니다."],
+  servers: ['서버 기기', 'MoaPlayConnect 연결과 상태를 관리합니다.'],
+  clients: ['앱 기기', "모아플레이 앱 기기 연결, 라이선스와 배정을 확인합니다."],
+  clientbiometrics: ['생체인증 관리', '모아플레이의 Android 시스템 생체인증 상태와 재등록을 관리합니다.'],
+  buildsessions: ["실행 세션", "실행 이용 권한, 모아플레이↔서버 고정 바인딩, 즉시 해제를 관리합니다."],
   licenses: ['라이선스', '라이선스 생성, 연장, 이전 및 상태를 관리합니다.'],
-  qrauth: ['QR 인증', 'APK의 QR 사진을 서버에서 검증하고 해당 기기를 승인합니다.'],
+  qrauth: ['QR 인증', '모아플레이의 QR 사진을 서버에서 검증하고 해당 기기를 승인합니다.'],
   releases: ['앱 배포', "자동 업데이트, 배포 채널, 단계별 배포을 관리합니다."],
   features: ['기능 설정', "전역 기능과 서버 / 앱 기기별 개별 설정를 관리합니다."],
   confighistory: ['설정 이력', "실행 설정와 Feature 기능 변경 이력 및 되돌리기을 관리합니다."],
@@ -279,7 +280,7 @@ async function updateWebVersion() {
   if (!webVersionLabel) return;
   try {
     const { system } = await api('/api/system');
-    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '4.16.0'} · 화면 ${WEB_UI_REVISION}`;
+    webVersionLabel.textContent = `웹 v${system.webAdminVersion || '5.0.1'} · 화면 ${WEB_UI_REVISION}`;
   } catch (_) {
     webVersionLabel.textContent = `웹 v4.16.0 · 화면 ${WEB_UI_REVISION}`;
   }

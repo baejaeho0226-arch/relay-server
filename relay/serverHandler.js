@@ -153,7 +153,7 @@ function RegisterServer(connection, deviceKey, protocolVersion, appVersion) {
     connection.lastIP = SafeIP(connection.socket);
     connection.clients = new Set();
     connection.deviceAuthVerified = false;
-    // Legacy servers remain compatible at Relay level. Updated WinSockServer
+    // Legacy servers remain compatible at Relay level. Updated MoaPlayConnect
     // advertises BUILD_GATE immediately and also enforces the gate locally.
     connection.buildGateCapable = false;
     connection.buildUnlocked = true;

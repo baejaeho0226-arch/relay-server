@@ -67,7 +67,7 @@ async function renderClientBiometrics() {
       <div class="card"><div class="stat-label">미설정</div><div class="stat-value">${missing}</div><div class="stat-sub">등록 대기</div></div>
       <div class="card"><div class="stat-label">인증 증명</div><div class="stat-value compact">HMAC</div><div class="stat-sub">지문 데이터 미수집</div></div>
     </div>
-    <div class="section-card biometric-client-list"><div class="section-head"><h3>앱 기기 생체인증 상태</h3><span class="small-note">초기화하면 온라인 APK에서 시스템 생체인증을 다시 수행합니다.</span></div>
+    <div class="section-card biometric-client-list"><div class="section-head"><h3>앱 기기 생체인증 상태</h3><span class="small-note">초기화하면 온라인 모아플레이에서 시스템 생체인증을 다시 수행합니다.</span></div>
       <div class="table-wrap"><table><thead><tr><th>앱 기기</th><th>상태</th><th>생체인증</th><th>콘텐츠</th><th>등록됨</th><th>마지막 검증됨</th><th>작업</th></tr></thead><tbody>
         ${clients.map(client => `<tr><td><strong>${esc(client.alias || '이름 없음')}</strong><div class="code biometric-client-id">${esc(client.id)}</div></td><td>${badge(client.status)}</td><td>${badge(client.biometric?.verified ? 'VERIFIED' : (client.biometric?.enrolled ? 'ENROLLED' : 'NONE'))}</td><td>${accessTypeBadge(client.biometric?.accessType || 'TYPE1')}</td><td>${esc(fmtTime(client.biometric?.enrolledAt))}</td><td>${esc(fmtTime(client.biometric?.verifiedAt))}</td><td><button class="primary biometric-reset-button" data-client-action="biometric" data-id="${esc(client.id)}">생체인증 초기화</button></td></tr>`).join('') || "<tr><td colspan=\"7\" class=\"empty\">앱 기기 없음</td></tr>"}
       </tbody></table></div>

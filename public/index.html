@@ -11,21 +11,21 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <title>중계 서버 관리자</title>
-  <link rel="stylesheet" href="/admin.css?v=4.26.0-fix39">
-  <link rel="stylesheet" href="/admin-theme.css?v=4.26.0-fix39">
-  <link rel="stylesheet" href="/admin-navigation.css?v=4.26.0-fix39">
-  <link rel="stylesheet" href="/admin-member.css?v=4.26.0-fix39">
-  <link rel="stylesheet" href="/admin-appearance.css?v=4.26.0-fix39">
-  <link rel="stylesheet" href="/admin-controls.css?v=4.26.0-fix39">
-  <script src="/admin-controls.js?v=4.26.0-fix39"></script>
-  <script src="/admin-appearance.js?v=4.26.0-fix39"></script>
+  <title>모아플레이 관리자</title>
+  <link rel="stylesheet" href="/admin.css?v=5.0.1-fix43">
+  <link rel="stylesheet" href="/admin-theme.css?v=5.0.1-fix43">
+  <link rel="stylesheet" href="/admin-navigation.css?v=5.0.1-fix43">
+  <link rel="stylesheet" href="/admin-member.css?v=5.0.1-fix43">
+  <link rel="stylesheet" href="/admin-appearance.css?v=5.0.1-fix43">
+  <link rel="stylesheet" href="/admin-controls.css?v=5.0.1-fix43">
+  <script src="/admin-controls.js?v=5.0.1-fix43"></script>
+  <script src="/admin-appearance.js?v=5.0.1-fix43"></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen">
     <div class="login-card">
-      <div class="brand-mark">R</div>
-      <h1>중계 서버 관리자</h1>
+      <img class="brand-mark" src="/icons/moaplay.svg" alt="모아플레이">
+      <h1>모아플레이 관리자</h1>
       <p class="muted">기기와 상담을 한곳에서 관리하세요.</p>
       <form id="login-form" autocomplete="off">
         <label>접근 역할
@@ -48,7 +48,7 @@
   <div id="app" class="app hidden">
     <aside class="sidebar" id="main-menu">
       <div class="sidebar-brand">
-        <div class="brand-mark small">R</div>
+        <img class="brand-mark small" src="/icons/moaplay.svg" alt="모아플레이">
         <div><strong>중계 서버</strong><span>통합 관리</span></div>
       </div>
       <div class="nav-search"><input id="nav-filter" type="search" placeholder="기능 검색" autocomplete="off"></div>
@@ -78,6 +78,7 @@
         <details class="nav-group" open>
           <summary>앱 콘텐츠</summary>
           <div class="nav-items">
+            <button data-view="member-rewards" data-admin-only>이벤트·포인트</button>
             <button data-view="member-overview" data-admin-only>운영 요약</button>
             <button data-view="member-policies" data-admin-only>약관·개인정보</button>
             <button data-view="member-news" data-admin-only>소식</button>
@@ -131,7 +132,7 @@
         </details>
       </nav>
       <div class="sidebar-footer">
-        <div><span class="muted">버전</span><strong id="web-version-label">웹 v4.16.0 · 화면 fix27</strong></div>
+        <div><span class="muted">버전</span><strong id="web-version-label">웹 v5.0.1 · 화면 fix43</strong></div>
         <div><span class="muted">역할</span><strong id="role-label">-</strong></div>
         <button id="logout-btn" class="ghost">로그아웃</button>
       </div>
@@ -173,36 +174,37 @@
   </div>
 
   <a class="ui-refresh-link" href="/ui-refresh">웹 화면 새로 불러오기</a>
-  <script src="/admin-i18n.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-navigation.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-monitoring.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-terminal.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-traffic.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-danger.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-access.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-sessions.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-reports.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-devices.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-qr.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-licenses.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-deployment.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-security.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-operations.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-support.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-actions-access.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-actions-operations.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-actions-traffic.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-actions-devices.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-actions-policy.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-actions-system.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-modal.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-device-actions.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-license-actions.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-member.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-member-actions.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-actions.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-palette.js?v=4.26.0-fix39" defer></script>
-  <script src="/admin-pages-production.js?v=4.26.0-fix39" defer></script>
+  <script src="/admin-i18n.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-navigation.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-monitoring.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-terminal.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-traffic.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-danger.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-access.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-sessions.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-reports.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-devices.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-qr.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-licenses.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-deployment.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-security.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-operations.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-support.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-actions-access.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-actions-operations.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-actions-traffic.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-actions-devices.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-actions-policy.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-actions-system.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-modal.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-device-actions.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-license-actions.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-member.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-member-rewards.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-member-actions.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-actions.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-palette.js?v=5.0.1-fix43" defer></script>
+  <script src="/admin-pages-production.js?v=5.0.1-fix43" defer></script>
 </body>
 </html>

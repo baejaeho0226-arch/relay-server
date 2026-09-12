@@ -25,8 +25,8 @@ function renderSupportAvailability(settings) {
     button.disabled = supportAvailabilitySending;
   }
   document.getElementById('support-availability-status').textContent = settings.adminOnline
-    ? '온라인 · 모든 APK에 상담 가능으로 표시됩니다.'
-    : '오프라인 · 모든 APK에서 문의를 남길 수 있습니다.';
+    ? '온라인 · 모든 모아플레이에 상담 가능으로 표시됩니다.'
+    : '오프라인 · 모든 모아플레이에서 문의를 남길 수 있습니다.';
 }
 async function setSupportAvailability(mode) {
   if (supportAvailabilitySending) return;
@@ -63,7 +63,7 @@ async function renderSupportCenter() {
     document.getElementById('support-settings-form').addEventListener('submit', async e => {
       e.preventDefault();
       const body = Object.fromEntries(new FormData(e.target));
-      try { await api('/api/support/settings', { method: 'POST', body }); document.getElementById('support-settings-status').textContent = 'APK 상담 안내에 반영했습니다.'; }
+      try { await api('/api/support/settings', { method: 'POST', body }); document.getElementById('support-settings-status').textContent = '모아플레이 상담 안내에 반영했습니다.'; }
       catch (error) { toast(error.message, true); }
     });
     for (const button of content.querySelectorAll('[data-support-availability]'))
@@ -134,7 +134,7 @@ async function changeSupportRoom(action) {
   if (!id || !cached || supportReplySending) return;
   const label = { close: '상담 종료 / 나가기', reopen: '상담 다시 열기', delete: '대화 영구 삭제' }[action];
   try {
-    if (!await openModal({ title: label, message: action === 'delete' ? '이 기기의 대화 내용을 서버에서 삭제하고 APK에서도 지웁니다. 고정 상담번호는 유지됩니다. 삭제한 대화는 되돌릴 수 없습니다.' : action === 'close' ? '상담을 종료합니다. 기록은 보관되며 사용자가 새 문의를 보내면 다시 열립니다.' : '이 상담을 다시 열겠습니까?', confirmLabel: label })) return;
+    if (!await openModal({ title: label, message: action === 'delete' ? '이 기기의 대화 내용을 서버에서 삭제하고 모아플레이에서도 지웁니다. 고정 상담번호는 유지됩니다. 삭제한 대화는 되돌릴 수 없습니다.' : action === 'close' ? '상담을 종료합니다. 기록은 보관되며 사용자가 새 문의를 보내면 다시 열립니다.' : '이 상담을 다시 열겠습니까?', confirmLabel: label })) return;
     supportReplySending = true; supportRenderSerial++;
     await api(`/api/support/${id}/${action}`, { method: 'POST', body: { revision: cached.revision } });
     supportHistory.delete(id);
@@ -142,7 +142,7 @@ async function changeSupportRoom(action) {
       supportDrafts.delete(id); supportRequestIds.delete(id); supportSelectedClient = '';
       if (currentView === 'support') content.innerHTML = '';
     }
-    toast(action === 'delete' ? '서버와 APK의 대화를 삭제했습니다.' : '상담 상태를 변경했습니다.');
+    toast(action === 'delete' ? '서버와 모아플레이의 대화를 삭제했습니다.' : '상담 상태를 변경했습니다.');
   } catch (error) { toast(error.message, true); }
   finally { supportReplySending = false; if (currentView === 'support') await renderSupportCenter(); }
 }
@@ -170,7 +170,7 @@ async function sendSupportReply(event) {
 async function renderReinstallBlocks() {
   const { blocks } = await api('/api/reinstall-blocks');
   if (currentView !== 'reinstallblocks') return;
-  content.innerHTML = `<div class="panel"><p>차단 해제 시 이전 설치의 앱 기기 등록과 인증을 초기화합니다. APK를 켜두면 차단 해제를 자동으로 확인하고 알림을 보냅니다. 이후 QR 승인을 다시 진행하세요.</p><div class="table-wrap"><table><thead><tr><th>기존 앱 기기</th><th>차단 시각</th><th>상태</th><th>관리</th></tr></thead><tbody>${blocks.map(b => `<tr><td>${b.clientIds.map(esc).join('<br>') || '등록 삭제됨'}<small class="muted">${esc(b.key.slice(0, 12))}</small></td><td>${esc(new Date(b.blockedAt).toLocaleString())}</td><td>${badge('BLOCKED')}</td><td><button data-reinstall-release="${esc(b.key)}">재설치 차단 해제</button></td></tr>`).join('') || '<tr><td colspan="4">재설치 차단 기기가 없습니다.</td></tr>'}</tbody></table></div></div>`;
+  content.innerHTML = `<div class="panel"><p>차단 해제 시 이전 설치의 앱 기기 등록과 인증을 초기화합니다. 모아플레이를 켜두면 차단 해제를 자동으로 확인하고 알림을 보냅니다. 이후 QR 승인을 다시 진행하세요.</p><div class="table-wrap"><table><thead><tr><th>기존 앱 기기</th><th>차단 시각</th><th>상태</th><th>관리</th></tr></thead><tbody>${blocks.map(b => `<tr><td>${b.clientIds.map(esc).join('<br>') || '등록 삭제됨'}<small class="muted">${esc(b.key.slice(0, 12))}</small></td><td>${esc(new Date(b.blockedAt).toLocaleString())}</td><td>${badge('BLOCKED')}</td><td><button data-reinstall-release="${esc(b.key)}">재설치 차단 해제</button></td></tr>`).join('') || '<tr><td colspan="4">재설치 차단 기기가 없습니다.</td></tr>'}</tbody></table></div></div>`;
 }
 content.addEventListener('click', async event => {
   const selected = event.target.closest('[data-support-client]');
@@ -186,7 +186,7 @@ content.addEventListener('click', async event => {
     const accepted = await openModal({ title: '재설치 차단 해제', message: "이 기기의 이전 앱 기기 등록·인증을 초기화하고 재설치를 허용합니다. 이후 새 QR 승인과 지문 인증이 필요합니다.", confirmLabel: '차단 해제' });
     if (!accepted) return;
     await api(`/api/reinstall-blocks/${release.dataset.reinstallRelease}/release`, { method: 'POST', body: {} });
-    toast('차단을 해제했습니다. APK가 자동 확인 후 알림을 보냅니다.');
+    toast('차단을 해제했습니다. 모아플레이가 자동 확인 후 알림을 보냅니다.');
     if (currentView === 'reinstallblocks') await renderReinstallBlocks();
   } catch (error) { toast(error.message, true); }
 });
@@ -197,7 +197,7 @@ function renderSupportKnowledge(knowledge,force=false){
  if(!force&&host.dataset.revision===String(knowledge.revision))return;
  if(!force&&host.contains(document.activeElement))return;
  supportKnowledgeState=knowledge;host.dataset.revision=String(knowledge.revision);
- host.innerHTML=`<p class="small-note">저장한 FAQ를 APK 안내 화면과 봇이 함께 사용합니다. 최대 12개, 검색어는 쉼표로 구분합니다.</p><form id="support-faq-form"><label>편집할 질문<select id="support-faq-select"><option value="">새 질문 추가</option>${knowledge.items.map(x=>`<option value="${esc(x.id)}">${esc(x.question)}${x.enabled?'':' (비공개)'}</option>`).join('')}</select></label><label>질문<input name="question" maxlength="80" required></label><label>답변<textarea name="answer" maxlength="800" rows="4" required></textarea></label><label>검색어<input name="keywords" maxlength="199" placeholder="충전, 잔액, 적립"></label><label><input name="enabled" type="checkbox" checked> APK와 봇에 공개</label><div class="support-room-actions"><button type="submit">질문 저장</button><button id="support-faq-delete" type="button" class="danger" disabled>질문 삭제</button></div><span id="support-faq-status" role="status"></span></form>`;
+ host.innerHTML=`<p class="small-note">저장한 FAQ를 모아플레이 안내 화면과 봇이 함께 사용합니다. 최대 12개, 검색어는 쉼표로 구분합니다.</p><form id="support-faq-form"><label>편집할 질문<select id="support-faq-select"><option value="">새 질문 추가</option>${knowledge.items.map(x=>`<option value="${esc(x.id)}">${esc(x.question)}${x.enabled?'':' (비공개)'}</option>`).join('')}</select></label><label>질문<input name="question" maxlength="80" required></label><label>답변<textarea name="answer" maxlength="800" rows="4" required></textarea></label><label>검색어<input name="keywords" maxlength="199" placeholder="충전, 잔액, 적립"></label><label><input name="enabled" type="checkbox" checked> 모아플레이와 봇에 공개</label><div class="support-room-actions"><button type="submit">질문 저장</button><button id="support-faq-delete" type="button" class="danger" disabled>질문 삭제</button></div><span id="support-faq-status" role="status"></span></form>`;
  const form=document.getElementById('support-faq-form'),select=document.getElementById('support-faq-select');
  select.addEventListener('change',()=>{const row=knowledge.items.find(x=>x.id===select.value);for(const key of ['question','answer'])form.elements[key].value=row?.[key]||'';form.elements.keywords.value=(row?.keywords||[]).join(', ');form.elements.enabled.checked=row?.enabled!==false;document.getElementById('support-faq-delete').disabled=!row;});
  const save=async remove=>{

@@ -28,7 +28,7 @@ async function serverAction(action, id) {
   }
 
   if (action === 'delete') {
-    const v = await openModal({ title: "서버 삭제", message: `${id}\nSERVER-식별자, HMAC, 고정 실행 바인딩과 종속 설정을 삭제합니다. 연결된 APK는 미배정 상태로 복구됩니다. 같은 EXE가 다시 접속하면 신규 서버 등록으로 처리됩니다.`, danger: true, confirmLabel: "삭제" });
+    const v = await openModal({ title: "서버 삭제", message: `${id}\nSERVER-식별자, HMAC, 고정 실행 바인딩과 종속 설정을 삭제합니다. 연결된 모아플레이는 미배정 상태로 복구됩니다. 같은 EXE가 다시 접속하면 신규 서버 등록으로 처리됩니다.`, danger: true, confirmLabel: "삭제" });
     if (!v) return;
     const r = await api(`/api/servers/${encodedId}`, { method: 'DELETE', body: {} });
     toast(`서버 삭제 · released ${r.releasedClients} · reassigned ${r.reassignedClients}`);
@@ -62,10 +62,10 @@ async function clientAction(action, id) {
   }
 
   if (action === 'auth-recover') {
-    const accepted = await openModal({ title: '기기 인증 복구', message: `${id}\n기기 통신 키를 다시 발급합니다. QR 승인, 기기 식별자, 생체인증 등록 및 PC 연결은 유지됩니다. 현재 연결된 APK가 본인 기기인지 확인해주세요.`, confirmLabel: '기기 인증 복구' });
+    const accepted = await openModal({ title: '기기 인증 복구', message: `${id}\n기기 통신 키를 다시 발급합니다. QR 승인, 기기 식별자, 생체인증 등록 및 PC 연결은 유지됩니다. 현재 연결된 모아플레이가 본인 기기인지 확인해주세요.`, confirmLabel: '기기 인증 복구' });
     if (!accepted) return;
     await api('/api/control/security/reset', { method: 'POST', body: { type: 'CLIENT', id } });
-    toast('기기 인증 복구를 요청했습니다. APK에서 자동으로 인증을 이어갑니다.');
+    toast('기기 인증 복구를 요청했습니다. 모아플레이에서 자동으로 인증을 이어갑니다.');
     await renderClients();
     return;
   }
@@ -74,7 +74,7 @@ async function clientAction(action, id) {
     const { client } = await api(`/api/clients/${encodedId}`);
     const v = await openModal({
       title: "앱 기기 생체인증 초기화",
-      message: `${id}\n지문 데이터는 서버에 저장되지 않습니다. 초기화 후 온라인 APK는 Android 시스템 생체인증을 다시 수행합니다.`,
+      message: `${id}\n지문 데이터는 서버에 저장되지 않습니다. 초기화 후 온라인 모아플레이는 Android 시스템 생체인증을 다시 수행합니다.`,
       html: `<div class="biometric-status"><span>현재 상태</span>${badge(client.biometric?.verified ? 'VERIFIED' : (client.biometric?.enrolled ? 'ENROLLED' : 'NONE'))}<span>마지막 인증</span><strong>${esc(fmtTime(client.biometric?.verifiedAt))}</strong></div>`,
       confirmLabel: '초기화', danger: true
     });
@@ -113,7 +113,7 @@ async function clientAction(action, id) {
   }
 
   if (action === 'delete') {
-    const v = await openModal({ title: "앱 기기 삭제", message: `${id}\nCLIENT-식별자와 QR, 생체인증 상태, 라이선스 결합, 실행 바인딩 및 종속 데이터를 삭제합니다. APK 재접속 시 신규 QR 승인부터 다시 진행됩니다.`, danger: true, confirmLabel: "삭제" });
+    const v = await openModal({ title: "앱 기기 삭제", message: `${id}\nCLIENT-식별자와 QR, 생체인증 상태, 라이선스 결합, 실행 바인딩 및 종속 데이터를 삭제합니다. 모아플레이 재접속 시 신규 QR 승인부터 다시 진행됩니다.`, danger: true, confirmLabel: "삭제" });
     if (!v) return;
     await api(`/api/clients/${encodedId}`, { method: 'DELETE', body: {} });
     toast(`앱 기기 삭제: ${id}`);
