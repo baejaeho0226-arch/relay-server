@@ -10,6 +10,17 @@ for(const folder of ['ApkWinSock_Android64','WinSockServer_Win64']){
   for(const match of text.matchAll(/\{\$I\s+([^}]+)\}/gi))assert.ok(fs.existsSync(path.join(base,match[1].trim())),match[1]);
  }
 }
+// Include files declare fields in the same form class: grouped names can
+// redeclare an older standalone field even when all methods are valid.
+const fieldNames=[];
+for(const m of read('ApkWinSock.Fields.inc').matchAll(/^\s*(F\w+(?:\s*,\s*F\w+)*)\s*:/gm))
+ fieldNames.push(...m[1].split(',').map(n=>n.trim().toLowerCase()));
+assert.equal(new Set(fieldNames).size,fieldNames.length,'Duplicate form fields');
+// A missing SVG returns an empty string at runtime, silently hiding an action.
+const iconNames=new Set([...read('ApkMemberSvg.pas').matchAll(/Name\s*=\s*'([^']+)'/g)].map(m=>m[1]));
+for(const file of fs.readdirSync(apk).filter(n=>/\.(pas|inc)$/.test(n)))
+ for(const m of read(file).matchAll(/MemberSvg\(\s*'([^']+)'/g))
+  assert.ok(iconNames.has(m[1]),file+' missing SVG '+m[1]);
 const declared=[...read('ApkWinSock.Methods.inc').matchAll(/\b(?:procedure|function)\s+(\w+)/gi)].map(x=>x[1].toLowerCase());
 const units=fs.readdirSync(apk).filter(x=>/\.(pas|inc)$/.test(x)).map(read).join('\n');
 const implemented=[...units.matchAll(/\b(?:procedure|function)\s+TForm1\.(\w+)/gi)].map(x=>x[1].toLowerCase());
