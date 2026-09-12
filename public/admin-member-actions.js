@@ -13,7 +13,10 @@ async function handleMemberAction(event){
  if(action==='reset'){memberQuery='';memberFilter='';memberSort='recent';memberOffset=0;memberSelected.clear();await renderMember();return true;}
  let values,body;
  if(['product.edit','news.edit','post.edit'].includes(action)){const view=action==='product.edit'?'products':action==='post.edit'?'posts':'news';const data=await api('/api/member?view='+view+'&id='+encodeURIComponent(row.id));row=data.items?.[0]||row;}
- if(action==='product.new'||action==='product.edit'){
+ if(action==='policy.edit'){
+  values=await openModal({title:row.title||'문서 수정',fields:[{name:'body',label:'본문',type:'textarea',value:row.body||''},{name:'published',label:'게시 상태',type:'select',value:String(!!row.published),options:[{value:'false',label:'임시 저장'},{value:'true',label:'앱에 게시'}]}],confirmLabel:'저장'});
+  if(values)body={action:'policy.save',kind:row.kind||b.dataset.id,body:values.body,published:values.published==='true',revision:row.revision||0};
+ }else if(action==='product.new'||action==='product.edit'){
   values=await openModal({title:row.id?'게임 안내 수정':'게임 등록',fields:[{name:'title',label:'게임 이름',value:row.title},{name:'description',label:'게임 소개',type:'textarea',value:row.description},{name:'image',label:'게임 배너 사진',type:'image',value:row.image},...gameDetailFields(row.details||{}),{name:'accessType',label:'게임 분류',type:'select',value:row.accessType||'TYPE1',options:['TYPE1','TYPE2','TYPE3'].map(value=>({value,label:accessTypeName(value)}))},{name:'plans',label:'이용 기간 · 가격',type:'plans',value:row.plans||[1,7,15,30].map(days=>({days,price:0}))},{name:'published',label:'공개 상태',type:'select',value:String(row.published||false),options:[{value:'false',label:'비공개'},{value:'true',label:'공개'}]}],confirmLabel:'저장'});
   if(values)body={...values,action:'product.save',...(row.id?{id:row.id,revision:row.revision||0}:{}),published:values.published==='true',details:gameDetailValues(values),plans:JSON.parse(values.plans)};
  }else if(action==='news.new'||action==='news.edit'){

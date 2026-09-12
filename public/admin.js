@@ -94,6 +94,7 @@ function clearQrSelectedFile() {
 
 const titles = {
   'member-overview': ['운영 요약', ''],
+  'member-policies': ['약관·개인정보', ''],
   'member-news': ['소식', ''],
   'member-products': ['게임', ''],
   'member-profiles': ['회원', ''],
