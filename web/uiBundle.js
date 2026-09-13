@@ -43,6 +43,7 @@ const FILES = [
   "admin-pages-member.js",
   "admin-member-actions.js",
   "admin-member-rewards.js",
+  "admin-member-customization.js",
   "icons/moaplay.svg",
   "admin-member.css",
   "admin-palette.js",

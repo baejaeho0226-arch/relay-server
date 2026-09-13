@@ -3,8 +3,8 @@ let memberLookupHandle='',memberLookupSection='',memberLookupOffset=0,memberLook
 let memberView='overview',memberOffset=0,memberRows=new Map(),memberRenderSerial=0;
 let memberQuery='',memberFilter='',memberSort='recent',memberSelected=new Set();
 let memberPointerDown=false,memberPointerUntil=0,memberInteractionUntil=0,memberLastRefresh=0,memberFingerprint='';
-const memberTabs={overview:'운영 요약',rewards:'이벤트·포인트',news:'소식',products:'게임',profiles:'회원',posts:'피드 글',comments:'댓글',reports:'신고',orders:'이용권 내역',ledger:'결제 원장',policies:'약관·개인정보'};
-const memberStatus={PAID:'이용 대기',ACTIVE:'사용 중',REFUNDED:'환불 완료',QR_CHARGE:'이전 이용권 등록',QR_TOPUP:'잔액 충전',POINT_RECHARGE:'포인트 충전',POINT_EXCHANGE:'포인트 교환',PENDING:'확인 대기',APPROVED:'충전 완료',REJECTED:'반려',EXPIRED:'기간 만료',TOPUP:'이전 잔액 반영',PURCHASE:'구매',REFUND:'환불',OPEN:'접수',RESOLVED:'처리 완료',UPDATE:'업데이트',NOTICE:'공지',EVENT:'이벤트',ALERT:'알림'};
+const memberTabs={overview:'운영 요약',rewards:'이벤트·포인트',pointConversions:'포인트 교환·회수',shop:'회원 상점',news:'소식',products:'게임',profiles:'회원',posts:'피드 글',comments:'댓글',reports:'신고',orders:'이용권 내역',ledger:'결제 원장',policies:'약관·개인정보'};
+const memberStatus={PAID:'이용 대기',ACTIVE:'사용 중',REFUNDED:'환불 완료',QR_CHARGE:'이전 이용권 등록',QR_TOPUP:'잔액 충전',POINT_RECHARGE:'포인트 충전',POINT_EXCHANGE:'포인트 교환',POINT_EXCHANGE_REVERSE:'포인트 교환 회수',SHOP_PURCHASE:'상점 구매',PENDING:'확인 대기',APPROVED:'충전 완료',REJECTED:'반려',EXPIRED:'기간 만료',TOPUP:'이전 잔액 반영',PURCHASE:'구매',REFUND:'환불',OPEN:'접수',RESOLVED:'처리 완료',UPDATE:'업데이트',NOTICE:'공지',EVENT:'이벤트',ALERT:'알림'};
 const memberEditable=view=>['products','news','posts','comments'].includes(view);
 function memberMoney(n){return Number(n||0).toLocaleString('ko-KR')+'원';}
 function memberButton(action,id,label,danger=false){return `<button type="button" data-member-action="${action}" data-id="${esc(id||'')}" class="${danger?'danger':''}">${label}</button>`;}
@@ -57,7 +57,9 @@ async function renderMember(automatic=false){
  const scroll=automatic?captureScrollState(currentView):null;
  memberRows=new Map((result.items||[]).map(x=>[x.id,x]));memberSelected=new Set([...memberSelected].filter(id=>memberRows.has(id)));
  let html='<div class="member-shell">';
- if(view==='rewards'){html+=memberRewardsPanel(result);
+ if(view==='pointConversions'){html+=memberConversionPanel(result);
+ }else if(view==='shop'){html+=memberShopPanel(result);
+ }else if(view==='rewards'){html+=memberRewardsPanel(result);
  }else if(view==='policies'){
   html+='<section class="member-panel"><h3>앱 약관과 개인정보 처리방침</h3><p class="small-note">게시한 문서는 모아플레이 설정에 표시됩니다. 실제 운영 내용을 작성해 주세요.</p>'+(result.items||[]).map(x=>`<article class="member-policy"><h4>${esc(x.title)}</h4><span class="member-badge">${x.published?'게시 중':'미게시'}</span><p class="small-note">${x.updatedAt?esc(fmtTime(x.updatedAt)):'등록된 문서 없음'}</p>${memberButton('policy.edit',x.kind,'문서 수정')}</article>`).join('')+'</section>';
  }else if(view==='overview'){
@@ -115,6 +117,7 @@ async function renderMemberLookup(automatic=false){
   html+='<div class="member-pagination">'+(offset?memberButton('lookup.prev','','이전'):'')+(result.nextOffset!==null?memberButton('lookup.next','','다음'):'')+'</div></section>';
  }else{
   html+=`<section class="member-panel"><h3>회원 정보</h3>${memberFacts([['가입',fmtTime(p.createdAt)],['소개',p.bio],['아이디 변경',p.handleEditable?'최초 1회 변경 가능':'변경 완료'],['닉네임 변경',p.nicknameChangeAt>Date.now()?fmtTime(p.nicknameChangeAt)+'부터 가능':'변경 가능'],['이용 상태',p.blocked?'이용 제한':'정상']])}</section>`;
+  html+=memberDecorationFacts(p);
   for(const d of result.devices)html+=memberDeviceCard(d);
   html+='<section class="member-panel"><h3>출입증 QR 인증</h3>'+((result.qr||[]).map(memberQrRecord).join('')||'<p class="member-empty">등록된 인증 요청이 없습니다.</p>')+'</section>';
   html+='<section class="member-panel"><h3>고객센터</h3>'+((result.support||[]).map(t=>'<article class="member-record">'+memberFacts([['상담',t.id],['상태',t.status==='CLOSED'?'종료':t.status==='DELETED'?'삭제':'진행 중'],['대화',t.messages+'개'],['최근 변경',fmtTime(t.updatedAt)]])+`${memberButton('lookup.support',t.id,'상담 기록')}</article>`).join('')||'<p class="member-empty">상담 내역이 없습니다.</p>')+'</section>';
