@@ -25,7 +25,7 @@ function TopLevelComma(type) {
 
 function Check(source, className='TMoaPlayMemberClient') {
     if(!/^T\w+$/.test(className))throw Error('Invalid class name');
-    const code = CodeOnly(source).replace(/\buses\b[\s\S]*?;/gi, ' ');
+    const code = CodeOnly(source).replace(/\$[0-9a-f]+\b/gi, ' ').replace(/\buses\b[\s\S]*?;/gi, ' ');
     const match = new RegExp('\\b'+className+'\\s*=\\s*class\\b([\\s\\S]*?)^\\s*end\\s*;','mi').exec(code);
     if (!match) return [className+' declaration missing'];
     const issues = [], fields = new Set();

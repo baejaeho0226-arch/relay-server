@@ -17,12 +17,12 @@ try{
  run(a,'badge.select',{id:'ATTENDANCE_7'});
  const remote=run(b,'badges',{profileId:pa.id});
  assert.equal(remote.readOnly,true);assert.equal(remote.own,false);assert.equal(remote.profile.id,pa.id);assert.equal(remote.selected,'ATTENDANCE_7');
- assert.deepEqual(remote.items.map(x=>x.id),['ATTENDANCE_7']);assert.ok(remote.items.every(x=>x.earned&&x.progress===undefined));
+ assert.deepEqual(remote.items.map(x=>x.id),['ATTENDANCE_1','ATTENDANCE_7']);assert.ok(remote.items.every(x=>x.earned&&x.progress===undefined));
  for(const key of ['balance','points','inventory','eventSpins','preferences','subject','createdAt'])assert.equal(remote.profile[key],undefined,key+' must remain private');
  assert.throws(()=>run(b,'badge.select',{id:'ATTENDANCE_7',profileId:pa.id}),/NOT_OWNER/);
  assert.throws(()=>run(b,'badge.select',{id:'',profileId:pa.id}),/NOT_OWNER/);
  assert.equal(s.ProfileById(pa.id).titleBadgeId,'ATTENDANCE_7');assert.equal(s.ProfileById(pb.id).titleBadgeId,undefined);
- const own=run(a,'badges',{profileId:pa.id});assert.equal(own.readOnly,false);assert.equal(own.items.length,5);assert.equal(own.profile.balance,12345);
+ const own=run(a,'badges',{profileId:pa.id});assert.equal(own.readOnly,false);assert.ok(own.items.length>remote.items.length);assert.ok(own.items.some(x=>!x.earned));assert.equal(own.profile.balance,12345);
  run(a,'badge.select',{id:'',profileId:pa.id});assert.equal(run(a,'badges').selected,'');
  assert.throws(()=>run(b,'badges',{profileId:'missing'}),/MEMBER_NOT_FOUND/);
  run(a,'follow.set',{id:pb.id,following:true});

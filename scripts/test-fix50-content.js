@@ -28,9 +28,10 @@ const run=(action,body={},id)=>hub.Execute(c,id||'FIX50-CONTENT-'+(++seq),action
 const privateFields=['image','imageFeed','imageThumb','imagePreview','details'];
 function noRetired(row){for(const key of privateFields)assert.equal(Object.hasOwn(row,key),false,'retired field '+key);}
 function categoryLabel(text){const label=w.document.querySelector('.member-category-label');assert.ok(label);assert.equal(label.textContent,text);const icon=label.querySelector('svg');assert.ok(icon);assert.equal(icon.getAttribute('stroke'),'currentColor');assert.equal(icon.getAttribute('fill'),'none');assert.equal(w.document.querySelector('.member-category-badge,[data-category-tone]'),null);}
+function gameIcon(genre,parent=w.document){const label=parent.querySelector('.member-game-icon');assert.ok(label);assert.equal(label.getAttribute('aria-label'),genre);assert.equal(label.textContent,'');const icon=label.querySelector('svg');assert.ok(icon);assert.equal(icon.getAttribute('stroke'),'currentColor');assert.equal(icon.getAttribute('fill'),'none');assert.equal(parent.querySelector('.member-category-label,.member-category-badge,[data-category-tone]'),null);}
 (async()=>{try{
  await pause();
- const customGenre=w.document.createElement('tbody');customGenre.innerHTML=w.memberRow({id:'CUSTOM',title:'자유 장르',genre:'constructor',accessType:'TYPE1',plans:[]},'products');assert.equal(customGenre.querySelector('.member-category-label').textContent,'constructor');assert.ok(customGenre.querySelector('.member-category-label svg path'));
+ const customGenre=w.document.createElement('tbody');customGenre.innerHTML=w.memberRow({id:'CUSTOM',title:'자유 장르',genre:'constructor',accessType:'TYPE1',plans:[]},'products');gameIcon('constructor',customGenre);assert.ok(customGenre.querySelector('.member-game-icon svg path'));
  // The real editor has only the retained game fields and a selectable required genre.
  await click('[data-view="member-products"]');await click('[data-member-action="product.new"]');
  assert.deepEqual([...w.document.querySelectorAll('[data-modal-field]')].map(x=>x.dataset.modalField),['title','description','genre','accessType','published']);
@@ -38,12 +39,12 @@ function categoryLabel(text){const label=w.document.querySelector('.member-categ
  field('title','텍스트 게임');field('description','게임 안내\n'+ '긴 소개 '.repeat(60));field('genre','레이싱');field('published','true');
  const firstPlan=w.document.querySelector('[data-plan-row]');firstPlan.querySelector('[data-plan-days]').value='3';firstPlan.querySelector('[data-plan-price]').value='300';
  await click('#modal-confirm');await pause();
- let game=Object.values(store.DB().products)[0];assert.ok(game);assert.equal(game.genre,'레이싱');assert.equal(game.plans[0].days,3);assert.equal(game.plans[0].price,300);noRetired(game);categoryLabel('레이싱');
+ let game=Object.values(store.DB().products)[0];assert.ok(game);assert.equal(game.genre,'레이싱');assert.equal(game.plans[0].days,3);assert.equal(game.plans[0].price,300);noRetired(game);gameIcon('레이싱');
  const saveCall=calls.filter(x=>x.body?.action==='product.save').at(-1);noRetired(saveCall.body);
  const legacy={image:'legacy-original-bytes',imageFeed:'legacy-feed-bytes',imageThumb:'legacy-thumbnail-bytes',imagePreview:'legacy-preview-bytes',details:{genre:'레이싱',developer:'보존 제작사',platform:'보존 플랫폼',channels:{official:'https://example.invalid'},extra:['unchanged']}};
  store.Atomic(()=>Object.assign(store.DB().products[game.id],structuredClone(legacy)));
  await w.renderMember();assert.equal(w.document.querySelector('.member-content-thumb'),null);await click('[data-member-action="product.edit"]');field('title','수정한 텍스트 게임');field('genre','퍼즐');await click('#modal-confirm');
- game=store.DB().products[game.id];for(const key of privateFields)assert.deepEqual(game[key],legacy[key]);categoryLabel('퍼즐');
+ game=store.DB().products[game.id];for(const key of privateFields)assert.deepEqual(game[key],legacy[key]);gameIcon('퍼즐');
  for(const genre of ['', ' '.repeat(3)])assert.throws(()=>admin('product.save',{id:game.id,title:game.title,accessType:game.accessType,genre,published:true}),/INPUT_INVALID/);
  const omittedGenre=admin('product.save',{title:'이전 형식의 새 게임',accessType:'TYPE1'});assert.equal(omittedGenre.genre,'게임');noRetired(omittedGenre);
  // All public and administrator projections retain only top-level genre and text.

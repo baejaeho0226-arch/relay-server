@@ -44,7 +44,11 @@ function Check(apk=path.resolve(__dirname,'../../MoaPlayApp_Android64')){
  assert.match(read('AndroidManifest.full.xml'),/configChanges="[^"]*\buiMode\b/,'Theme changes must not recreate the authenticated activity');
  assert.doesNotMatch(read('MoaPlaySystemBars.pas'),/\.setNightMode\(/,'Use app-local mode only');
  const night=read('AndroidResources/res/values-night/moaplay_colors.xml'),day=read('AndroidResources/res/values/moaplay_colors.xml');
- assert.notEqual(night,day);assert.match(night,/moaplay_light_bars">false/);assert.match(day,/moaplay_light_bars">true/);
+ // FIX52 starts in dark mode even before the FMX surface appears. The app's
+ // saved in-app choice is restored after startup; both native launch variants
+ // must therefore share a dark background and light system-bar icons.
+ for(const launch of [night,day]){assert.match(launch,/moaplay_background">#000000/);assert.match(launch,/moaplay_foreground">#F3F4F5/);assert.match(launch,/moaplay_light_bars">false/);}
+ assert.match(read('MoaPlayMemberTheme.pas'),/initialization\s+DarkValue:=True;/);
  for(const n of ['values/moaplay_launch_theme.xml','values-v31/moaplay_launch_theme.xml','drawable/moaplay_splash.xml','drawable/moaplay_launch_icon.xml'])
   assert.doesNotMatch(read('AndroidResources/res/'+n),/#[\da-f]{6}/i,'Launch color must follow day/night resource: '+n);
  for(const n of ['values','values-v31'])assert.match(read('AndroidResources/res/'+n+'/moaplay_launch_theme.xml'),/forceDarkAllowed">false/,'Do not auto-invert a theme drawn by FMX');
