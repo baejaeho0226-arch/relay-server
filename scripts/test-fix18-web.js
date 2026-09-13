@@ -37,9 +37,15 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  await click(w.document.querySelector('[data-view="member-news"]'));await click(w.document.querySelector('[data-member-action="news.new"]'));
  field('image',testPhoto);field('title','공지 테스트');field('body','다음 업데이트를 안내합니다.');field('published','true');await click(w.document.getElementById('modal-confirm'));await wait();assert.equal(Object.values(store.DB().news).length,1);assert.ok(Object.values(store.DB().news)[0].image);
  await click(w.document.querySelector('[data-member-action="news.edit"]'));assert.ok(w.document.querySelector('[data-modal-preview="image"]').src.startsWith('data:image/jpeg;'));await click(w.document.querySelector('[data-modal-image-remove="image"]'));await click(w.document.getElementById('modal-confirm'));assert.equal(Object.values(store.DB().news)[0].image,'');
- for(const view of ['overview','rewards','products','news','orders','ledger','profiles','posts','comments','reports','policies']){await click(w.document.querySelector('[data-view="member-'+view+'"]'));assert.ok(w.document.getElementById('content').textContent.trim());}
-
- assert.equal(w.document.querySelectorAll('#nav [data-view^="member-"]').length,11);assert.equal(w.document.querySelector('.member-tabs'),null);
+ const memberPages={overview:'운영 요약',rewards:'이벤트·포인트',pointConversions:'포인트 교환·회수',shop:'회원 상점',products:'게임',news:'소식',orders:'이용권 내역',ledger:'결제 원장',profiles:'회원',posts:'피드',comments:'댓글',reports:'신고',policies:'약관·개인정보'};
+ const memberNavigation=[...w.document.querySelectorAll('#nav [data-view^="member-"]')];
+ assert.deepEqual(memberNavigation.map(button=>button.dataset.view).sort(),Object.keys(memberPages).map(view=>'member-'+view).sort(),'every member feature has its own navigation page with no duplicates');
+ for(const [view,title] of Object.entries(memberPages)){
+  const button=w.document.querySelector('[data-view="member-'+view+'"]');assert.ok(button.hasAttribute('data-admin-only'));
+  await click(button);assert.equal(w.document.getElementById('page-title').textContent,title);assert.ok(w.document.getElementById('content').textContent.trim());
+  assert.ok(backend.some(call=>call.url.startsWith('/api/member?view='+view+'&')&&call.status===200),'page must load its real API: '+view);
+ }
+ assert.equal(w.document.querySelector('.member-tabs'),null);
  const theme=w.document.getElementById('theme-toggle');await click(theme);assert.equal(w.document.documentElement.dataset.theme,'dark');assert.equal(w.localStorage.getItem('relay-admin-theme'),'dark');assert.equal(theme.getAttribute('aria-pressed'),'true');
  await click(w.document.querySelector('[data-view="member-news"]'));assert.equal(w.document.documentElement.dataset.theme,'dark');
  await click(theme);assert.equal(w.document.documentElement.dataset.theme,'light');assert.equal(w.localStorage.getItem('relay-admin-theme'),'light');
@@ -108,5 +114,5 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
   await api.HandleApiRequest(req,{writeHead(n){status=n;},end(){}},{role,id:'OTHER'});assert.equal(status,403);
  }
  assert.equal(errors.length,0,errors.join('\n'));assert.ok(!backend.some(x=>x.status>=500));
- console.log('FIX18 ADMIN DOM PASS: ten independent pages and unified QR, feed-only counts, owner/admin edits, empty pagination, search/archive/restore, safe automatic refresh, unchanged DOM and scroll preservation, retired coin routes, four duration price forms, QR preview retention and actual QR wallet approval');
+ console.log('FIX18 ADMIN DOM PASS: thirteen independent pages (including point recovery and member shop) and unified QR, feed-only counts, owner/admin edits, empty pagination, search/archive/restore, safe automatic refresh, unchanged DOM and scroll preservation, retired coin routes, four duration price forms, QR preview retention and actual QR wallet approval');
 }finally{w.close();fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

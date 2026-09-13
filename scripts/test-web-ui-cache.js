@@ -20,6 +20,9 @@ function testBundle() {
     assert.equal(bundle.Check(temp).ready, true, 'Windows line endings are compatible');
     const currentRevision = require('../config/config').WEB_UI_REVISION;
     const originalAdmin = source('public/admin.js');
+    const declaredRevision = originalAdmin.match(/const WEB_UI_REVISION\s*=\s*'([^']+)'/);
+    assert.ok(declaredRevision, 'Admin runtime must declare its UI revision');
+    assert.equal(declaredRevision[1], currentRevision, 'Admin runtime and release manifest must use the same UI revision');
     const corruptedAdmin = originalAdmin.replace(`'${currentRevision}'`, "'corrupted'");
     assert.notEqual(originalAdmin, corruptedAdmin, 'Corruption fixture must alter the released revision');
     fs.writeFileSync(path.join(temp, 'admin.js'), corruptedAdmin);
