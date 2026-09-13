@@ -43,6 +43,7 @@ function Approve(body,actor){
   const payment=s.Ledger(p,amount,'QR_TOPUP',row.id);
   Object.assign(row,{mode:'WALLET',status:'APPROVED',amount,memo,paymentId:payment.id,balance:payment.balance,approvedAt:Date.now(),approvedBy:actor,fingerprint});
   require('./rewards').GrantCharge(p,row);
+  require('./badges').ChargeApproved(p,row);
   return Public(row);
  });
 }

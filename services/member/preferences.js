@@ -1,7 +1,7 @@
 "use strict";
-const s=require('./store');
+const s=require('./store'),currency=require('./currency');
 const visibility=['PUBLIC','FOLLOWING','PRIVATE'];
-const defaults={profilePostsPrivate:false,profilePostsVisibility:'PUBLIC',balanceRankingVisible:true,purchaseActivityVisible:true,notifyApproval:true,notifyRelease:true,notifyFollowers:false,notifyFollowing:false,notifyComments:false,notifyPosts:false,language:'ko'};
+const defaults={profilePostsPrivate:false,profilePostsVisibility:'PUBLIC',balanceRankingVisible:true,purchaseActivityVisible:true,notifyApproval:true,notifyRelease:true,notifyFollowers:false,notifyFollowing:false,notifyComments:false,notifyPosts:false,language:'ko',displayCurrency:'KRW',feedDefaultSort:'latest'};
 function Visibility(p){return visibility.includes(p.profilePostsVisibility)?p.profilePostsVisibility:p.profilePostsPrivate===true?'PRIVATE':'PUBLIC';}
 function Read(p){
  const result=Object.fromEntries(Object.entries(defaults).map(([key,value])=>[key,typeof p[key]===typeof value?p[key]:value]));
@@ -9,6 +9,9 @@ function Read(p){
  // Older APKs only understand a private/public flag. Restricted audiences must
  // never appear public to them; their next boolean write is still supported.
  result.profilePostsPrivate=result.profilePostsVisibility!=='PUBLIC';
+ result.displayCurrency=currency.Supported(result.displayCurrency)?result.displayCurrency:'KRW';
+ result.currencyReference=currency.Reference();
+ if(!['latest','popular'].includes(result.feedDefaultSort))result.feedDefaultSort='latest';
  return result;
 }
 function Save(p,body){
@@ -17,7 +20,9 @@ function Save(p,body){
  for(const key of keys){
   const value=body[key];
   if(typeof value!==typeof defaults[key]||(key==='language'&&!['ko','en'].includes(value))||
-    (key==='profilePostsVisibility'&&!visibility.includes(value)))s.Fail('INPUT_INVALID');
+    (key==='profilePostsVisibility'&&!visibility.includes(value))||
+    (key==='displayCurrency'&&!currency.Supported(value))||
+    (key==='feedDefaultSort'&&!['latest','popular'].includes(value)))s.Fail('INPUT_INVALID');
  }
  for(const key of keys)p[key]=body[key];
  if(keys.includes('profilePostsVisibility'))p.profilePostsPrivate=body.profilePostsVisibility!=='PUBLIC';

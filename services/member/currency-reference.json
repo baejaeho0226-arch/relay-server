@@ -1,0 +1,16 @@
+{
+  "rateDate": "2026-09-11",
+  "baseCurrency": "EUR",
+  "source": "European Central Bank",
+  "sourceUrl": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html",
+  "rates": {
+    "EUR": 1,
+    "KRW": 1556.56,
+    "USD": 1.1592,
+    "JPY": 178.56,
+    "CNY": 7.7762,
+    "GBP": 0.85815,
+    "CAD": 1.6064,
+    "AUD": 1.6161
+  }
+}

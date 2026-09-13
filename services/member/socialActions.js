@@ -10,7 +10,20 @@ function Blocks(p,body){const page=s.Page(Object.values(s.DB().blocks).filter(x=
 function Bookmarked(p,kind,id){return !!s.DB().bookmarks[p.id+':'+kind+':'+id];}
 function Bookmark(p,body){const row=Target(p,body);if(typeof body.saved!=='boolean')s.Fail('INPUT_INVALID');const key=p.id+':'+body.kind+':'+row.id;if(body.saved)s.DB().bookmarks[key]={accountId:p.id,kind:body.kind,targetId:row.id,at:Date.now()};else delete s.DB().bookmarks[key];return {saved:body.saved,kind:body.kind,id:row.id};}
 function Bookmarks(p,body){const rows=Object.values(s.DB().bookmarks).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at).filter(x=>{try{Target(p,{kind:x.kind,id:x.targetId});return true;}catch(_){return false;}});const page=s.Page(rows,body,12);return {...page,items:page.items.map(x=>x.kind==='post'?{kind:'post',post:require('./social').PublicPost(Post(p,x.targetId),p,false,body._wire==='zlib')}:{kind:'comment',comment:PublicComment(Comment(p,x.targetId),p)})};}
-function Repost(p,body){Post(p,body.postId);s.Fail('REPOST_COMPOSE_REQUIRED');}
+function Repost(p,body){
+ const post=Post(p,body.postId);
+ // Only the original author may publish a direct repost. Other members still
+ // create their own quoted post through the composer and its visibility checks.
+ if(post.accountId!==p.id)s.Fail('REPOST_COMPOSE_REQUIRED');
+ if(typeof body.value!=='boolean')s.Fail('INPUT_INVALID');
+ const db=s.DB(),key=p.id+':'+post.id;
+ if(body.value){
+  // A retry, double tap, or a new request for the same state cannot duplicate
+  // the repost or continually move its timestamp. Keep the original post intact.
+  if(!db.reposts[key])db.reposts[key]={id:s.Id('RPS'),accountId:p.id,postId:post.id,at:Date.now()};
+ }else delete db.reposts[key];
+ return {reposted:!!db.reposts[key],post:require('./social').PublicPost(post,p,false,body._wire==='zlib',body._delta===true)};
+}
 function RepostInfo(post,p){return require('./reposts').Info(post,p);}
 function PollInput(value,previous,postId){
  if(value===undefined)return previous||null;
