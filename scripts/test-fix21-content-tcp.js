@@ -31,11 +31,11 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  const save=(action,body)=>hub.AdminWrite(action,body,'TEST');
  const news=save('news.save',{title:'텍스트 공지',body:'열람해야 보는 공지 내용',category:'NOTICE',image:avatar(55),details:{platform:'ignored'},published:true});
  assert.equal(store.DB().news[news.id].image,undefined,'new news does not accept retired media');assert.equal(store.DB().news[news.id].details,undefined);
- const legacyPhoto=avatar(35);store.Atomic(()=>{Object.assign(store.DB().news[news.id],{image:legacyPhoto,imageThumb:legacyPhoto,imagePreview:legacyPhoto,details:{platform:'legacy'},plans:[{days:7,price:100}]});});
- const adminNews=hub.AdminRead({view:'news',id:news.id}).items[0];
+ const legacyPhoto=avatar(35);store.Atomic(()=>{Object.assign(store.DB().news[news.id],{category:'UPDATE',image:legacyPhoto,imageThumb:legacyPhoto,imagePreview:legacyPhoto,details:{platform:'legacy'},plans:[{days:7,price:100}]});});
+ const adminNews=hub.AdminRead({view:'news',id:news.id}).items[0];assert.equal(adminNews.category,'NOTICE');
  for(const key of ['image','imageThumb','imagePreview','details','plans'])assert.equal(adminNews[key],undefined,'admin omits retired news field '+key);
- const list=await run(viewer,'news',{summary:true});assert.equal(list.items[0].body,undefined);assert.equal(list.items[0].image,undefined);assert.equal(list.items[0].views,0);assert.equal(list.items[0].imageThumb,undefined);assert.equal(list.items[0].details,undefined);assert.equal(list.viewer.id,b.id);
- const detail=await run(viewer,'article',{id:news.id});assert.equal(detail.article.body,news.body);for(const key of ['image','imageThumb','imagePreview','details','plans'])assert.equal(detail.article[key],undefined,'article omits retired news field '+key);assert.equal(detail.article.views,1);
+ const list=await run(viewer,'news',{summary:true});assert.equal(list.items[0].category,'NOTICE');assert.equal((await run(viewer,'news',{category:'NOTICE'})).items[0].id,news.id);assert.equal(list.items[0].body,undefined);assert.equal(list.items[0].image,undefined);assert.equal(list.items[0].views,0);assert.equal(list.items[0].imageThumb,undefined);assert.equal(list.items[0].details,undefined);assert.equal(list.viewer.id,b.id);
+ const detail=await run(viewer,'article',{id:news.id});assert.equal(detail.article.category,'NOTICE');assert.equal(detail.article.body,news.body);for(const key of ['image','imageThumb','imagePreview','details','plans'])assert.equal(detail.article[key],undefined,'article omits retired news field '+key);assert.equal(detail.article.views,1);
  assert.equal((await run(viewer,'article',{id:news.id})).article.views,1,'polling must not increase article views');
  assert.equal((await run(author,'article',{id:news.id})).article.views,2);
  const viewedNews=await run(viewer,'news',{summary:true});assert.equal(viewedNews.items.find(x=>x.id===news.id).views,2);assert.equal(viewedNews.items.find(x=>x.id===news.id).body,undefined);assert.equal(viewedNews.items.find(x=>x.id===news.id).unread,false);
@@ -45,28 +45,39 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  delete gameDetails.requirements;
  const imageData=Buffer.alloc(480*640*4);for(let y=0;y<640;y++)for(let x=0;x<480;x++){const i=(y*480+x)*4;imageData[i]=(x*3+y)%256;imageData[i+1]=(x+y*2)%256;imageData[i+2]=(x*y)%256;imageData[i+3]=255;}
  const gameImage='data:image/jpeg;base64,'+require('jpeg-js').encode({width:480,height:640,data:imageData},60).data.toString('base64');assert.ok(gameImage.length>12000);
- const game=save('product.save',{title:'배너 게임',description:'게임 안내',accessType:'TYPE1',image:gameImage,details:gameDetails,plans:[1,7,15,30].map(days=>({days,price:days*100})),published:true});
+ const game=save('product.save',{title:'텍스트 게임',description:'게임 안내',genre:gameDetails.genre,accessType:'TYPE1',image:gameImage,details:gameDetails,plans:[1,7,15,30].map(days=>({days,price:days*100})),published:true});
+ assert.equal(store.DB().products[game.id].image,undefined,'new games ignore retired photos');assert.equal(store.DB().products[game.id].details,undefined,'new games ignore retired metadata');
+ const legacyGame={...require('../services/member/media').PostFields(gameImage),details:structuredClone(gameDetails)};store.Atomic(()=>Object.assign(store.DB().products[game.id],legacyGame));
  async function webAction(role,body){const req=require('node:stream').Readable.from([Buffer.from(JSON.stringify(body))]);Object.assign(req,{url:'/api/member/action',method:'POST',headers:{},socket:{remoteAddress:'127.0.0.1'}});let status,payload;await require('../web/webApi').HandleApiRequest(req,{writeHead(value){status=value;},end(value){payload=JSON.parse(value);}},{role,id:'MEDIA21'});return {status,payload};}
- const bigBody={action:'product.save',id:game.id,revision:game.revision,title:'큰 사진 웹 저장',description:'사진 처리 확인',accessType:'TYPE1',image:gameImage,details:gameDetails,published:true};
+ const post=(await run(author,'post.create',{body:'회원 상세에서 여는 게시물'})).post;
+ const bigBody={action:'product.save',id:game.id,revision:game.revision,title:'이전 사진을 포함한 웹 저장',description:'게임 소개 확인',genre:gameDetails.genre,accessType:'TYPE1',image:gameImage,details:gameDetails,published:true};
  assert.ok(Buffer.byteLength(JSON.stringify(bigBody))>128*1024,'exercise the increased bounded admin image body limit');
  assert.equal((await webAction('operator',bigBody)).status,403);assert.equal((await webAction('admin',bigBody)).status,200);game.revision=store.DB().products[game.id].revision;
- const product=(await run(viewer,'product',{id:game.id})).product;assert.ok(product.image.length>12000,'photo detail uses signed chunk transport');assert.deepEqual(product.details,Object.fromEntries(Object.entries(gameDetails).filter(([k])=>k!=='channels')));assert.equal((await run(viewer,'catalog')).items[0].image,undefined);assert.ok(product.imageThumb.length<=16100);
- const summaryGame=(await run(viewer,'catalog',{summary:true})).items.find(x=>x.id===game.id);assert.equal(summaryGame.description,undefined);assert.equal(summaryGame.details.platform,'Windows');assert.ok(summaryGame.imagePreview);assert.equal(product.description,'사진 처리 확인');
- const preserved=save('product.save',{id:game.id,revision:game.revision,title:'제목 수정',description:'',accessType:'TYPE1',published:true});assert.deepEqual(store.DB().products[game.id].details,Object.fromEntries(Object.entries(gameDetails).filter(([k])=>k!=='channels')));assert.equal(store.DB().products[game.id].image,product.image);
+ const product=(await run(viewer,'product',{id:game.id})).product,summaryGame=(await run(viewer,'catalog',{summary:true})).items.find(x=>x.id===game.id);
+ for(const item of [game,product,summaryGame,(await run(viewer,'catalog')).items[0],hub.AdminRead({view:'products',id:game.id}).items[0]]){assert.equal(item.genre,gameDetails.genre);for(const key of ['image','imageFeed','imageThumb','imagePreview','details'])assert.equal(item[key],undefined,'game projection omits '+key);}
+ assert.equal(summaryGame.description,'게임 소개 확인');assert.equal(product.description,'게임 소개 확인');
+ const preserved=save('product.save',{id:game.id,revision:game.revision,title:'제목 수정',description:'',accessType:'TYPE1',published:true});assert.equal(preserved.genre,gameDetails.genre);assert.deepEqual(store.DB().products[game.id].details,gameDetails);assert.equal(store.DB().products[game.id].image,legacyGame.image);
+ // Feed photos still validate over HTTP and travel through signed TCP chunks.
+ assert.equal((await webAction('admin',{action:'post.save',id:post.id,body:post.body,image:gameImage})).status,200);
+ const photoPost=(await run(viewer,'thread',{postId:post.id})).post;assert.ok(photoPost.image.length>12000,'retained feed photo detail uses signed chunk transport');
  const before=JSON.stringify(store.DB()),saveDb=db.SaveDatabase;try{db.SaveDatabase=()=>false;assert.throws(()=>save('news.save',{...news,title:'실패',image:''}),/STORAGE_SAVE_FAILED/);}finally{db.SaveDatabase=saveDb;}assert.equal(JSON.stringify(store.DB()),before);
- for(const image of ['data:image/svg+xml;base64,PHN2Zy8+','data:image/png;base64,AAAA','https://example.com/photo.png'])assert.throws(()=>save('product.save',{title:'잘못된 사진',description:'본문',accessType:'TYPE1',image}),/CONTENT_IMAGE_INVALID/);
+ for(const image of ['data:image/svg+xml;base64,PHN2Zy8+','data:image/png;base64,AAAA','https://example.com/photo.png']){
+  assert.equal((await webAction('admin',{action:'post.save',id:post.id,body:post.body,image})).status,400,'active feed photo route validates media');assert.equal(store.DB().posts[post.id].image,photoPost.image);
+  const ignored=save('product.save',{title:'사진 필드를 무시하는 게임',description:'본문',genre:'기타',accessType:'TYPE1',image});assert.equal(store.DB().products[ignored.id].image,undefined);
+ }
+ assert.equal(save('product.save',{title:'이전 형식의 게임',accessType:'TYPE1'}).genre,'게임');
  assert.equal(require('../services/member/media').GameDetails({channels:{official:'javascript:alert(1)'}}).channels,undefined);
- const updated=save('news.save',{...news,title:'수정한 소식',image:''});assert.equal(updated.image,undefined);assert.equal(updated.imageThumb,undefined);assert.equal(updated.title,'수정한 소식');
+ const updated=save('news.save',{...news,title:'수정한 소식',image:''});assert.equal(updated.image,undefined);assert.equal(updated.imageThumb,undefined);assert.equal(updated.title,'수정한 소식');assert.equal(updated.category,'NOTICE');assert.equal(store.DB().news[news.id].category,'NOTICE');
  assert.equal(store.DB().news[news.id].image,legacyPhoto);assert.equal(store.DB().news[news.id].details.platform,'legacy','editing news preserves retired data without exposing it');
  assert.equal((await run(viewer,'news',{summary:true})).items.find(x=>x.id===news.id).unread,true,'text edits become unread again');
  assert.equal((await run(viewer,'article',{id:news.id})).article.title,'수정한 소식');
- const post=(await run(author,'post.create',{body:'회원 상세에서 여는 게시물'})).post;await run(viewer,'feed');await run(viewer,'follow.set',{id:a.id,following:true});
- const member=await run(viewer,'member',{id:a.id});assert.equal(member.profile.id,a.id);assert.equal(member.viewer.id,b.id);assert.equal(member.isFollowing,true);assert.equal(member.own,false);assert.equal(member.profile.followers,1);assert.equal(member.posts.items[0].id,post.id);assert.equal(member.profile.views,0,'profile and feed listing do not count as reading a post');assert.ok(member.profile.handle.startsWith('user_'));
+ const existingPostViews=store.ViewCount('post',post.id);await run(viewer,'feed');await run(viewer,'follow.set',{id:a.id,following:true});
+ const member=await run(viewer,'member',{id:a.id});assert.equal(member.profile.id,a.id);assert.equal(member.viewer.id,b.id);assert.equal(member.isFollowing,true);assert.equal(member.own,false);assert.equal(member.profile.followers,1);assert.equal(member.posts.items[0].id,post.id);assert.equal(member.profile.views,existingPostViews,'profile and feed listing do not add post views');assert.ok(member.profile.handle.startsWith('user_'));
  for(const privateKey of ['balance','subject','activeOrderId','readNews','blocked'])assert.equal(member.profile[privateKey],undefined,privateKey);
  assert.equal((await run(viewer,'follows',{id:a.id,mode:'followers'})).items[0].id,b.id);
  await run(viewer,'report',{postId:post.id,reason:'신고 동작 확인'});assert.equal(Object.values(store.DB().reports).length,1);
  save('profile.block',{id:a.id,blocked:true});assert.equal((await request(viewer,'member',{id:a.id})).reason,'MEMBER_NOT_FOUND');assert.equal((await request(viewer,'follows',{id:a.id,mode:'followers'})).reason,'MEMBER_NOT_FOUND');
- const snapshot=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(snapshot),true);assert.equal(store.DB().news[news.id].image,legacyPhoto);assert.equal(store.DB().products[game.id].image,product.image);assert.deepEqual(store.DB().products[game.id].details,Object.fromEntries(Object.entries(gameDetails).filter(([k])=>k!=='channels')));
- console.log('FIX21 CONTENT TCP PASS: summary privacy, text-only news/legacy preservation and deduplicated views, signed large photo chunks, metadata preservation/validation, save rollback, public member profile/follow lists and reports');
+ const snapshot=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(snapshot),true);assert.equal(store.DB().news[news.id].image,legacyPhoto);assert.equal(store.DB().products[game.id].image,legacyGame.image);assert.deepEqual(store.DB().products[game.id].details,gameDetails);
+ console.log('FIX21 CONTENT TCP PASS: summary text, retired news/game API fields, UPDATE migration and deduplicated views, signed large feed photo chunks, private legacy metadata preservation and active media validation, save rollback, public member profile/follow lists and reports');
  regressionCompleted=true;
 }catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

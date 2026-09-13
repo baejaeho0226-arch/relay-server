@@ -33,13 +33,15 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  assert.equal((await run(viewer,'news',{summary:true})).items[0].body,undefined);
  for(let i=0;i<3;i++)assert.equal((await run(viewer,'article',{id:news.id})).article.body,news.body);
  assert.equal(store.ViewCount('news',news.id),1);
- const game=save('product.save',{title:'자유 기간 게임',description:'소개',accessType:'TYPE1',details:{genre:'RPG',channels:{official:'javascript:ignored'}},image:avatar(80),plans:[{days:2,price:200},{days:45,price:4200},{days:365,price:20000}],published:true});
- assert.deepEqual(game.plans.map(x=>x.days),[2,45,365]);assert.equal(game.details.channels,undefined);
- for(let i=0;i<3;i++){const detail=(await run(viewer,'product',{id:game.id})).product;assert.equal(detail.views,1);assert.equal(detail.details.genre,'RPG');assert.ok(detail.image);assert.ok(detail.imagePreview);}
+ const game=save('product.save',{title:'자유 기간 게임',description:'소개',genre:'RPG',accessType:'TYPE1',details:{genre:'RPG',channels:{official:'javascript:ignored'}},image:avatar(80),plans:[{days:2,price:200},{days:45,price:4200},{days:365,price:20000}],published:true});
+ assert.deepEqual(game.plans.map(x=>x.days),[2,45,365]);assert.equal(game.details,undefined);assert.equal(store.DB().products[game.id].image,undefined,'retired incoming game photos are ignored');
+ const legacyGame={image:avatar(80),imagePreview:avatar(81),details:{genre:'RPG',developer:'legacy',channels:{official:'javascript:private-legacy'}}};store.Atomic(()=>Object.assign(store.DB().products[game.id],legacyGame));
+ for(let i=0;i<3;i++){const detail=(await run(viewer,'product',{id:game.id})).product;assert.equal(detail.views,1);assert.equal(detail.genre,'RPG');assert.equal(detail.description,'소개');for(const key of ['details','image','imagePreview','imageThumb'])assert.equal(detail[key],undefined);}
  const plans=require('../services/member/gamePlans');for(const bad of [[],[{days:0,price:1}],[{days:3651,price:1}],[{days:1.5,price:2}],[{days:2,price:1},{days:2,price:3}]])assert.throws(()=>plans.Validate(bad),/GAME_PLAN_INVALID/);
  store.Atomic(()=>store.Ledger(row(b.id),10000,'TEST','25'));
  const purchased=(await run(viewer,'purchase',{productId:game.id,days:45,price:4200,revision:game.revision})).order;assert.equal(purchased.days,45);
  save('product.save',{id:game.id,revision:game.revision,title:game.title,description:'',accessType:'TYPE1',plans:[{days:10,price:800}],published:true});
+ for(const key of ['image','imagePreview','details'])assert.deepEqual(store.DB().products[game.id][key],legacyGame[key]);
  assert.equal(store.DB().orders[purchased.id].days,45);assert.equal((await request(viewer,'purchase',{productId:game.id,days:45,price:4200,revision:game.revision})).reason,'GAME_PLAN_UNAVAILABLE');
  const pack=(await run(author,'gifs')).items;assert.equal(pack.length,4);assert.ok(pack.every(x=>x.frames.length===12));
  const post=(await run(author,'post.create',{title:'제목이 있는 게시물',body:'사진과 투표',image:avatar(22),gifId:pack[0].id,poll:{question:'함께 할 게임?',options:['레이싱','RPG','리듬']}})).post;
@@ -77,6 +79,6 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  const full=await run(third,'feed');assert.equal(full.items.length,8);assert.ok(Buffer.from(JSON.stringify({ok:true,data:full})).toString('base64').length<900000);
  const old=structuredClone(store.DB());for(const key of ['commentReactions','bookmarks','blocks','reposts','pollVotes'])delete old[key];store.Import({memberHub:old});for(const key of ['commentReactions','bookmarks','blocks','reposts','pollVotes'])assert.deepEqual(store.DB()[key],{});
  assert.equal(store.DB().orders[purchased.id].days,45);
- console.log('FIX25 TCP PASS: article reopen, custom paid periods, image/genre data, deduplicated views, GIF frames, title, post/comment hearts, author replies, ownership/revisions, poll vote lock/idempotency, bookmarks privacy, quoted repost, comment reports, mutual block authorization, durable data migration and save rollback.');
+ console.log('FIX25 TCP PASS: article reopen, custom paid periods, text/genre projection and private legacy images, deduplicated views, GIF frames, title, post/comment hearts, author replies, ownership/revisions, poll vote lock/idempotency, bookmarks privacy, quoted repost, comment reports, mutual block authorization, durable data migration and save rollback.');
  regressionCompleted=true;
 }catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

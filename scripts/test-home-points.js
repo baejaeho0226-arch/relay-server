@@ -62,8 +62,8 @@ try{
  assert.equal(exchange.profile.balance,10800);assert.equal(exchange.wallet.points,0);assert.equal(exchange.wallet.spins,spinCount);
  assert.equal(exchange.conversion.cashAmount,400);assert.equal(exchange.conversion.pointAmount,-6);
  assert.deepEqual(run(a2.c,'points.exchange',{revision:rules.revision,amount:6},'POINT-EXCHANGE-01'),exchange);
- // An over-cap cash credit must not consume points or write either ledger.
- s.Atomic(()=>{s.ProfileById(owner).points=3;s.ProfileById(owner).balance=99999999;});const cap=JSON.stringify(s.DB());
+ // An exact-integer overflow must not consume points or write either ledger.
+ s.Atomic(()=>{s.ProfileById(owner).points=3;s.ProfileById(owner).balance=Number.MAX_SAFE_INTEGER-99;});const cap=JSON.stringify(s.DB());
  assert.throws(()=>run(a.c,'points.exchange',{revision:rules.revision,amount:3}),/BALANCE_INVALID/);assert.equal(JSON.stringify(s.DB()),cap);
  s.Atomic(()=>{s.ProfileById(owner).points=0;s.ProfileById(owner).balance=10800;});
  rules=admin('rewards.save',{...rules,pointExchange:{enabled:true,cashUnit:10000000,pointUnit:1}});

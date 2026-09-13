@@ -29,7 +29,7 @@ try{
  assert.equal(empty.wallet.balance,8910);assert.equal(empty.wallet.accountId,owner);assert.equal(empty.profile,undefined,'round read does not resend full profile media');
  crypto.randomInt=max=>max-1;
  a2.lines.length=0;b.lines.length=0;
- const body={game:'SLOTS',choice:'SPIN',amount:100,rulesRevision:3,_wire:'zlib',_delta:true},result=ok(a,'arcade.play',body,'ARCADE-SLOT-REPLAY-01');
+ const body={game:'SLOTS',choice:'SPIN',amount:100,rulesRevision:4,_wire:'zlib',_delta:true},result=ok(a,'arcade.play',body,'ARCADE-SLOT-REPLAY-01');
  assert.equal(result.result.symbol,'SEVEN');assert.deepEqual(result.result.reels.map(reel=>reel.id),['SEVEN','SEVEN','SEVEN']);assert.equal(result.stats.played,1);assert.equal(result.stats.matched,1);assert.deepEqual(result.lastResult,result.result);
  assert.equal(result.result.betAmount,100);assert.equal(result.result.payout,6000);assert.equal(result.result.net,5900);assert.equal(result.wallet.balance,14810);assert.equal(result.result.balance,14810);assert.equal(result.wallet.revision,s.DB().revision);
  for(const peer of [a2,b]){
@@ -44,7 +44,7 @@ try{
  for(const extra of [{balance:100},{points:100},{chips:10},{payout:100},{accountId:other}])assert.equal(request(a,'arcade.play',{...body,...extra}).reason,'INPUT_INVALID');
  assert.equal(request(a,'arcade.play',{...body,amount:0}).reason,'AMOUNT_INVALID');
  assert.equal(request(a,'arcade.play',{game:'SLOTS',choice:'SPIN'}).reason,'ARCADE_RULES_CHANGED','old clients cannot settle invisible or unconfirmed bets');
- const after=ok(a2,'arcade.play',{game:'ROULETTE',choice:'RED',amount:100,rulesRevision:3});assert.equal(after.result.number,36);assert.equal(after.stats.played,1);assert.equal(after.wallet.balance,14910);
+ const after=ok(a2,'arcade.play',{game:'ROULETTE',choice:'RED',amount:100,rulesRevision:4});assert.equal(after.result.number,36);assert.equal(after.stats.played,1);assert.equal(after.wallet.balance,14910);
  assert.equal(ok(a,'arcade',{game:'SLOTS'}).stats.played,1);assert.deepEqual(untouched(),initial);
  // Existing wallet adjustments and later game rounds stay authoritative even
  // when a previous successful request is retried after its reply was lost.
@@ -59,5 +59,18 @@ try{
  a.c.biometricVerified=false;assert.equal(request(a,'arcade.play',body).reason,'MEMBER_AUTH_REQUIRED');a.c.biometricVerified=true;
  s.ProfileById(owner).blocked=true;assert.equal(request(a,'arcade.play',body).reason,'ACCOUNT_BLOCKED');s.ProfileById(owner).blocked=false;
  assert.deepEqual(untouched(),initial);
- console.log('FIX48 ARCADE FLOW PASS: signed immediate virtual settlement, same-account multi-device replay/rate guard, notifications, private wallet, forged inputs, authentication, wallet consistency and restart-safe fresh balance with immutable prior result.');
+ // Revision 4 number wagers use available virtual balance across devices.
+ s.Atomic(()=>s.Ledger(s.ProfileById(owner),4000000,'TEST_ADJUSTMENT','FIX50-NUMBER-FUND'));
+ clock+=300;crypto.randomInt=max=>{assert.equal(max,37);return 36;};
+ const numberBody={game:'ROULETTE',choice:'NUMBER_36',amount:4000000,rulesRevision:4,_wire:'zlib',_delta:true};
+ const numberRound=ok(a,'arcade.play',numberBody,'FIX50-NUMBER-REPLAY');assert.equal(numberRound.result.payout,144000000);assert.equal(numberRound.wallet.balance,144022810);
+ crypto.randomInt=()=>assert.fail('same-account replay cannot sample another outcome');
+ assert.deepEqual(ok(a2,'arcade.play',numberBody,'FIX50-NUMBER-REPLAY'),numberRound);
+ s.Atomic(()=>s.Ledger(s.ProfileById(owner),1000,'TEST_ADJUSTMENT','FIX50-POST-NUMBER'));
+ const persisted=JSON.parse(fs.readFileSync(require('../config/config').DB_FILE,'utf8'));s.Import(persisted);
+ const numberRetry=ok(a2,'arcade.play',numberBody,'FIX50-NUMBER-REPLAY');assert.deepEqual(numberRetry.result,numberRound.result);assert.equal(numberRetry.wallet.balance,144023810);assert.equal(numberRetry.wallet.revision,s.DB().revision);
+ assert.equal(ok(a,'home').profile.balance,144023810);assert.equal(ok(a,'rewards').profile.balance,144023810);
+ assert.equal(Object.values(s.DB().ledger).filter(row=>row.reference===numberRound.result.id).length,2,'number round has exactly one debit and one payout after restart and retry');
+ assert.deepEqual(untouched(),initial);
+ console.log('FIX48/FIX50 ARCADE FLOW PASS: signed immediate virtual settlement, same-account multi-device replay/rate guard, notifications, private wallet, forged inputs, authentication, wallet consistency and restart-safe fresh balance with immutable prior result.');
 }finally{Date.now=oldNow;crypto.randomInt=oldRandom;fs.rmSync(dir,{recursive:true,force:true});}

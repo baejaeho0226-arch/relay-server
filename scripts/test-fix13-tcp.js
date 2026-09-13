@@ -61,7 +61,7 @@ async function reply(peer,c,id,action){
  apk.send(request(c,'TCPME0002','me'));result=await reply(apk,c,'TCPME0002','me');assert.equal(result.body.data.profile.balance,10000);assert.equal(result.body.data.orders.total,0);
  apk.send(request(c,'TCPBUY001','profile.save',purchase));result=await reply(apk,c,'TCPBUY001','profile.save');assert.equal(result.body.ok,true);const changed=result.body.data;assert.equal(changed.profile.nickname,'통신 테스트');
  apk.send(request(c,'TCPBUY001','profile.save',purchase));assert.deepEqual((await reply(apk,c,'TCPBUY001','profile.save')).body.data,changed);
- for(let n=0;n<12;n++)hub.AdminWrite('news.save',{title:'소식 '+n,category:'UPDATE',body:'가'.repeat(4500),published:true},'TEST');
+ for(let n=0;n<12;n++)hub.AdminWrite('news.save',{title:'소식 '+n,category:'NOTICE',body:'가'.repeat(4500),published:true},'TEST');
  apk.send(request(c,'TCPNEWS01','news'));result=await reply(apk,c,'TCPNEWS01','news');assert.equal(result.body.data.total,12);assert.equal(result.body.data.items[0].body.length,4500);assert.ok(result.chunks>1);
  const sqlite=require('../storage/sqliteDatabase');sqlite.Close();const persisted=sqlite.LoadSnapshot().data.memberHub;
  assert.equal(Object.values(persisted.profiles).find(p=>p.id===profile.id).balance,10000);assert.equal(Object.keys(persisted.orders).length,0);assert.equal(Object.keys(persisted.operations).length,1);

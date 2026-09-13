@@ -18,7 +18,8 @@ try{
  assert.equal(run(a,'me').profile.balance,10000);assert.equal(run(a,'me').topups,undefined);assert.equal(run(a,'me').settings,undefined);assert.deepEqual(run(a,'home').settings,{});
  const snapshot=structuredClone(s.DB());s.Import({memberHub:snapshot});assert.deepEqual(s.DB().topups,snapshot.topups);assert.deepEqual(s.DB().ledger,snapshot.ledger);
  // Only opening a published, authorized article marks that specific revision as read.
- const n1=admin('news.save',{title:'소식 1',body:'첫 내용',category:'NOTICE',published:true});const n2=admin('news.save',{title:'소식 2',body:'다른 내용',category:'UPDATE',published:true});
+ const n1=admin('news.save',{title:'소식 1',body:'첫 내용',category:'NOTICE',published:true});const n2=admin('news.save',{title:'소식 2',body:'다른 내용',category:'NOTICE',published:true});
+ s.Atomic(()=>{s.DB().news[n2.id].category='UPDATE';});assert.equal(run(a,'news').items.find(x=>x.id===n2.id).category,'NOTICE','legacy news remains visible under NOTICE');
  const privateNews=admin('news.save',{title:'개인 알림',body:'비공개 내용',category:'ALERT',audience:pa.id,published:true});
  assert.ok(run(a,'news').items.every(x=>x.unread));run(a,'news');assert.ok(run(a,'news').items.every(x=>x.unread));
  run(a,'article',{id:n1.id});assert.equal(run(a,'news').items.find(x=>x.id===n1.id).unread,false);assert.equal(run(a,'news').items.find(x=>x.id===n2.id).unread,true);assert.equal(run(b,'news').items.find(x=>x.id===n1.id).unread,true);

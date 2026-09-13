@@ -44,7 +44,9 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  await click(content.querySelector('[data-member-action="lookup.back"]'));await click(content.querySelector('[data-member-action="profile.edit"]'));
  const handle=w.document.querySelector('[data-modal-field="handle"]');assert.equal(handle.value,'dom_member');assert.ok(w.document.querySelector('#modal').textContent.includes('30일'));
  w.document.querySelector('[data-modal-field="handle"]').value='cannot_change_again';w.document.querySelector('#modal-confirm').click();await wait();assert.equal(store.Handle(store.ProfileById(account.id)),'dom_member');
- assert.equal(w.memberCategoryTone('레이싱 / PC'),'blue');assert.equal(w.memberCategoryTone('UPDATE'),'blue');assert.equal(w.memberCategoryTone('리듬'),'pink');
+ for(const [view,category,label] of [['products','레이싱 / PC','레이싱 / PC'],['news','UPDATE','공지'],['products','리듬','리듬']]){
+  const table=w.document.createElement('tbody');table.innerHTML=w.memberRow({id:'CATEGORY',title:'분류 확인',genre:category,category,accessType:'TYPE1',plans:[]},view);const categoryLabel=table.querySelector('.member-category-label');assert.equal(categoryLabel.textContent,label);assert.equal(categoryLabel.querySelector('svg').getAttribute('stroke'),'currentColor');assert.equal(categoryLabel.querySelector('svg').getAttribute('fill'),'none');assert.equal(table.querySelector('.member-category-badge,[data-category-tone]'),null);
+ }
  assert.equal(errors.length,0,errors.join('\n'));
- console.log('FIX22 ADMIN DOM PASS: exact @handle search, all twelve dossier sections, phone and biometric cards, safe text, paging, profile limits in real API, shared genre colors');
+ console.log('FIX22 ADMIN DOM PASS: exact @handle search, all twelve dossier sections, phone and biometric cards, safe text, paging, profile limits in real API, plain monochrome genre/news SVG labels');
 }finally{dom.window.close();fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
