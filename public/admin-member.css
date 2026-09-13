@@ -76,3 +76,5 @@ body,main,#content,.table-wrap,.modal-body { scrollbar-color:#b6b6b6 #f4f4f4; sc
 .member-quote-preview{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--panel-2);color:var(--text)}.member-quote-preview>strong,.member-quote-preview>b{display:block;margin:4px 0}.member-quote-preview>div{white-space:pre-wrap;overflow-wrap:anywhere}
 
 .member-policy{border:1px solid var(--line);border-radius:16px;padding:18px;margin:12px 0}.member-policy h4{margin:0 0 10px}
+
+.member-game-icon{display:flex;align-items:center;width:26px;height:26px;margin-bottom:8px;padding:0;border:0;background:transparent;color:inherit}.member-game-icon svg{width:24px;height:24px}
