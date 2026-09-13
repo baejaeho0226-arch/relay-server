@@ -1,8 +1,8 @@
 {
   "webAdminVersion": "5.0.1",
-  "uiRevision": "fix43",
+  "uiRevision": "fix45",
   "files": {
-    "index.html": "21cf209863ab2c7e70a48fea0e575f712d268a2f0226f544e37df7c7a9ba64e6",
+    "index.html": "a0d39ee263195420439003714edb693064776844cb60a9b5d7a75476fb1853f4",
     "admin.css": "155d685b90472fae0909c42d58031fbfde1f3cc9d29c3b5429f05b582ae0f1a2",
     "admin-theme.css": "62f6ea85fae20540d82195d92cc965342d972a87a49228d2c969cbda84d7bc8b",
     "admin-appearance.css": "19f7a687c8eaa6dcf3caffb82956efab81abea142cd992a9fcd62787c5d3e3ed",
@@ -11,7 +11,7 @@
     "admin-controls.js": "c2425b2f3808f940c3a78244c9631ab3b2065ae5a168d2aeca8f094a3d972986",
     "admin-navigation.css": "b4dfe7add02b3459ccafe03bf048b6f705c2cdd97e15a2fa57c30135e5ade104",
     "admin-i18n.js": "dbf870f79f0242fb2b688419807aebcdba0f737f0d8e21a40a8f5929dabf9929",
-    "admin.js": "9ef1e04bf76d99ce1210b0248af9c0195670ffeb46f9fc72321026c6c56954d6",
+    "admin.js": "ff8b958ba41905f7c44c481562dc255cd32ab87a749432777229b439f7272fc6",
     "admin-navigation.js": "91919e287d821d82ba4414c7853391c32ec927a8ac13b4a465df6a9c48d84508",
     "admin-pages-monitoring.js": "8ec770a183e43f4c54bfde09016417fa2862056e333a7ae1c7d0d33b6bf779c5",
     "admin-terminal.js": "7ebfcbe23fed621000c1412d3ef60c517908fb312c0a8113a820cc07f058fe84",
@@ -39,13 +39,13 @@
     "admin-actions.js": "3c857707aa93c117a4d6f9e782c6031efdbd039368b8b6a794f26f1d615e31ee",
     "admin-pages-member.js": "6907f54b5a997299841b18af95f1120c1146e7620a8fd9e0bf69a6879158d58b",
     "admin-member-actions.js": "7947430b567d258a48fa980ce89771aae20503fe9337c8667dcc3eadc48930b3",
-    "admin-member-rewards.js": "6dc80c3d1febf2a0ecc6fce922c680be6dbac2a242e6bce6d37b261c71efd481",
+    "admin-member-rewards.js": "76a979cf6965a50dbde09a0cae7c3f6ac9044b62bba665d278d91585e6f29561",
     "icons/moaplay.svg": "3100594e711ff9988a6ead51036390785048fb2357ac8e96ee8e89ccf857f63c",
     "admin-member.css": "0e75efecbc0b97db924a268048245836035ca6ed6cf8d770e1aa1f5769bb91b1",
     "admin-palette.js": "592501c81ded079397e06e08124163e0bdb7d62c12befb334656e68c1bcbf73c",
     "admin-pages-production.js": "b0c9d7d19b88ab4756849e0c57289c22e57b5f4a61a61eef46566764856653c4",
-    "service-worker.js": "68a6cf024755e9cdaa38bd84feb9c462f2000d23421bcb99a5866a3f48710402",
-    "ui-refresh.html": "1de0916280be15ca16e46e398695391a8c39610bb87ad5ad1a613d6bafcb26d2",
+    "service-worker.js": "7dfa2260f7d322958430e0fb66733bf39ebdff349ca525a3bd6af3eda690c1aa",
+    "ui-refresh.html": "0b43d7dab1acf5ea472c12297209b267b631db6b80e220eafd935ea2883f4e88",
     "ui-refresh.js": "18c00a09bdc6409509b42ce6a7d4e5480d6edd1e7feabcd575aafa6922e42dac"
   }
 }
