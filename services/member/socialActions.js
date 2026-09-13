@@ -18,9 +18,12 @@ function Repost(p,body){
  if(typeof body.value!=='boolean')s.Fail('INPUT_INVALID');
  const db=s.DB(),key=p.id+':'+post.id;
  if(body.value){
-  // A retry, double tap, or a new request for the same state cannot duplicate
-  // the repost or continually move its timestamp. Keep the original post intact.
-  if(!db.reposts[key])db.reposts[key]={id:s.Id('RPS'),accountId:p.id,postId:post.id,at:Date.now()};
+  // Each confirmed action may promote the same post again. Operation() replays
+  // an existing request ID before reaching here, so a network retry never bumps
+  // it twice. Retain one relationship and preserve the original post/content.
+  const at=require('./reposts').NextDirectAt(p);
+  if(db.reposts[key])db.reposts[key].at=at;
+  else db.reposts[key]={id:s.Id('RPS'),accountId:p.id,postId:post.id,at};
  }else delete db.reposts[key];
  return {reposted:!!db.reposts[key],post:require('./social').PublicPost(post,p,false,body._wire==='zlib',body._delta===true)};
 }
