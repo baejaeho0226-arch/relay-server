@@ -37,6 +37,7 @@ function CleanupTransient() {
 }
 
 function DisconnectConnection(connection) {
+    require('../services/member/testAccess').Revoke(connection);
     require('../services/serviceLifecycle').Forget(connection);
     if (connection.serviceWaiting) { connection.disconnected = true; return; }
     if(connection.disconnected)return;connection.disconnected=true;
