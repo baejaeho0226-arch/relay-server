@@ -1,7 +1,7 @@
 'use strict';
 const s=require('./store'),social=require('./social'),extra=require('./socialActions');
 function Ids(value){if(value===undefined)return [];if(!Array.isArray(value)||value.length>64||value.some(x=>typeof x!=='string'||x.length>80))s.Fail('INPUT_INVALID');return [...new Set(value)];}
-function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s.Handle(p),nickname:p.nickname,bio:p.bio,pronouns:p.pronouns||'',posts:require('./commerce').OwnPostRows(p).length,isFollowing:require('./follows').IsFollowing(viewer.id,p.id),profileRevision:p.profileRevision||p.avatarRevision||0,...(p.id===viewer.id?{preferences:require('./preferences').Read(p)}:{}),...require('./follows').Counts(p.id)};}
+function Profile(p,viewer){if(!p||p.blocked)return null;return {id:p.id,handle:s.Handle(p),nickname:p.nickname,nicknameColor:p.nicknameColor||'',titleBadge:require('./badges').Public(p),bio:p.bio,pronouns:p.pronouns||'',posts:require('./commerce').OwnPostRows(p).length,isFollowing:require('./follows').IsFollowing(viewer.id,p.id),profileRevision:p.profileRevision||p.avatarRevision||0,...(p.id===viewer.id?{preferences:require('./preferences').Read(p)}:{}),...require('./follows').Counts(p.id)};}
 function Scope(p,action,query={}){
  if(action==='popular')return social.FeedRows(p,{sort:'popular'}).slice(0,10).map(x=>x.id+'/'+(x.revision||0));
  if(action==='feed')return s.Page(social.FeedRows(p,query),query,8).items.map(x=>x.id+'/'+(x.revision||0));

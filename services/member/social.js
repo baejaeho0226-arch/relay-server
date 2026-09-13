@@ -22,7 +22,29 @@ function AvatarThumb(value){
  for(let quality=82;quality>=22;quality-=12){const encoded=require('jpeg-js').encode({width,height,data},quality).data;if(encoded.length<=12000)return 'data:image/jpeg;base64,'+encoded.toString('base64');}
  return '';
 }
-function SaveProfile(p,body){const revision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1;const nickname=s.Text(body.nickname,24,true),now=Date.now();if(nickname!==p.nickname){if(p.nicknameChangedAt&&now<p.nicknameChangedAt+30*86400000)s.Fail('NICKNAME_COOLDOWN');p.nickname=nickname;p.nicknameChangedAt=now;}if(body.handle!==undefined){const handle=s.NormalizeHandle(body.handle);if(handle!==s.Handle(p)){if(p.handleChangedAt)s.Fail('HANDLE_LOCKED');if(s.Resolve(handle))s.Fail('HANDLE_TAKEN');p.handle=handle;p.handleChangedAt=now;}}p.bio=s.Text(body.bio,160);if(body.pronouns!==undefined)p.pronouns=s.Text(body.pronouns,40);if(body.gender!==undefined){if(!['MALE','FEMALE','UNDISCLOSED'].includes(body.gender))s.Fail('INPUT_INVALID');p.gender=body.gender;}if(body.avatar!==undefined){p.avatar=Avatar(body.avatar);p.avatarThumb=AvatarThumb(p.avatar);p.avatarRevision++;}p.profileRevision=revision;return {profile:s.PublicProfile(p,true),publicProfile:s.PublicProfile(p)};}
+function SaveProfile(p,body){
+ const revision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1,now=Date.now();
+ // Validate the complete edit before changing a name or consuming an entitlement.
+ const nickname=s.Text(body.nickname,24,true),bio=s.Text(body.bio,160);
+ const pronouns=body.pronouns===undefined?p.pronouns:s.Text(body.pronouns,40);
+ const gender=body.gender===undefined?p.gender:body.gender;
+ if(body.gender!==undefined&&!['MALE','FEMALE','UNDISCLOSED'].includes(gender))s.Fail('INPUT_INVALID');
+ let handle;
+ if(body.handle!==undefined){
+  handle=s.NormalizeHandle(body.handle);
+  if(handle!==s.Handle(p)){if(p.handleChangedAt)s.Fail('HANDLE_LOCKED');if(s.Resolve(handle))s.Fail('HANDLE_TAKEN');}
+ }
+ let avatar,avatarThumb;
+ if(body.avatar!==undefined){avatar=Avatar(body.avatar);avatarThumb=AvatarThumb(avatar);}
+ if(nickname!==p.nickname){
+  if(p.nicknameChangedAt&&now<p.nicknameChangedAt+30*86400000)require('./customization').Consume(p,'nicknameTickets','NICKNAME_TICKET',nickname);
+  p.nickname=nickname;p.nicknameChangedAt=now;
+ }
+ if(handle!==undefined&&handle!==s.Handle(p)){p.handle=handle;p.handleChangedAt=now;}
+ p.bio=bio;if(pronouns!==undefined)p.pronouns=pronouns;if(gender!==undefined)p.gender=gender;
+ if(body.avatar!==undefined){p.avatar=avatar;p.avatarThumb=avatarThumb;p.avatarRevision++;}
+ p.profileRevision=revision;return {profile:s.PublicProfile(p,true),publicProfile:s.PublicProfile(p)};
+}
 function Author(id){const p=s.ProfileById(id);return p?s.PublicProfile(p):{id,nickname:'탈퇴 회원',avatar:''};}
 function NewsRows(p,body={}){return Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at);}
 function NewsUnread(p,x){return (p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1);}

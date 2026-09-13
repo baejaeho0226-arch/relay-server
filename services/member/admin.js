@@ -21,6 +21,8 @@ function Counter(row){
 }
 function Read(body={}){
     const db=s.DB(),view=body.view||'overview';
+    if(view==='pointConversions')return require('./points').Admin(body);
+    if(view==='shop')return require('./customization').Admin(body);
     if(view==='rewards')return require('./rewards').Admin(body);
     if(view==='policies')return require('./documents').AdminRead();
     if(view==='lookup'){const p=s.Resolve(body.handle||body.id||body.q);if(!p)s.Fail('MEMBER_NOT_FOUND');return require('./identity').Read(p,body,true);}
@@ -58,6 +60,8 @@ function Content(body,actor){
     });
 }
 function Write(action,body,actor){
+    if(action==='points.reverse')return require('./points').Reverse(body,actor);
+    if(action==='shop.save')return require('./customization').SaveRules(body,actor);
     if(action==='rewards.save')return require('./rewards').SaveRules(body,actor);
     if(action==='policy.save')return require('./documents').Save(body,actor);
     if(action==='charge.scan')return require('./charges').Scan(body);
