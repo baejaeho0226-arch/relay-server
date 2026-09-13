@@ -27,8 +27,33 @@ try{
  assert.equal(run(b,'feed').items[0].id,source.id,'existing repost time promotes the original in the latest feed');
  assert.equal(run(b,'thread',{postId:source.id}).post.myRepost,false,'repost state belongs to the authenticated viewer');
  assert.deepEqual(run(a,'repost.set',body,requestId),result,'replaying the same operation returns its committed result');
- const repeated=run(a,'repost.set',body);assert.equal(repeated.post.reposts,1);assert.equal(repeated.post.repostedBy.at,result.post.repostedBy.at);
- assert.equal(Object.keys(s.DB().reposts).length,1,'different request IDs cannot duplicate a self repost');
+ const directId=s.DB().reposts[key].id,realNow=Date.now,clock=Date.now()+2;
+ Date.now=()=>clock;
+ try{
+  s.Atomic(()=>{s.ProfileById(pb.id).last_post=0;});
+  const intervening=run(b,'post.create',{body:'다시 리포스트하기 전에 작성한 최신 글'}).post;
+  assert.equal(run(b,'feed').items[0].id,intervening.id);
+  let lastAt=result.post.repostedBy.at;
+  for(let i=0;i<12;i++){
+   const repeatId='FIX53-REPOST-REPEAT-'+i,repeated=run(a,'repost.set',body,repeatId);
+   assert.equal(repeated.post.reposts,1);
+   assert.ok(repeated.post.repostedBy.at>lastAt,'each new confirmation advances time even in the same clock millisecond');
+   assert.equal(s.DB().reposts[key].id,directId,'repeated promotions retain the single relationship');
+   assert.equal(run(b,'feed',{sort:'latest'}).items[0].id,source.id,'confirmed repost is immediately first in the latest feed');
+   const committedAt=s.DB().reposts[key].at;
+   assert.deepEqual(run(a,'repost.set',body,repeatId),repeated);
+   assert.equal(s.DB().reposts[key].at,committedAt,'transport replay cannot promote again');
+   lastAt=repeated.post.repostedBy.at;
+  }
+ }finally{Date.now=realNow;}
+ assert.equal(Object.keys(s.DB().reposts).length,1,'different confirmations cannot create duplicate repost rows');
+ assert.deepEqual(s.DB().posts[source.id],original,'unlimited promotions preserve the original content, poll, and time');
+ const latestAt=s.DB().reposts[key].at;
+ assert.deepEqual(run(a,'repost.set',body,requestId),result,'an old receipt remains immutable after later promotions');
+ assert.equal(s.DB().reposts[key].at,latestAt,'an old network retry cannot rewind the latest timestamp');
+ run(a,'react',{postId:newer.id,value:1});
+ assert.equal(run(b,'feed',{sort:'popular'}).items[0].id,newer.id,'reposting changes recency but does not manufacture popularity');
+ assert.equal(run(b,'feed',{sort:'latest'}).items[0].id,source.id);
  assert.throws(()=>run(a,'repost.set',{...body,value:false},requestId),/REQUEST_REUSED/);
  assert.throws(()=>run(a,'repost.set',{postId:source.id,value:1}),/INPUT_INVALID/);
  assert.throws(()=>run(b,'repost.set',{postId:source.id,value:true}),/REPOST_COMPOSE_REQUIRED/);
@@ -40,8 +65,12 @@ try{
  const compact=run(a,'repost.set',{...body,_delta:true});
  assert.equal(compact.partial,true);assert.equal(compact.post.myRepost,true);assert.equal(compact.post.reposts,2);
  assert.equal(compact.post.repostedBy.id,pa.id);assert.equal(compact.post.author,undefined);
- const save=database.SaveDatabase;database.SaveDatabase=()=>false;
- try{assert.throws(()=>run(a,'repost.set',{postId:source.id,value:false}),/STORAGE_SAVE_FAILED/);}finally{database.SaveDatabase=save;}
+ const save=database.SaveDatabase,committedRepost=structuredClone(s.DB().reposts[key]);database.SaveDatabase=()=>false;
+ try{
+  assert.throws(()=>run(a,'repost.set',body),/STORAGE_SAVE_FAILED/);
+  assert.deepEqual(s.DB().reposts[key],committedRepost,'failed persistence cannot change an existing repost timestamp');
+  assert.throws(()=>run(a,'repost.set',{postId:source.id,value:false}),/STORAGE_SAVE_FAILED/);
+ }finally{database.SaveDatabase=save;}
  assert.ok(s.DB().reposts[key],'failed persistence rolls back repost removal');
  s.Atomic(()=>{s.DB().posts[source.id].hidden=true;});
  assert.throws(()=>run(a,'repost.set',body),/POST_NOT_FOUND/);
@@ -53,7 +82,7 @@ try{
  assert.throws(()=>run(b,'thread',{postId:source.id}),/POST_NOT_FOUND/);
  run(a,'block.set',{id:pb.id,blocked:false});
  assert.equal(database.ImportDatabaseObject(database.BuildDatabaseObject()),true);
- assert.equal(run(a,'thread',{postId:source.id}).post.repostedBy.at,result.post.repostedBy.at,'repost survives storage reload');
+ assert.equal(run(a,'thread',{postId:source.id}).post.repostedBy.at,compact.post.repostedBy.at,'latest repost promotion survives storage reload');
  const removed=run(a,'repost.set',{postId:source.id,value:false});assert.equal(removed.reposted,false);assert.equal(removed.post.reposts,1);
  assert.equal(run(a,'repost.set',{postId:source.id,value:false}).post.reposts,1,'idempotent removal preserves another member quote');
  database.SaveDatabase=()=>false;
@@ -67,5 +96,5 @@ try{
  assert.equal(ownQuoteRepost.quote.id,newer.id,'an owned quote preserves its source after direct repost');
  run(a,'post.delete',{id:source.id});assert.throws(()=>run(a,'repost.set',body),/POST_NOT_FOUND/);
  assert.equal(s.DB().posts[quote.id].deleted,false,'deleting the source does not remove the other member quote');
- console.log('FIX52 SELF REPOST PASS: owner-only direct action, original content/time, feed ordering, compact response, retry/double-tap idempotency, composer compatibility, visibility/blocks, persistence and rollback.');
+ console.log('FIX53 SELF REPOST PASS: repeated owner confirmations, same-millisecond latest promotion, one relationship, immutable network retries, original content/time, compact response, composer compatibility, visibility/blocks, persistence and rollback.');
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
