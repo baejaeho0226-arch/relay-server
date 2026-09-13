@@ -11,17 +11,16 @@ function Execute(c,requestId,action,body={}){
  const p=s.Account(c);if(p.blocked)s.Fail('ACCOUNT_BLOCKED');
  if(action==='records')s.Fail('ADMIN_ONLY');
  if(action.startsWith('topup.')||action.startsWith('coin.'))s.Fail('TOPUP_UNAVAILABLE');
- const read={rewards:()=>require('./rewards').Read(p,body),activity:()=>require('./home').Activity(p,body),mycomments:()=>require('./activity').Comments(p,body),policies:()=>require('./documents').Read(body),preferences:()=>({preferences:require('./preferences').Read(p),profile:s.PublicProfile(p,true)}),live:()=>require('./live').Read(p,body),gif:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,gif:require('./gifMedia').Public(post,true)}};},photo:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,image:post.image||''}};},gifs:()=>require('./gifs').List(),bookmarks:()=>require('./socialActions').Bookmarks(p,body),blocks:()=>require('./socialActions').Blocks(p,body),member:()=>require('./profiles').Read(p,body),follows:()=>require('./follows').List(p,body),charge:()=>require('./charges').Read(p),product:()=>commerce.Product(body,p),article:()=>social.Article(p,body),home:()=>require('./identity').Home(p),news:()=>social.News(p,body),catalog:()=>({...commerce.Catalog(body,p),profile:s.PublicProfile(p,true)}),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
+ const read={popular:()=>social.Popular(p,body),rewards:()=>require('./rewards').Read(p,body),activity:()=>require('./home').Activity(p,body),mycomments:()=>require('./activity').Comments(p,body),policies:()=>require('./documents').Read(body),preferences:()=>({preferences:require('./preferences').Read(p),profile:s.PublicProfile(p,true)}),live:()=>require('./live').Read(p,body),gif:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,gif:require('./gifMedia').Public(post,true)}};},photo:()=>{const post=require('./socialActions').Post(p,body.id);return {photo:{id:post.id,image:post.image||''}};},gifs:()=>require('./gifs').List(),bookmarks:()=>require('./socialActions').Bookmarks(p,body),blocks:()=>require('./socialActions').Blocks(p,body),member:()=>require('./profiles').Read(p,body),follows:()=>require('./follows').List(p,body),charge:()=>require('./charges').Read(p),product:()=>commerce.Product(body,p),article:()=>social.Article(p,body),home:()=>require('./identity').Home(p),news:()=>social.News(p,body),catalog:()=>({...commerce.Catalog(body,p),profile:s.PublicProfile(p,true)}),me:()=>commerce.Mine(p,body),feed:()=>social.Feed(p,body),thread:()=>social.Thread(p,body)};
  if(read[action]){
   // Validate visibility (and explicit detail opens) before accepting a cached revision.
   const data=read[action]();
   if(action==='live')return {...data,memberProtocol:35};
-  if(['feed','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:35};
+  if(['feed','popular','thread','bookmarks'].includes(action)&&body._since===s.DB().revision)return {unchanged:true,revision:s.DB().revision,memberProtocol:35};
   return {...data,viewer:s.PublicProfile(p),memberProtocol:35,revision:s.DB().revision};
  }
  const mutations={
-  'points.recharge':()=>require('./points').Convert(p,body,'recharge'),
-  'points.exchange':()=>require('./points').Convert(p,body,'exchange'),
+  'points.exchange':()=>require('./points').Exchange(p,body),
   'attendance.check':()=>require('./rewards').Check(p),
   'event.spin':()=>require('./rewards').Spin(p,body),
   'block.set':()=>require('./socialActions').Block(p,body),
