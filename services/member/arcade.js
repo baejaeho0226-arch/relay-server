@@ -1,15 +1,25 @@
 'use strict';
 const crypto=require('node:crypto'),s=require('./store');
-const GAMES=Object.freeze({BACCARAT:'바카라',ROULETTE:'룰렛'});
-const CHOICES=Object.freeze({BACCARAT:['PLAYER','BANKER','TIE'],ROULETTE:['RED','BLACK','GREEN']});
+const GAMES=Object.freeze({BACCARAT:'바카라',ROULETTE:'룰렛',SLOTS:'슬롯'});
+const CHOICES=Object.freeze({BACCARAT:['PLAYER','BANKER','TIE'],ROULETTE:['RED','BLACK','GREEN'],SLOTS:['SPIN']});
+const SLOT_SYMBOLS=Object.freeze([
+ Object.freeze({id:'CHERRY',label:'체리'}),Object.freeze({id:'LEMON',label:'레몬'}),
+ Object.freeze({id:'GRAPE',label:'포도'}),Object.freeze({id:'BELL',label:'종'}),
+ Object.freeze({id:'STAR',label:'별'}),Object.freeze({id:'SEVEN',label:'7'})
+]);
 const RED=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
-const MIN_INTERVAL_MS=1200;
-function Rules(){return {revision:1,free:true,rewards:false,redeemable:false,minIntervalMs:MIN_INTERVAL_MS};}
+// Shared app credits only. These rules never receive money or provide cash-out.
+const MIN_INTERVAL_MS=300,MAX_BALANCE=100000000,MIN_BET=100,MAX_BET=100000,BET_STEP=100,RULES_REVISION=3;
+function Rules(){return {revision:RULES_REVISION,mode:'VIRTUAL_BALANCE',currency:'BALANCE',virtual:true,free:false,rewards:true,redeemable:false,
+ chips:[100,500,1000,5000,10000],minBet:MIN_BET,maxBet:MAX_BET,step:BET_STEP,minIntervalMs:MIN_INTERVAL_MS,
+ paytable:{BACCARAT:{PLAYER:{numerator:2,denominator:1},BANKER:{numerator:195,denominator:100},TIE:{numerator:9,denominator:1},tiePush:true},
+ ROULETTE:{RED:2,BLACK:2,GREEN:36},SLOTS:{PAIR:1,TRIPLE:12,SEVEN_TRIPLE:60}},payoutIncludesStake:true};}
 function Game(value){if(typeof value!=='string'||!Object.hasOwn(GAMES,value))s.Fail('INPUT_INVALID');return value;}
-function Stats(value={}){return {played:value.played||0,matched:value.matched||0,score:value.score||0,streak:value.streak||0,bestStreak:value.bestStreak||0};}
+function Stats(value={}){return {played:value.played||0,matched:value.matched||0,score:value.score||0,streak:value.streak||0,bestStreak:value.bestStreak||0,totalStaked:value.totalStaked||0,totalPayout:value.totalPayout||0,netWin:value.netWin||0};}
+function Wallet(p){return {accountId:p.id,revision:s.DB().revision,balance:p.balance,points:p.points||0,eventSpins:p.eventSpins||0};}
 function Read(p,body={}){
  const game=Game(body.game||'BACCARAT'),record=p.arcade?.[game]||{};
- return {mode:'FREE_DEMO',game,rules:Rules(),games:Object.entries(GAMES).map(([id,name])=>({id,name,stats:Stats(p.arcade?.[id]),lastResult:structuredClone(p.arcade?.[id]?.lastResult||null)})),
+ return {mode:'VIRTUAL_BALANCE',virtual:true,redeemable:false,game,wallet:Wallet(p),rules:Rules(),games:Object.entries(GAMES).map(([id,name])=>({id,name,stats:Stats(p.arcade?.[id]),lastResult:structuredClone(p.arcade?.[id]?.lastResult||null)})),
   stats:Stats(record),lastResult:structuredClone(record.lastResult||null),history:structuredClone(record.history||[])};
 }
 function Card(id){
@@ -17,7 +27,7 @@ function Card(id){
  return {rank,suit:['SPADE','HEART','DIAMOND','CLUB'][suitIndex],value:rankIndex<9?rankIndex+1:0,label:rank+['♠','♥','♦','♣'][suitIndex]};
 }
 function Total(hand){return hand.reduce((sum,card)=>sum+card.value,0)%10;}
-// Standard punto-banco third-card tableau. Card rules only; no wagers or payouts.
+// Standard punto-banco third-card tableau for the virtual-credit simulation.
 // https://massgaming.com/wp-content/uploads/RULES-Baccarat-10-08-2020.pdf section 11.
 function BankerDraw(total,third){
  if(third===null)return total<=5;
@@ -36,21 +46,62 @@ function Baccarat(){
  return {player,banker,playerTotal,bankerTotal,winner:playerTotal>bankerTotal?'PLAYER':playerTotal<bankerTotal?'BANKER':'TIE'};
 }
 function Roulette(){const number=crypto.randomInt(37);return {number,color:number===0?'GREEN':RED.has(number)?'RED':'BLACK'};}
+function Slots(){
+ // Each of the six symbols has equal independent probability on each reel.
+ const reels=Array.from({length:3},()=>({...SLOT_SYMBOLS[crypto.randomInt(SLOT_SYMBOLS.length)]}));
+ return {reels,symbol:reels.every(reel=>reel.id===reels[0].id)?reels[0].id:null};
+}
+function Settlement(game,choice,amount,outcome){
+ let payout=0,matched=false;
+ if(game==='BACCARAT'){
+  matched=choice===outcome.winner;
+  if(matched)payout=choice==='BANKER'?amount*195/100:amount*(choice==='TIE'?9:2);
+  else if(outcome.winner==='TIE'&&choice!=='TIE')payout=amount;
+ }else if(game==='ROULETTE'){
+  matched=choice===outcome.color;if(matched)payout=amount*(choice==='GREEN'?36:2);
+ }else{
+  const count=new Set(outcome.reels.map(reel=>reel.id)).size;
+  matched=count<3;
+  if(count===2)payout=amount;
+  else if(count===1)payout=amount*(outcome.reels[0].id==='SEVEN'?60:12);
+ }
+ if(!Number.isSafeInteger(payout)||payout<0)s.Fail('AMOUNT_INVALID');
+ return {matched,payout,net:payout-amount};
+}
 function Play(p,body={}){
- // These games cannot consume or create redeemable balances, points or turns.
- // Accept only the prediction and transport fields; even amount:0 is rejected.
- if(Object.keys(body).some(key=>!['game','choice','_wire','_delta'].includes(key)))s.Fail('ARCADE_DEMO_ONLY');
+ if(!body||typeof body!=='object'||Array.isArray(body))s.Fail('INPUT_INVALID');
+ // Identity, wallet, result, payout and RNG input always come from the server.
+ if(Object.keys(body).some(key=>!['game','choice','amount','rulesRevision','_wire','_delta'].includes(key)))s.Fail('INPUT_INVALID');
  const game=Game(body.game),choice=body.choice;
  if(!CHOICES[game].includes(choice))s.Fail('INPUT_INVALID');
+ if(body.rulesRevision!==RULES_REVISION)s.Fail('ARCADE_RULES_CHANGED');
+ const amount=s.Money(body.amount,MIN_BET,MAX_BET);if(amount%BET_STEP!==0)s.Fail('AMOUNT_INVALID');
+ if(!Number.isSafeInteger(p.balance)||p.balance<0||p.balance>MAX_BALANCE)s.Fail('BALANCE_INVALID');
+ if(p.balance<amount)s.Fail('ARCADE_BALANCE_REQUIRED');
+ // Reserve enough headroom for every possible result before sampling. A cap
+ // rejection must never selectively discard a win or reroll an existing round.
+ const maxPayout=game==='BACCARAT'&&choice==='BANKER'?(amount/100)*195:
+  amount*(game==='SLOTS'?60:game==='ROULETTE'?(choice==='GREEN'?36:2):(choice==='TIE'?9:2));
+ if(p.balance-amount+maxPayout>MAX_BALANCE)s.Fail('ARCADE_BALANCE_LIMIT');
  const now=Date.now();if(p.arcadePlayedAt&&now-p.arcadePlayedAt<MIN_INTERVAL_MS)s.Fail('ARCADE_WAIT');
- const outcome=game==='BACCARAT'?Baccarat():Roulette();
- const matched=choice===(game==='BACCARAT'?outcome.winner:outcome.color),scoreEarned=matched?1:0;
- const result={id:s.Id('PLAY'),game,choice,at:now,matched,scoreEarned,...outcome};
  const old=p.arcade?.[game]||{},stats=Stats(old);
- for(const key of ['played','matched','score','streak','bestStreak'])if(!Number.isSafeInteger(stats[key])||stats[key]<0)s.Fail('INPUT_INVALID');
+ for(const key of Object.keys(stats))if(!Number.isSafeInteger(stats[key])||(key!=='netWin'&&stats[key]<0))s.Fail('INPUT_INVALID');
  if(stats.played>=100000000)s.Fail('ARCADE_WAIT');
- stats.played++;stats.matched+=scoreEarned;stats.score+=scoreEarned;stats.streak=matched?stats.streak+1:0;stats.bestStreak=Math.max(stats.bestStreak,stats.streak);
+ const outcome=game==='BACCARAT'?Baccarat():game==='ROULETTE'?Roulette():Slots();
+ const settled=Settlement(game,choice,amount,outcome),scoreEarned=settled.matched?1:0;
+ const result={id:s.Id('PLAY'),game,choice,at:now,virtual:true,redeemable:false,rulesRevision:RULES_REVISION,
+  betAmount:amount,...settled,status:settled.net>0?'WIN':settled.net===0?'PUSH':'LOSS',scoreEarned,...outcome};
+ stats.played++;stats.matched+=scoreEarned;stats.score+=scoreEarned;stats.streak=settled.matched?stats.streak+1:0;stats.bestStreak=Math.max(stats.bestStreak,stats.streak);
+ stats.totalStaked+=amount;stats.totalPayout+=settled.payout;stats.netWin+=settled.net;
+ for(const value of Object.values(stats))if(!Number.isSafeInteger(value))s.Fail('AMOUNT_INVALID');
+ // Execute wraps debit, payout, stats and replay receipt in Operation.
+ // A zero payout is still an explicit linked settlement row for auditability.
+ const bet=s.Ledger(p,-amount,'ARCADE_BET',result.id),payout=s.Ledger(p,settled.payout,'ARCADE_PAYOUT',result.id);
+ Object.assign(bet,{game,virtual:true,redeemable:false});Object.assign(payout,{game,virtual:true,redeemable:false});
+ result.balance=p.balance;result.betId=bet.id;result.payoutId=payout.id;
  p.arcade={...p.arcade,[game]:{...stats,lastResult:result,history:[result,...(old.history||[])].slice(0,10)}};p.arcadePlayedAt=now;
- return {...Read(p,{game}),result:structuredClone(result)};
+ const response={...Read(p,{game}),result:structuredClone(result)};
+ response.wallet.revision=s.DB().revision+1; // Revision assigned by the enclosing Operation commit.
+ return response;
 }
-module.exports={Read,Play,BankerDraw};
+module.exports={Read,Play,Wallet,BankerDraw,Settlement};
