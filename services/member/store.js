@@ -61,7 +61,10 @@ function Operation(account,requestId,action,body,fn,extras=[]){
  return Atomic(()=>{const result=fn();DB().operations[key]={fingerprint,result,at:Date.now()};return result;},extras);
 }
 function Ledger(p,amount,kind,reference){
- const next=p.balance+amount;if(!Number.isSafeInteger(next)||next<0||next>100000000)Fail('BALANCE_INVALID');
+ // Virtual app balance uses the complete exact-integer range; individual
+ // commerce actions and points retain their own amount limits.
+ if(!Number.isSafeInteger(p.balance)||p.balance<0||!Number.isSafeInteger(amount))Fail('BALANCE_INVALID');
+ const next=p.balance+amount;if(!Number.isSafeInteger(next)||next<0)Fail('BALANCE_INVALID');
  p.balance=next;const id=Id('PAY');const row={id,accountId:p.id,amount,balance:next,kind,reference,at:Date.now()};DB().ledger[id]=row;return row;
 }
 module.exports={Handle,NormalizeHandle,Resolve,Subject,DB,Empty,Import,Fail,Text,Money,Id,Account,ProfileById,PublicProfile,ViewCount,Page,Atomic,Operation,Ledger};

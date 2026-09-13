@@ -46,7 +46,8 @@ function SaveProfile(p,body){
  p.profileRevision=revision;return {profile:s.PublicProfile(p,true),publicProfile:s.PublicProfile(p)};
 }
 function Author(id){const p=s.ProfileById(id);return p?s.PublicProfile(p):{id,nickname:'탈퇴 회원',avatar:''};}
-function NewsRows(p,body={}){return Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||x.category===body.category)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at);}
+function NewsCategory(value){return value==='UPDATE'?'NOTICE':value;}
+function NewsRows(p,body={}){return Object.values(s.DB().news).filter(x=>!x.deleted&&x.published&&(!x.publishAt||x.publishAt<=Date.now())&&(!x.audience||x.audience===p.id)&&(!body.category||NewsCategory(x.category)===body.category)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.at-a.at);}
 function NewsUnread(p,x){return (p.readNews?.[x.id]||((p.readNewsAt||0)>=x.at?(x.revision||1):0))<(x.revision||1);}
 function UnreadNewsCount(p){return NewsRows(p).filter(x=>NewsUnread(p,x)).length;}
 function PublicNews(row,summary=false){
@@ -54,7 +55,7 @@ function PublicNews(row,summary=false){
  // media in storage for recovery, but do not send it to old or current clients.
  const keys=['id','title','category','published','pinned','audience','deleted','revision','at','publishAt','updatedAt','updatedBy'];
  if(!summary)keys.push('body');
- return Object.fromEntries(keys.filter(key=>row[key]!==undefined).map(key=>[key,row[key]]));
+ return Object.fromEntries(keys.filter(key=>row[key]!==undefined).map(key=>[key,key==='category'?NewsCategory(row[key]):row[key]]));
 }
 function News(p,body={}){
  return s.Page(NewsRows(p,body).map(x=>({...PublicNews(x,!!body.summary),views:s.ViewCount('news',x.id),unread:NewsUnread(p,x)})),body);
@@ -73,7 +74,7 @@ function EditPost(p,body){
  return {post:PublicPost(post,p,false,body._wire==='zlib'),quoteSource:require('./reposts').Delta(post,p,body._wire==='zlib'),quoteSources:oldQuote&&oldQuote!==post.quotePostId?[require('./reposts').Delta({quotePostId:oldQuote},p,body._wire==='zlib')].filter(Boolean):[]};
 }
 function NewsAudience(value){const text=s.Text(value,40);if(!text.startsWith('@'))return text;const member=s.Resolve(text);if(!member)s.Fail('MEMBER_NOT_FOUND');return member.id;}
-function SaveNews(body){const id=body.id||s.Id('NEWS');if(body.id&&!s.DB().news[id])s.Fail('NEWS_NOT_FOUND');const previous=s.DB().news[id];if(previous&&body.revision!==undefined&&body.revision!==(previous.revision||0))s.Fail('CONTENT_CHANGED');const category=s.Text(body.category,20);if(!['UPDATE','NOTICE','EVENT','ALERT'].includes(category))s.Fail('CATEGORY_INVALID');const row={...previous,id,deleted:previous?.deleted||false,revision:(previous?.revision||0)+1,title:s.Text(body.title,90,true),body:s.Text(body.body,5000,true),category,published:body.published===true,pinned:body.pinned===true,audience:NewsAudience(body.audience),at:Date.now(),publishAt:0};return s.Atomic(()=>{s.DB().news[id]=row;return PublicNews(row);});}
+function SaveNews(body){const id=body.id||s.Id('NEWS');if(body.id&&!s.DB().news[id])s.Fail('NEWS_NOT_FOUND');const previous=s.DB().news[id];if(previous&&body.revision!==undefined&&body.revision!==(previous.revision||0))s.Fail('CONTENT_CHANGED');const requested=s.Text(body.category===undefined?previous?.category:body.category,20),category=previous?.category==='UPDATE'?NewsCategory(requested):requested;if(!['NOTICE','ALERT','EVENT'].includes(category))s.Fail('CATEGORY_INVALID');const row={...previous,id,deleted:previous?.deleted||false,revision:(previous?.revision||0)+1,title:s.Text(body.title,90,true),body:s.Text(body.body,5000,true),category,published:body.published===true,pinned:body.pinned===true,audience:NewsAudience(body.audience),at:Date.now(),publishAt:0};return s.Atomic(()=>{s.DB().news[id]=row;return PublicNews(row);});}
 function VisiblePost(id){const post=s.DB().posts[id];if(!post||post.deleted||post.hidden)s.Fail('POST_NOT_FOUND');return post;}
 function PublicPost(post,p,detail=false,sharp=false,compact=false,depth=0){const reactions=Object.values(s.DB().reactions).filter(x=>x.postId===post.id);return {id:post.id,title:post.title||'',body:post.body,quotePostId:post.quotePostId||'',quote:compact?undefined:require('./reposts').Public(post,p,sharp,depth),poll:extra.Poll(post,p),gif:compact?undefined:require('./gifMedia').Public(post,false,sharp),bookmarked:extra.Bookmarked(p,'post',post.id),...extra.RepostInfo(post,p),imagePosition:post.imagePosition==='before'?'before':'after',image:compact?undefined:detail?(post.image||''):(sharp?require('./media').FeedImage(post):require('./media').LegacyFeedImage(post)),at:post.at,updatedAt:post.updatedAt||post.at,revision:post.revision||0,views:s.ViewCount('post',post.id),author:compact?undefined:Author(post.accountId),own:post.accountId===p.id,following:require('./follows').IsFollowing(p.id,post.accountId),likes:reactions.filter(x=>x.value===1).length,myReaction:reactions.find(x=>x.accountId===p.id)?.value===1?1:0,comments:Object.values(s.DB().comments).filter(x=>x.postId===post.id&&!x.deleted&&!x.hidden&&!extra.Blocked(p.id,x.accountId)&&!s.ProfileById(x.accountId)?.blocked).length};}
 function FeedRows(p,body){

@@ -1,21 +1,24 @@
 'use strict';
 const s=require('./store'),state=require('../../core/state'),plans=require('./gamePlans');
-function PublicGame(p,detail=false){return {...(detail?{image:p.image||'',details:require('./media').GameDetails(undefined,p.details)}:{details:Object.fromEntries(['releaseDate','developer','publisher','genre','ageRating','language','platform'].map(k=>[k,p.details?.[k]||'']))}),imagePreview:p.imageFeed||p.imageThumb||'',imageThumb:p.imageThumb||'',id:p.id,title:p.title,description:p.description,accessType:p.accessType,plans:plans.Plans(p),published:p.published,deleted:p.deleted,sort:p.sort,revision:p.revision,updatedAt:p.updatedAt,views:s.ViewCount('product',p.id)};}
+function PublicGame(p){return {id:p.id,title:p.title,description:p.description,genre:p.genre||p.details?.genre||'기타',accessType:p.accessType,plans:plans.Plans(p),published:p.published,deleted:p.deleted,sort:p.sort,revision:p.revision,updatedAt:p.updatedAt,views:s.ViewCount('product',p.id)};}
 function Catalog(body={},viewer){
  const rows=Object.values(s.DB().products).filter(p=>p.published&&!p.deleted&&(!body.category||p.accessType===body.category))
   .sort((a,b)=>a.sort-b.sort||b.updatedAt-a.updatedAt);
  return s.Page(rows.map(p=>{
   const item={...PublicGame(p),unread:!!viewer&&(viewer.readProducts?.[p.id]||0)<(p.revision||1)};
-  if(body.summary===true)delete item.description;
+  if(body.summary===true)item.description=String(p.description||'').replace(/\s+/g,' ').trim().slice(0,140);
   return item;
  }),body);
 }
-function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');if(p){if((p.readProducts?.[row.id]||0)<(row.revision||1))s.Atomic(()=>{p.readProducts||={};p.readProducts[row.id]=row.revision||1;});require('./views').Article(p,row,'product');}return {product:{...PublicGame(row,true),unread:false},...(p?{profile:s.PublicProfile(p,true)}:{})};}
+function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');if(p){if((p.readProducts?.[row.id]||0)<(row.revision||1))s.Atomic(()=>{p.readProducts||={};p.readProducts[row.id]=row.revision||1;});require('./views').Article(p,row,'product');}return {product:{...PublicGame(row),unread:false},...(p?{profile:s.PublicProfile(p,true)}:{})};}
 function SaveProduct(body){
  const id=body.id?s.Text(body.id,40):s.Id('PRD'),previous=s.DB().products[id];if(body.id&&!previous)s.Fail('PRODUCT_NOT_FOUND');
  const accessType=s.Text(body.accessType,16);if(!['TYPE1','TYPE2','TYPE3'].includes(accessType))s.Fail('ACCESS_TYPE_INVALID');
  if(previous&&body.revision!==undefined&&body.revision!==(previous.revision||0))s.Fail('CONTENT_CHANGED');
- const row={...require('./media').PostFields(body.image,previous),details:require('./media').GameDetails(body.details,previous?.details),id,deleted:previous?.deleted||false,revision:(previous?.revision||0)+1,title:s.Text(body.title,70,true),description:s.Text(body.description,1500),accessType,plans:plans.Validate(body.plans,previous),published:body.published===true,sort:Number.isInteger(body.sort)?body.sort:0,updatedAt:Date.now()};
+ const genre=s.Text(body.genre===undefined?(previous?.genre||previous?.details?.genre||'게임'):body.genre,50,true);
+ // Retired photos and details stay untouched in storage; current saves only edit
+ // the text, genre and purchase settings exposed by PublicGame.
+ const row={...previous,id,deleted:previous?.deleted||false,revision:(previous?.revision||0)+1,title:s.Text(body.title,70,true),description:s.Text(body.description,1500),genre,accessType,plans:plans.Validate(body.plans,previous),published:body.published===true,sort:Number.isInteger(body.sort)?body.sort:0,updatedAt:Date.now()};
  return s.Atomic(()=>{s.DB().products[id]=row;return PublicGame(row);});
 }
 function PublicOrder(row){const {licenseKey,...result}=row;if(result.status!=='REFUNDED'&&result.expiresAt>0&&result.expiresAt<=Date.now())result.status='EXPIRED';return result;}
