@@ -44,6 +44,7 @@ function IsBlocked(connection) {
     return !!(r && r.blockedAt);
 }
 function Disconnect(connection, reason = 'REINSTALL_NOT_ALLOWED') {
+    require('./member/testAccess').Revoke(connection);
     connection.reinstallBlocked = true;
     connection.connected = false;
     connection.deviceAuthVerified = false;

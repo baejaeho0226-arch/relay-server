@@ -27,6 +27,7 @@ function Forget(connection) {
 }
 function Park(connection) {
   if (!connection || !connection.socket || connection.socket.destroyed) return;
+  require('./member/testAccess').Revoke(connection);
   const first = !waiting.has(connection);
   connection.serviceWaiting = true;
   connection.registered = false;

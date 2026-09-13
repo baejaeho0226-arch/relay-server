@@ -1,7 +1,7 @@
 "use strict";
 const s=require('./store');
 const visibility=['PUBLIC','FOLLOWING','PRIVATE'];
-const defaults={profilePostsPrivate:false,profilePostsVisibility:'PUBLIC',balanceRankingVisible:true,purchaseActivityVisible:true,notifyApproval:true,notifyRelease:true,language:'ko'};
+const defaults={profilePostsPrivate:false,profilePostsVisibility:'PUBLIC',balanceRankingVisible:true,purchaseActivityVisible:true,notifyApproval:true,notifyRelease:true,notifyFollowers:false,notifyFollowing:false,notifyComments:false,notifyPosts:false,language:'ko'};
 function Visibility(p){return visibility.includes(p.profilePostsVisibility)?p.profilePostsVisibility:p.profilePostsPrivate===true?'PRIVATE':'PUBLIC';}
 function Read(p){
  const result=Object.fromEntries(Object.entries(defaults).map(([key,value])=>[key,typeof p[key]===typeof value?p[key]:value]));
@@ -30,4 +30,7 @@ function CanReadPosts(viewer,target){
  const audience=Visibility(target);
  return audience==='PUBLIC'||(audience==='FOLLOWING'&&require('./follows').IsFollowing(target.id,viewer.id));
 }
-module.exports={Read,Save,CanReadPosts};
+const notificationKeys={FOLLOW:'notifyFollowers',FOLLOWER:'notifyFollowers',SOCIAL_FOLLOW:'notifyFollowers',FOLLOWING:'notifyFollowing',SOCIAL_FOLLOWING:'notifyFollowing',COMMENT:'notifyComments',REPLY:'notifyComments',SOCIAL_COMMENT:'notifyComments',POST:'notifyPosts',SOCIAL_POST:'notifyPosts'};
+function NotificationKey(category){return notificationKeys[String(category||'').trim().toUpperCase()]||'';}
+function NoticeAllowed(p,category){const key=NotificationKey(category);return !key||!!p&&Read(p)[key];}
+module.exports={Read,Save,CanReadPosts,NotificationKey,NoticeAllowed};

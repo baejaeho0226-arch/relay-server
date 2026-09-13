@@ -13,11 +13,13 @@ function NeedsApproval(c) {
     return !!saved && saved.permissionsReapprovalRequired === true;
 }
 function Reset(c) {
+    require('./member/testAccess').Revoke(c);
     c.permissionsGranted = false;
     c.permissionSequence = 0;
     c.permissionMask = -1;
 }
 function Revoke(c) {
+    require('./member/testAccess').Revoke(c);
     c.permissionsGranted = false;
     c.licenseAuthorized = false;
     c.licenseKey = '';

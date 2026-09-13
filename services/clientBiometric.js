@@ -69,6 +69,7 @@ function NotifyAuthorized(connection, accessType) {
         .GetUsableLicenseForConnection(connection);
     if (!active) {
         connection.biometricVerified = false;
+        require('./member/testAccess').Revoke(connection);
         SendLine(connection.socket, 'BIOMETRIC_ERROR|LICENSE_REQUIRED');
         return false;
     }
@@ -174,6 +175,7 @@ function Reset(clientId, actor = 'WEB_ADMIN') {
     state.clientBiometricProfiles.delete(clientId);
     state.clientBiometricChallenges.delete(clientId);
     const connection = state.clients.get(clientId);
+    require('./member/testAccess').Revoke(connection);
     if (connection && connection.connected && connection.socket &&
         !connection.socket.destroyed) {
         connection.biometricVerified = false;
