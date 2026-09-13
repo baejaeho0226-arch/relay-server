@@ -72,7 +72,8 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  store.Atomic(()=>{store.Ledger(store.ProfileById(pa.id),50000,'QR_TOPUP','TEST-CREDIT');store.Ledger(store.ProfileById(pb.id),5000,'TOPUP','TEST-OTHER');store.Ledger(store.ProfileById(pc.id),5000,'QR_TOPUP','CREDIT-ONLY');});
  const game=commerce.SaveProduct({title:'게임 이용권',description:'구매 테스트',accessType:'TYPE1',published:true,plans:[{days:7,price:1200}]});
  const purchase={...fast,productId:game.id,days:7,price:1200,revision:game.revision};
- const orders=[];for(let i=0;i<4;i++)orders.push((await run(a,'purchase',purchase)).order);
+ // Different products retain separate states; repeat purchases of one game now merge.
+ const orders=[];for(let i=0;i<4;i++){const product=i===0?game:commerce.SaveProduct({title:game.title,description:'독립 이용권 상태 테스트',accessType:'TYPE1',published:true,plans:[{days:7,price:1200}]});orders.push((await run(a,'purchase',{...purchase,productId:product.id,revision:product.revision})).order);}
  const otherOrder=(await run(b,'purchase',purchase)).order;
  const now=Date.now();
  store.Atomic(()=>{

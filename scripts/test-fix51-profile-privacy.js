@@ -1,0 +1,60 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
+const temp=fs.mkdtempSync(path.join(os.tmpdir(),'moaplay-fix51-profiles-'));
+process.env.DATA_DIR=temp;process.env.STORAGE_ENGINE='json';require('../core/utils').EnsureDirs();
+const state=require('../core/state'),s=require('../services/member/store'),hub=require('../services/member/service'),lm=require('../license/licenseManager');
+let serial=0;
+function client(n){
+ const id=String(n).repeat(16),key='FIX51-PROFILE-'+n;
+ const c={type:'client',clientId:id,connected:true,permissionsGranted:true,deviceAuthVerified:true,licenseAuthorized:true,biometricVerified:true,installationDeviceKey:key,deviceAuthChallengeId:'AUTH-'+id,socket:{destroyed:false,write(){return true;}}};
+ state.clients.set(id,c);state.clientIdentities.set(key,{id,serverId:'',createdAt:Date.now()});state.deviceAuthStatus.set('CLIENT:'+id,{verified:true,verifiedAt:Date.now()});state.deviceSecrets.set('CLIENT:'+id,crypto.randomBytes(32).toString('hex'));
+ c.licenseKey=lm.CreateLicense(900,'출입증',['QR'],'QR').key;state.licenses.get(c.licenseKey).boundClient=id;return c;
+}
+const run=(c,action,body={})=>hub.Execute(c,'FIX51-PROFILES-'+(++serial),action,body);
+try{
+ const a=client(1),b=client(2),c=client(3),pa=run(a,'me').profile,pb=run(b,'me').profile,pc=run(c,'me').profile;
+ s.Atomic(()=>{s.ProfileById(pa.id).attendance={count:7};s.ProfileById(pa.id).balance=12345;s.ProfileById(pb.id).attendance={count:30};});
+ run(a,'badge.select',{id:'ATTENDANCE_7'});
+ const remote=run(b,'badges',{profileId:pa.id});
+ assert.equal(remote.readOnly,true);assert.equal(remote.own,false);assert.equal(remote.profile.id,pa.id);assert.equal(remote.selected,'ATTENDANCE_7');
+ assert.deepEqual(remote.items.map(x=>x.id),['ATTENDANCE_7']);assert.ok(remote.items.every(x=>x.earned&&x.progress===undefined));
+ for(const key of ['balance','points','inventory','eventSpins','preferences','subject','createdAt'])assert.equal(remote.profile[key],undefined,key+' must remain private');
+ assert.throws(()=>run(b,'badge.select',{id:'ATTENDANCE_7',profileId:pa.id}),/NOT_OWNER/);
+ assert.throws(()=>run(b,'badge.select',{id:'',profileId:pa.id}),/NOT_OWNER/);
+ assert.equal(s.ProfileById(pa.id).titleBadgeId,'ATTENDANCE_7');assert.equal(s.ProfileById(pb.id).titleBadgeId,undefined);
+ const own=run(a,'badges',{profileId:pa.id});assert.equal(own.readOnly,false);assert.equal(own.items.length,5);assert.equal(own.profile.balance,12345);
+ run(a,'badge.select',{id:'',profileId:pa.id});assert.equal(run(a,'badges').selected,'');
+ assert.throws(()=>run(b,'badges',{profileId:'missing'}),/MEMBER_NOT_FOUND/);
+ run(a,'follow.set',{id:pb.id,following:true});
+ const ownRow=run(a,'follows',{id:pb.id,mode:'followers'}).items.find(x=>x.id===pa.id);assert.equal(ownRow.own,true);assert.equal(ownRow.isFollowing,false);
+ assert.throws(()=>run(a,'follow.set',{id:pa.id,following:true}),/INPUT_INVALID/);
+ const publicPost=run(c,'post.create',{body:'공개 게시글'}).post;
+ const hiddenPost=run(b,'post.create',{body:'숨겨질 게시글'}).post;
+ const now=Date.now();
+ s.Atomic(()=>{
+  s.DB().posts[hiddenPost.id].hidden=true;
+  for(let i=0;i<12;i++)s.DB().comments['COM-FIX51-'+String(i).padStart(2,'0')]={id:'COM-FIX51-'+String(i).padStart(2,'0'),accountId:pa.id,postId:publicPost.id,body:'댓글 '+i,at:now+i,revision:0,hidden:false,deleted:false};
+  s.DB().comments['COM-FIX51-HIDDEN-POST']={id:'COM-FIX51-HIDDEN-POST',accountId:pa.id,postId:hiddenPost.id,body:'비공개 원글의 댓글',at:now+20};
+  s.DB().comments['COM-FIX51-DELETED']={id:'COM-FIX51-DELETED',accountId:pa.id,postId:publicPost.id,body:'삭제 댓글',deleted:true,at:now+21};
+  s.DB().comments['COM-FIX51-HIDDEN']={id:'COM-FIX51-HIDDEN',accountId:pa.id,postId:publicPost.id,body:'숨긴 댓글',hidden:true,at:now+22};
+ });
+ const query={id:pa.id,postCards:true,commentsOnly:true,offset:0,limit:8};
+ const page=run(b,'member',query);assert.equal(page.comments.total,12);assert.equal(page.comments.items.length,8);assert.equal(page.posts.items.length,0);
+ assert.ok(page.comments.items.every(x=>x.own===false&&x.postId===publicPost.id&&x.postTitle==='공개 게시글'));
+ assert.equal(run(a,'member',query).comments.items.every(x=>x.own),true);
+ const second=run(b,'member',{...query,offset:8});assert.equal(second.comments.items.length,4);assert.equal(new Set([...page.comments.items,...second.comments.items].map(x=>x.id)).size,12);
+ assert.deepEqual(run(b,'live',{scope:'member',query}).scope,page.comments.items.map(x=>x.id+'/'+x.revision));
+ run(a,'preferences.save',{profilePostsVisibility:'PRIVATE'});
+ assert.equal(run(b,'member',query).profilePostsHidden,true);assert.equal(run(b,'member',query).comments.total,0);assert.deepEqual(run(b,'live',{scope:'member',query}).scope,[]);
+ assert.equal(run(a,'member',query).comments.total,12);
+ run(a,'preferences.save',{profilePostsVisibility:'FOLLOWING'});
+ assert.equal(run(b,'member',query).comments.total,12,'the profile owner follows this viewer');
+ assert.equal(run(c,'member',query).comments.total,0,'unapproved viewer remains restricted');
+ run(a,'preferences.save',{profilePostsVisibility:'PUBLIC'});
+ run(b,'block.set',{id:pc.id,blocked:true});assert.equal(run(b,'member',query).comments.total,0,'comments cannot reveal a blocked original post');
+ run(b,'block.set',{id:pc.id,blocked:false});
+ run(a,'block.set',{id:pb.id,blocked:true});
+ assert.throws(()=>run(b,'badges',{profileId:pa.id}),/MEMBER_NOT_FOUND/);assert.throws(()=>run(b,'member',query),/MEMBER_NOT_FOUND/);
+ assert.deepEqual(run(b,'live',{scope:'member',query}).scope,['unavailable']);
+ console.log('FIX51 PROFILE PRIVACY PASS: public earned badges, owner-only selection, viewer identity, self-follow marker, member comment paging/live scope, audience restrictions and blocks.');
+}finally{fs.rmSync(temp,{recursive:true,force:true});}

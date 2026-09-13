@@ -13,10 +13,13 @@ try{
  const product=service.AdminWrite('product.save',{title:'테일즈런너 30일',accessType:'TYPE1',description:'서버 상품',price:5000,days:30,stock:2,published:true},'ADMIN');
  assert.equal(run(a,'catalog').items.length,1);
  assert.throws(()=>run(a,'purchase',{productId:product.id,expectedPrice:5000}),/GAME_PLAN_INVALID/);
+ // Independent legacy products retain independent activation/refund states.
+ // Same-game legacy duplicates are covered by test-fix51-game-durations.
+ const refundProduct=service.AdminWrite('product.save',{title:'미사용 기존 게임',accessType:'TYPE1',description:'독립 환불 검증',published:false},'ADMIN');
  // Existing purchases remain refundable/usable; new game purchases are disabled.
  store.Atomic(()=>{
   store.Ledger(store.Account(a),5000,'TOPUP','EXISTING_BALANCE_FIXTURE');
-  for(const id of ['OLD-ORDER-1','OLD-ORDER-2'])store.DB().orders[id]={id,accountId:pa.id,productId:product.id,title:'기존 이용권',accessType:'TYPE1',days:30,amount:5000,status:'PAID',at:Date.now(),activatedAt:0,expiresAt:0,licenseKey:''};
+  for(const id of ['OLD-ORDER-1','OLD-ORDER-2'])store.DB().orders[id]={id,accountId:pa.id,productId:id==='OLD-ORDER-1'?product.id:refundProduct.id,title:'기존 이용권',accessType:'TYPE1',days:30,amount:5000,status:'PAID',at:Date.now(),activatedAt:0,expiresAt:0,licenseKey:''};
  });
  const key=require('../license/licenseManager').CreateLicense(0,'출입증',['QR'],'QR').key;state.licenses.get(key).boundClient=a.clientId;a.licenseKey=key;
  assert.throws(()=>run(b,'order.activate',{orderId:'OLD-ORDER-1'}),/ORDER_NOT_FOUND/);

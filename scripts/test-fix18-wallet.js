@@ -40,10 +40,11 @@ try{
  // Wallet funds survive time; only the game's first-use term expires.
  const now=Date.now;Date.now=()=>now()+3650*86400000;
  try{assert.equal(run(a,'me').profile.balance,10000);assert.ok(lm.GetUsableLicenseForConnection(a));}finally{Date.now=now;}
- // Buy each of the four registered durations and refund an unused purchase once.
+ // Buy all four durations into one combined unused pass and refund it once.
  const otherCharge=charges.Read(s.Account(b)),otherRow=s.DB().chargeRequests[otherCharge.request.id],otherScan=charges.Inspect('RCH1.'+otherRow.id+'.'+otherRow.token);
  admin('charge.approve',{id:otherRow.id,approvalToken:otherScan.approvalToken,mode:'WALLET',amount:100000,memo:''});
- for(const plan of game.plans){const result=run(b,'purchase',{productId:game.id,days:plan.days,price:plan.price,revision:game.revision});assert.equal(result.order.days,plan.days);}
+ let combinedDays=0;for(const plan of game.plans){const result=run(b,'purchase',{productId:game.id,days:plan.days,price:plan.price,revision:game.revision});combinedDays+=plan.days;assert.equal(result.order.days,combinedDays);}
+ assert.equal(run(b,'me').orders.total,1);assert.equal(run(b,'me',{purchasesOnly:true}).payments.total,4);
  assert.equal(run(b,'me').profile.balance,61000);
  const unused=run(b,'me').orders.items[0],refunded=admin('order.refund',{id:unused.id,reason:'미사용 취소'});assert.equal(refunded.status,'REFUNDED');const refundBalance=run(b,'me').profile.balance;admin('order.refund',{id:unused.id,reason:'미사용 취소'});assert.equal(run(b,'me').profile.balance,refundBalance);
  const disabled=admin('product.save',{title:'판매 준비',accessType:'TYPE1',published:true});assert.ok(disabled.plans.every(x=>!x.available));assert.throws(()=>run(b,'purchase',{productId:disabled.id,days:1,price:0,revision:disabled.revision}),/GAME_PLAN_UNAVAILABLE/);
