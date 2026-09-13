@@ -13,6 +13,6 @@ function Set(p,body){
 function List(p,body){
  const followers=body.mode==='followers',target=(body.handle||body.id)?s.Resolve(body.handle||body.id):p;if(!target||target.blocked||require('./socialActions').Blocked(p.id,target.id))s.Fail('MEMBER_NOT_FOUND');
  const rows=Object.values(s.DB().follows).filter(x=>followers?x.following===target.id:x.follower===target.id).sort((a,b)=>b.at-a.at).map(x=>s.ProfileById(followers?x.follower:x.following)).filter(x=>x&&!x.blocked&&!require('./socialActions').Blocked(p.id,x.id));
- const page=s.Page(rows,body,12);return {...page,items:page.items.map(x=>({...s.PublicProfile(x),isFollowing:IsFollowing(p.id,x.id)}))};
+ const page=s.Page(rows,body,12);return {...page,items:page.items.map(x=>({...s.PublicProfile(x),own:x.id===p.id,isFollowing:x.id!==p.id&&IsFollowing(p.id,x.id)}))};
 }
 module.exports={IsFollowing,Counts,Set,List};

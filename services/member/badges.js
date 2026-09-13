@@ -12,11 +12,17 @@ function Public(p,known){
  if(!p.titleBadgeId)return null;const row=catalog.find(x=>x.id===p.titleBadgeId);if(!row)return null;
  const metrics=Metrics(p,known);return metrics[row.metric]>=row.target?{id:row.id,title:row.title}:null;
 }
-function Read(p){
- const metrics=Metrics(p),selected=Public(p,metrics)?.id||'';
- return {items:catalog.map(row=>({id:row.id,title:row.title,description:row.description,target:row.target,progress:metrics[row.metric],earned:metrics[row.metric]>=row.target,selected:selected===row.id})),selected,profile:s.PublicProfile(p,true)};
+function Read(viewer,body={}){
+ // A public badge inventory never contains wallet, preferences or unearned progress.
+ const target=body.profileId?require('./profiles').Target(viewer,{id:body.profileId}):viewer;
+ if(!target)s.Fail('MEMBER_NOT_FOUND');
+ const own=target.id===viewer.id,metrics=Metrics(target),selected=Public(target,metrics)?.id||'';
+ let items=catalog.map(row=>({id:row.id,title:row.title,description:row.description,target:row.target,progress:metrics[row.metric],earned:metrics[row.metric]>=row.target,selected:selected===row.id}));
+ if(!own)items=items.filter(row=>row.earned).map(({progress,...row})=>row);
+ return {items,selected,own,readOnly:!own,profileId:target.id,profile:s.PublicProfile(target,own)};
 }
 function Select(p,body){
+ if(body.profileId&&body.profileId!==p.id)s.Fail('NOT_OWNER');
  if(typeof body.id!=='string')s.Fail('INPUT_INVALID');
  if(body.id){const row=catalog.find(x=>x.id===body.id);if(!row||Metrics(p)[row.metric]<row.target)s.Fail('BADGE_UNAVAILABLE');}
  if(p.titleBadgeId!==body.id){p.titleBadgeId=body.id;p.profileRevision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1;}

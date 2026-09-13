@@ -11,6 +11,7 @@ function Scope(p,action,query={}){
   const target=require('./profiles').Target(p,query);
   if(!target)return ['unavailable'];
   if(!require('./preferences').CanReadPosts(p,target))return [];
+  if(query.commentsOnly===true)return s.Page(require('./profiles').CommentRows(p,target),query,12).items.map(x=>x.id+'/'+(x.revision||0));
   return s.Page(require('./commerce').OwnPostRows(target),query,12).items.map(x=>x.id+'/'+(x.revision||0));
  }
  if(action==='thread'){
@@ -41,6 +42,6 @@ function Read(p,body){
   if(JSON.stringify(rows.map(x=>x.id+'/'+(x.revision||0)))!==JSON.stringify(body.knownComments))
    commentPage=require('./commentThreads').Page(p,s.DB().posts[query.postId],query);
  }
- return {posts,comments,profiles:[...profiles.values()],removedPosts,removedComments,scope,commentPage,revision:s.DB().revision};
+ return {activeGame:require('./commerce').ActiveGame(p),posts,comments,profiles:[...profiles.values()],removedPosts,removedComments,scope,commentPage,revision:s.DB().revision};
 }
 module.exports={Read,Scope};

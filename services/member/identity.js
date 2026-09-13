@@ -27,12 +27,12 @@ function ResolveSupport(handle,selected=''){
  if(rooms.length!==1)s.Fail(rooms.length?'MEMBER_DEVICE_SELECT':'SUPPORT_NOT_FOUND');return rooms[0].clientId;
 }
 function Home(p){
- const db=s.DB(),commerce=require('./commerce'),orders=Object.values(db.orders).filter(x=>x.accountId===p.id).map(commerce.PublicOrder),payments=commerce.PurchasePayments(p);
+ const commerce=require('./commerce'),orders=commerce.OwnOrders(p),payments=commerce.PurchasePayments(p);
  // Recently used passes lead; a newly purchased, unused pass is the fallback.
  const usable=orders.filter(x=>x.status!=='REFUNDED').reverse().sort((a,b)=>Number(!a.activatedAt)-Number(!b.activatedAt)||(b.lastUsedAt||b.activatedAt||b.at)-(a.lastUsedAt||a.activatedAt||a.at));
  const latestPayments=payments;
  const extras=require('./home').Extras(p);
- return {...extras,settings:{},profile:s.PublicProfile(p,true),counts:{...extras.counts,orders:orders.length,payments:payments.length},
+ return {...extras,settings:{},profile:s.PublicProfile(p,true),activeGame:commerce.ActiveGame(p),counts:{...extras.counts,orders:orders.length,payments:payments.length},
   summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:payments.length,posts:extras.counts.posts,unreadNews:require('./social').UnreadNewsCount(p)},
   recentOrders:usable.slice(0,1),recentPayments:latestPayments.slice(0,1),latestPayment:latestPayments[0]||null};
 }
@@ -60,7 +60,7 @@ function Read(p,body={},admin=false){
  const devices=()=>ids.map(id=>{const row=Device(id,rooms);if(!admin)delete row.note;return row;});
  const qr=()=>require('../qrApproval').List().filter(q=>ids.includes(q.clientId)).map(({deviceKey,lastIP,...q})=>q);
  const support=()=>rooms.map(t=>({id:t.clientId,currentClientId:t.currentClientId,status:t.status,mode:t.mode||'HUMAN',at:t.createdAt||t.updatedAt,updatedAt:t.updatedAt,messages:t.messages.length}));
- const sections={devices,qr,support,orders:()=>linked(Object.values(db.orders)).map(require('./commerce').PublicOrder),payments:()=>linked(Object.values(db.ledger)),charges:()=>linked(Object.values(db.chargeRequests)).map(require('./charges').Public),posts:()=>linked(Object.values(db.posts)).map(x=>({id:x.id,body:x.body,at:x.at,hidden:x.hidden,deleted:x.deleted,imageThumb:x.imageThumb||''})),comments:()=>linked(Object.values(db.comments)),reports:()=>linked(Object.values(db.reports)),followers:()=>require('./follows').List(p,{id:p.id,mode:'followers',offset:body.offset,limit:body.limit}),following:()=>require('./follows').List(p,{id:p.id,mode:'following',offset:body.offset,limit:body.limit})};
+ const sections={devices,qr,support,orders:()=>require('./commerce').OwnOrders(p),payments:()=>linked(Object.values(db.ledger)),charges:()=>linked(Object.values(db.chargeRequests)).map(require('./charges').Public),posts:()=>linked(Object.values(db.posts)).map(x=>({id:x.id,body:x.body,at:x.at,hidden:x.hidden,deleted:x.deleted,imageThumb:x.imageThumb||''})),comments:()=>linked(Object.values(db.comments)),reports:()=>linked(Object.values(db.reports)),followers:()=>require('./follows').List(p,{id:p.id,mode:'followers',offset:body.offset,limit:body.limit}),following:()=>require('./follows').List(p,{id:p.id,mode:'following',offset:body.offset,limit:body.limit})};
  if(body.section){
   if(!sections[body.section])s.Fail('INPUT_INVALID');let rows=sections[body.section]();
   if(body.section==='support'&&body.threadId){
