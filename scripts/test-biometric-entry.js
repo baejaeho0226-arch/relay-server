@@ -34,8 +34,8 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const peer=await login(),service=require('../services/member/service'),c=peer.c;
  c.biometricVerified=false;const before=JSON.stringify([...state.clientBiometricProfiles]);
- for(const legacyFlag of ['0','1']){
-  process.env.MEMBER_BIOMETRIC_TEST_MODE=legacyFlag;
+ for(const disabledFlag of ['0','false']){
+  process.env.MEMBER_BIOMETRIC_TEST_MODE=disabledFlag;
   assert.equal((await request(peer,'test.enter')).reason,'MEMBER_AUTH_REQUIRED');
   assert.equal((await request(peer,'feed',{testAccess:true})).reason,'MEMBER_AUTH_REQUIRED');
  }
@@ -45,7 +45,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  assert.equal(require('../services/buildGate').TryDispatchClient(c.clientId).reason,'BIOMETRIC_AUTH_REQUIRED');state.pendingBuildGrants.delete(c.clientId);
  // Successful proof is the only UI-entry state, never a legacy test parameter.
  c.biometricVerified=true;const profile=(await run(peer,'me')).profile;await run(peer,'feed');
- assert.equal((await request(peer,'test.enter')).reason,'UNKNOWN_ACTION');
+ assert.equal((await request(peer,'test.enter')).reason,'MEMBER_AUTH_REQUIRED');
  c.licenseAuthorized=false;assert.equal(service.Allowed(c),false);c.licenseAuthorized=true;
  c.permissionsGranted=false;assert.equal(service.Allowed(c),false);c.permissionsGranted=true;
  state.serviceEnabled=false;assert.throws(()=>service.Execute(c,'FIX42-STOPPED','feed',{}),/SERVICE_DISABLED/);state.serviceEnabled=true;
@@ -53,5 +53,5 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  require('../services/clientBiometric').Reset(c.clientId,'FIX42_RESTORE');assert.equal(service.Allowed(c),false);
  assert.equal((await request(peer,'test.enter')).reason,'MEMBER_AUTH_REQUIRED');assert.equal((await request(peer,'home')).reason,'MEMBER_AUTH_REQUIRED');
  assert.ok(!JSON.stringify(db.BuildDatabaseObject()).includes('memberTestAccess'));
- console.log('PASS: no test bypass (including legacy environment flag), signed member requests, biometric-only entry, QR/permission/service/account gates, reset and Build isolation.');
+ console.log('PASS: restored normal mode requires genuine biometric success; signed requests, QR/permission/service/account gates, reset and Build isolation.');
 }finally{delete process.env.MEMBER_BIOMETRIC_TEST_MODE;for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -54,14 +54,16 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
   assert.equal((await run(a,'home')).attendance.count,2);
   const third=await run(a,'attendance.check',fast);assert.equal(third.attendance.count,3);assert.equal(third.attendance.streak,1);
  }finally{Date.now=now;}
- await run(a,'preferences.save',{...fast,notifyApproval:false,notifyRelease:false,language:'en',profilePostsPrivate:true});
+ await run(a,'preferences.save',{...fast,notifyApproval:false,notifyRelease:false,notifyFollowers:true,notifyFollowing:false,notifyComments:true,notifyPosts:false,language:'en',profilePostsPrivate:true});
  const prefs=(await run(a2,'preferences')).preferences;
  assert.equal(prefs.notifyApproval,false);assert.equal(prefs.language,'en');assert.equal(prefs.profilePostsPrivate,true);
+ assert.equal(prefs.notifyFollowers,true);assert.equal(prefs.notifyFollowing,false);assert.equal(prefs.notifyComments,true);assert.equal(prefs.notifyPosts,false);
  assert.equal((await run(b,'preferences')).preferences.language,'ko');
  assert.equal((await run(a2,'live',{...fast,profiles:[pa.id]})).profiles[0].preferences.language,'en');
  assert.equal((await run(c,'live',{...fast,profiles:[pa.id]})).profiles[0].preferences,undefined,'another member never receives notification/privacy preferences');
  assert.equal((await request(a,'preferences.save',{language:'invalid'})).reason,'INPUT_INVALID');
  assert.equal((await request(a,'preferences.save',{notifyApproval:'false'})).reason,'INPUT_INVALID');
+ assert.equal((await request(a,'preferences.save',{notifyPosts:'false'})).reason,'INPUT_INVALID');
  assert.equal((await request(a,'preferences.save',{})).reason,'INPUT_INVALID');
  const saved=db.SaveDatabase;try{db.SaveDatabase=()=>false;assert.equal((await request(a,'preferences.save',{language:'ko',notifyApproval:true})).reason,'STORAGE_SAVE_FAILED');}finally{db.SaveDatabase=saved;}
  assert.equal((await run(a,'preferences')).preferences.language,'en');
@@ -104,7 +106,7 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  assert.throws(()=>hub.AdminWrite('policy.save',{kind:'terms',body:'덮어쓰기',published:true,revision:0},'TEST'),/CONTENT_CHANGED/);
  hub.AdminWrite('policy.save',{kind:'terms',body:doc.body,published:false,revision:1},'TEST');assert.equal((await run(c,'policies',{kind:'terms'})).document.body,'');
  assert.equal((await request(c,'policies',{kind:'bad'})).reason,'INPUT_INVALID');
- store.Import({memberHub:JSON.parse(JSON.stringify(store.DB()))});assert.equal((await run(a,'preferences')).preferences.language,'en');assert.equal((await run(a2,'home')).attendance.count,3);
+ store.Import({memberHub:JSON.parse(JSON.stringify(store.DB()))});assert.equal((await run(a,'preferences')).preferences.language,'en');assert.equal((await run(a2,'preferences')).preferences.notifyComments,true);assert.equal((await run(a2,'home')).attendance.count,3);
  console.log('FIX39 PASS: signed multi-device check-in, Korean date boundary, retry/rollback, private preferences, real latest/popular/live scopes, multilingual poll limits, popular feed ranking, purchase/privacy/block filters, admin-only documents and persistence.');
  regressionCompleted=true;
 }catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
