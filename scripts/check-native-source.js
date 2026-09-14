@@ -8,6 +8,12 @@ for(const folder of ['MoaPlayApp_Android64','MoaPlayConnect_Win64']){
   const bytes=fs.readFileSync(path.join(base,name));assert.deepEqual([...bytes.subarray(0,3)],[239,187,191],name+' BOM');
   const text=new TextDecoder('utf8',{fatal:true}).decode(bytes);
   for(const match of text.matchAll(/\{\$I\s+([^}]+)\}/gi))assert.ok(fs.existsSync(path.join(base,match[1].trim())),match[1]);
+  // FMX brush enum references need their defining unit in this unit's uses.
+  // This catches the reported E2003 before shipping an amount-control edit.
+  if(name.endsWith('.pas')&&/\bTBrushKind\b/.test(text)){
+   const imports=[...text.matchAll(/\buses\s+([^;]+);/gi)].map(m=>m[1]).join(',');
+   assert.match(imports,/\bFMX\.Graphics\b/i,name+' requires FMX.Graphics for TBrushKind');
+  }
  }
 }
 // Include files declare fields in the same form class: grouped names can
