@@ -16,6 +16,14 @@ function RecentPurchases(p){
  }
  return rows;
 }
+function RecentPointCredits(p){
+ // Filter this account's positive credits before taking the preview limit.
+ // The summary is a projection of committed points, never a second reward grant.
+ return Object.values(s.DB().pointLedger)
+  .filter(row=>row.accountId===p.id&&Number.isSafeInteger(row.amount)&&row.amount>0)
+  .sort((a,b)=>b.at-a.at||(a.id<b.id?1:a.id>b.id?-1:0)).slice(0,3)
+  .map(({id,kind,amount,at})=>({id,kind,amount,at}));
+}
 function TopPurchased(){
  const db=s.DB(),groups=new Map(),orders=new Map();
  // Purchases retain one wallet receipt per payment even when pass durations merge.
@@ -55,7 +63,7 @@ function Extras(p){
  const feed=social.FeedRows(p,{sort:'popular'}),news=social.News(p,{summary:true,limit:1}),games=commerce.Catalog({summary:true,limit:1},p);
  const events=social.News(p,{category:'EVENT',summary:true,limit:1});
  const popular=feed.slice(0,10).map((x,i)=>({id:x.id,rank:i+1,title:x.title||(x.body||'').slice(0,80),author:Person(s.ProfileById(x.accountId)),following:require('./follows').IsFollowing(p.id,x.accountId),own:x.accountId===p.id}));
- return {...require('./history').Read(p),attendance:rewards.Attendance(p),events,news,games,popular,rewards:rewards.Read(p,{limit:3}),recentPurchases:RecentPurchases(p),topPurchased:TopPurchased(),
+ return {...require('./history').Read(p),attendance:rewards.Attendance(p),events,news,games,popular,rewards:rewards.Read(p,{limit:3}),recentPurchases:RecentPurchases(p),recentPointCredits:RecentPointCredits(p),topPurchased:TopPurchased(),
   counts:{news:news.total,catalog:games.total,feed:feed.length,events:events.total,posts:commerce.OwnPostRows(p).length,comments:require('./activity').CommentRows(p).length}};
 }
 module.exports={Day:rewards.Day,Attendance:rewards.Attendance,Check:rewards.Check,Extras,Activity};
