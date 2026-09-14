@@ -52,7 +52,11 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  assert.deepEqual(await run(viewer,'react',reactionBody,req),reaction);assert.equal((await request(viewer,'react',{...reactionBody,value:0},req)).reason,'REQUEST_REUSED');
  const vote=(await run(viewer,'poll.vote',{...fast,postId:post.id,optionId:'1'})).post;assert.equal(vote.poll.myVote,'1');assert.equal(vote.poll.options[1].votes,1);
  const repost=(await run(viewer,'post.create',{...fast,quotePostId:post.id,body:'함께 나눠요'})).post;assert.equal(repost.repostedBy.id,b.id);assert.ok(repost.repostedBy.at>0);
- const saved=await run(viewer,'bookmark.set',{...fast,kind:'post',id:post.id,saved:true});assert.deepEqual(saved,{saved:true,kind:'post',id:post.id});
+ const saved=await run(viewer,'bookmark.set',{...fast,kind:'post',id:post.id,saved:true});
+ const {wallet:bookmarkWallet,...bookmarkReceipt}=saved;assert.deepEqual(bookmarkReceipt,{saved:true,kind:'post',id:post.id});
+ assert.equal(bookmarkWallet.accountId,b.id);assert.equal(bookmarkWallet.points,store.ProfileById(b.id).points);
+ assert.deepEqual(Object.keys(bookmarkWallet).sort(),['accountId','balance','eventSpins','points','revision']);
+ assert.ok(Buffer.byteLength(JSON.stringify(saved))<400,'title rewards preserve a compact wallet-only social reply');
  const comment=(await run(author,'comment.create',{...fast,postId:post.id,body:'댓글'})).comment;
  const heart=(await run(viewer,'comment.react',{...fast,id:comment.id,value:1})).comment;assert.equal(heart.likes,1);assert.equal(heart.postId,post.id);assert.equal(heart.body,undefined);
  await run(author,'post.edit',{...fast,id:post.id,revision:0,title:'빠른 수정',body:'첨부 유지'});assert.equal(store.DB().posts[post.id].image,photo);assert.equal(store.DB().posts[post.id].gifMedia.data,gifData);

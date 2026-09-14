@@ -148,8 +148,12 @@ try{
  const latestStart=ok(a,'casino.start',{...startBody,_delta:true,_wire:'zlib'},'FIX52-WIRE-MINES-START');assert.deepEqual(latestStart.active.revealed,[1]);assert.deepEqual(latestStart.result,activeWire.result);
  const finishedWire=ok(a,'casino.action',{game:'MINES',roundId:activeWireId,action:'CASHOUT'});assert.equal(finishedWire.result.payout,1100);assert.equal(finishedWire.active,null);
  const staleStart=ok(a2,'casino.start',{...startBody,_delta:true,_wire:'zlib'},'FIX52-WIRE-MINES-START');assert.equal(staleStart.active,null);assert.equal(staleStart.lastResult.id,activeWireId);assert.equal(staleStart.wallet.balance,finishedWire.wallet.balance);
- for(const account of [p,m,c,other,rollback]){assert.equal(account().points,432);assert.equal(account().eventSpins,9);}
- for(const key of ['pointLedger','eventSpins','orders','shopPurchases','pointConversions','chargeRequests'])assert.deepEqual(s.DB()[key],{},'casino must not modify '+key);
+ const badgeRows=Object.values(s.DB().pointLedger);
+ for(const account of [p,m,c,other,rollback]){assert.equal(account().points,432+badgeRows.filter(row=>row.accountId===account().id).reduce((total,row)=>total+row.amount,0));assert.equal(account().eventSpins,9);}
+ assert.deepEqual(badgeRows.map(row=>row.accountId+':'+row.reference).sort(),[[m().id,'MINES_1'],[c().id,'CRASH_1'],[rollback().id,'MINES_1'],[rollback().id,'CRASH_1'],[owner,'DICE_1'],[owner,'MINES_1']].map(row=>row.join(':')).sort());
+ for(const row of badgeRows){assert.equal(row.kind,'BADGE_REWARD');assert.equal(row.amount,50);assert.equal(s.DB().pointLedger[row.accountId+':BADGE_REWARD:'+row.reference],row);}
+ assert.equal(s.ProfileById(owner).points,321+badgeRows.filter(row=>row.accountId===owner).reduce((total,row)=>total+row.amount,0));
+ for(const key of ['eventSpins','orders','shopPurchases','pointConversions','chargeRequests'])assert.deepEqual(s.DB()[key],{},'casino must not modify '+key);
  console.log('FIX52 CASINO PASS: dice boundary outcomes, all plinko buckets/risks, private mines and crash rounds, exact server-time settlement, reconnect/expiry, clearing/mine-hit/cashout, account isolation, malformed inputs, safe-integer limits, atomic save rollback, persisted idempotency and signed hub replay with current wallet/active round.');
 }finally{Date.now=oldNow;crypto.randomInt=oldRandom;fs.rmSync(temp,{recursive:true,force:true});}
 function MAX_SAFE(){return Number.MAX_SAFE_INTEGER;}

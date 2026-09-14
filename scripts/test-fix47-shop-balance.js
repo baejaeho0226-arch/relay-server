@@ -25,15 +25,16 @@ try{
  s.Atomic(()=>rewards.Credit(s.ProfileById(member),500,'TEST_REWARD','earned-after-shop-open'));
  const request={itemId:'NICKNAME_TICKET',revision:rules.revision};
  const purchased=run(phone,'shop.purchase',request,'SHOPBALANCE-PURCHASE-01');
- assert.equal(purchased.profile.points,400,'a stale zero snapshot cannot block spending current earned points');
+ assert.equal(purchased.profile.points,450,'a stale zero snapshot cannot block spending current earned points');
  assert.equal(purchased.inventory.nicknameTickets,1);
+ assert.equal(Object.values(s.DB().pointLedger).find(row=>row.accountId===member&&row.kind==='BADGE_REWARD'&&row.reference==='SHOP_PURCHASE_1').amount,50);
  assert.equal(firstSnapshot.profile.points,0,'the scenario really uses an unchanged stale snapshot');
  assert.deepEqual(run(secondPhone,'shop.purchase',request,'SHOPBALANCE-PURCHASE-01'),purchased,'retry on another device never buys a second ticket');
  assert.equal(Object.keys(s.DB().shopPurchases).length,1);
  assert.equal(Object.values(s.DB().pointLedger).filter(row=>row.kind==='SHOP_PURCHASE').length,1);
- assert.equal(run(secondPhone,'shop').profile.points,400,'the other device reads the authoritative remaining points');
+ assert.equal(run(secondPhone,'shop').profile.points,450,'the other device reads the authoritative remaining points');
  // A sufficient-looking old snapshot and forged client balances cannot overspend.
- s.Atomic(()=>rewards.Credit(s.ProfileById(member),-400,'TEST_SPEND','spent-on-second-device'));
+ s.Atomic(()=>rewards.Credit(s.ProfileById(member),-450,'TEST_SPEND','spent-on-second-device'));
  const beforeReject=JSON.stringify(s.DB());
  assert.throws(()=>run(secondPhone,'shop.purchase',{...request,points:purchased.profile.points,profile:purchased.profile}),/INSUFFICIENT_POINTS/);
  assert.equal(JSON.stringify(s.DB()),beforeReject,'insufficient purchase changes no balance, inventory or receipt');

@@ -27,7 +27,7 @@ const implemented=[...units.matchAll(/\b(?:procedure|function)\s+TMoaPlayForm\.(
 assert.equal(new Set(implemented).size,implemented.length,'Duplicate form methods');
 for(const name of declared)assert.ok(implemented.includes(name),'Missing '+name);
 for(const name of implemented)assert.ok(declared.includes(name),'Undeclared '+name);
-for(const [name,type] of [['MoaPlayMemberClient.pas','TMoaPlayMemberClient'],['MoaPlayMemberSwitch.pas','TMoaPlayMemberSwitch'],['MoaPlayMemberMemo.pas','TMoaPlayMemberMemo'],['MoaPlayRewardWheel.pas','TMoaPlayRewardWheel'],['MoaPlayIconPulse.pas','TMoaPlayIconPulse'],['MoaPlayCasinoBoard.pas','TMoaPlayCasinoBoard']])
+for(const [name,type] of [['MoaPlayMemberClient.pas','TMoaPlayMemberClient'],['MoaPlayMemberSwitch.pas','TMoaPlayMemberSwitch'],['MoaPlayMemberMemo.pas','TMoaPlayMemberMemo'],['MoaPlayRewardWheel.pas','TMoaPlayRewardWheel'],['MoaPlayIconPulse.pas','TMoaPlayIconPulse'],['MoaPlayCasinoBoard.pas','TMoaPlayCasinoBoard'],['MoaPlayCasinoAmount.pas','TMoaPlayCasinoAmount']])
  assert.deepEqual(require('./native-declarations').Check(read(name),type),[],name);
 // Cross-layer invariants for the lifecycle bugs: no editor exit saves a partially destroyed form.
 const flow=read('MoaPlayApp.Member.Flow.inc'),motion=read('MoaPlayApp.Member.Motion.inc'),compose=read('MoaPlayApp.Member.Compose.inc'),social=read('MoaPlayApp.Member.Social.inc');
@@ -44,5 +44,21 @@ assert.doesNotMatch(social,/Row\('닫기'/);assert.doesNotMatch(read('MoaPlayApp
 assert.doesNotMatch(read('MoaPlayApp.Member.Feed.inc'),/'reply','reply\|'/);
 assert.match(read('MoaPlayApp.Member.Feed.inc'),/'bubble',HubCount\(HubNumber\(Item,'replies'\)\),'reply\|'/);
 assert.match(social,/GifView\.LoadFrames\(GifData\)/);
+// FIX54: quantity edits keep their editor alive and cannot submit stale text.
+const amount=read('MoaPlayCasinoAmount.pas'),casino=read('MoaPlayApp.Member.Casino.inc'),board=read('MoaPlayCasinoBoard.pas');
+assert.match(amount,/FEdit:=TMoaPlayMemberEdit\.Create/);
+assert.match(amount,/FEdit\.FloatingLabel:=True/);
+assert.match(amount,/FButtons\[High\(FButtons\)\]/,'constructor resize must wait for inline controls');
+assert.match(amount,/FEdit\.OnChange:=nil;FEdit\.OnChangeTracking:=nil;FEdit\.OnExit:=nil/,'teardown detaches editor callbacks');
+assert.match(amount,/not MemberTryBaseAmount\(FEdit\.Text,Value\) then Value:=0/,'invalid text must not reuse previous wager');
+assert.match(amount,/Ceiling:=Ceiling div FStep\*FStep/,'wallet cap respects server stake step');
+assert.match(amount,/if not FEdit\.IsFocused/,'polls preserve active typing and caret');
+assert.doesNotMatch(amount,/HubRender|FreeAndNil\(FEdit\)/,'quantity edits never rebuild the form or editor');
+assert.doesNotMatch(amount+casino,/AbsoluteVisible|DecimalNumberPad/,'use supported FMX visibility and keyboard APIs');
+assert.doesNotMatch(casino,/casino\.chip|casino\.start\.svg/,'originals use quantity inputs and text betting actions');
+assert.match(casino,/ButtonAt\(HubArcadeCaption\('배팅','Bet'\),'casino\.start'/);
+assert.match(casino,/Tile div 3<>HubNumber\(Active,'row'\)/,'tower only sends tiles from the active row');
+for(const game of ['LIMBO','HILO','TOWER'])assert.ok(board.includes("FGame='"+game+"'"),'Missing graphical board '+game);
+assert.match(board,/FTimer\.Enabled:=False;FTimer\.OnTimer:=nil/,'page-owned animation timer is detached');
 require('./check-native-theme').Check(apk);
 console.log('Native source checks passed (encoding, includes, declarations and lifecycle invariants; Delphi compilation not run).');

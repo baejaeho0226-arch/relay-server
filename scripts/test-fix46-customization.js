@@ -36,7 +36,7 @@ const save=db.SaveDatabase;
  db.SaveDatabase=save;assert.equal(JSON.stringify(s.DB()),before);
  b.lines.length=0;a2.lines.length=0;
  const purchase=signed(a,'shop.purchase',{itemId:'NICKNAME_TICKET',revision:rules.revision},'CUSTOM-PURCHASE-01');
- assert.equal(purchase.profile.points,9900);assert.equal(purchase.inventory.nicknameTickets,1);
+ assert.equal(purchase.profile.points,9950);assert.equal(purchase.inventory.nicknameTickets,1);
  assert.deepEqual(run(a2,'shop.purchase',{itemId:'NICKNAME_TICKET',revision:rules.revision},'CUSTOM-PURCHASE-01'),purchase);
  assert.equal(Object.keys(s.DB().shopPurchases).length,1);assert.ok(b.lines.some(x=>x.startsWith('HUB_EVENT|')));assert.ok(a2.lines.some(x=>x.startsWith('HUB_EVENT|')));
  assert.throws(()=>run(b,'shop.purchase',{itemId:'NICKNAME_COLOR',revision:rules.revision,accountId:id}),/INSUFFICIENT_POINTS/);

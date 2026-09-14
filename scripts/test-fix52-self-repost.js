@@ -11,6 +11,12 @@ function client(n){
  c.licenseKey=lm.CreateLicense(900,'출입증',['QR'],'QR').key;state.licenses.get(c.licenseKey).boundClient=id;return c;
 }
 const run=(c,action,body={},requestId='FIX52-REPOST-'+(++sequence))=>hub.Execute(c,requestId,action,body);
+function SameReceipt(actual,expected,p,message){
+ const {wallet:actualWallet,...actualReceipt}=actual,{wallet:expectedWallet,...expectedReceipt}=expected;
+ assert.deepEqual(actualReceipt,expectedReceipt,message);
+ if(expectedWallet)assert.deepEqual(actualWallet,require('../services/member/arcade').Wallet(s.ProfileById(p.id)),'only the authenticated wallet reflects the latest committed state');
+ else assert.equal(actualWallet,undefined);
+}
 try{
  const a=client(1),b=client(2),pa=run(a,'me').profile,pb=run(b,'me').profile;
  const source=run(a,'post.create',{title:'첫 이야기',body:'리포스트해도 보존할 본문',poll:{question:'어느 쪽인가요?',options:['왼쪽','오른쪽']}}).post;
@@ -26,7 +32,7 @@ try{
  assert.equal(run(a,'me').posts.total,1,'direct self repost cannot add a duplicate post to the profile');
  assert.equal(run(b,'feed').items[0].id,source.id,'existing repost time promotes the original in the latest feed');
  assert.equal(run(b,'thread',{postId:source.id}).post.myRepost,false,'repost state belongs to the authenticated viewer');
- assert.deepEqual(run(a,'repost.set',body,requestId),result,'replaying the same operation returns its committed result');
+ SameReceipt(run(a,'repost.set',body,requestId),result,pa,'replaying the same operation returns its committed receipt');
  const directId=s.DB().reposts[key].id,realNow=Date.now,clock=Date.now()+2;
  Date.now=()=>clock;
  try{
@@ -41,7 +47,7 @@ try{
    assert.equal(s.DB().reposts[key].id,directId,'repeated promotions retain the single relationship');
    assert.equal(run(b,'feed',{sort:'latest'}).items[0].id,source.id,'confirmed repost is immediately first in the latest feed');
    const committedAt=s.DB().reposts[key].at;
-   assert.deepEqual(run(a,'repost.set',body,repeatId),repeated);
+   SameReceipt(run(a,'repost.set',body,repeatId),repeated,pa);
    assert.equal(s.DB().reposts[key].at,committedAt,'transport replay cannot promote again');
    lastAt=repeated.post.repostedBy.at;
   }
@@ -49,7 +55,7 @@ try{
  assert.equal(Object.keys(s.DB().reposts).length,1,'different confirmations cannot create duplicate repost rows');
  assert.deepEqual(s.DB().posts[source.id],original,'unlimited promotions preserve the original content, poll, and time');
  const latestAt=s.DB().reposts[key].at;
- assert.deepEqual(run(a,'repost.set',body,requestId),result,'an old receipt remains immutable after later promotions');
+ SameReceipt(run(a,'repost.set',body,requestId),result,pa,'an old receipt remains immutable after later promotions');
  assert.equal(s.DB().reposts[key].at,latestAt,'an old network retry cannot rewind the latest timestamp');
  run(a,'react',{postId:newer.id,value:1});
  assert.equal(run(b,'feed',{sort:'popular'}).items[0].id,newer.id,'reposting changes recency but does not manufacture popularity');

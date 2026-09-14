@@ -15,7 +15,9 @@ try{
  const first=buy(c,game,1,'FIX51-FIRST-PURCHASE'),firstAt=now;assert.equal(first.order.days,1);assert.equal(first.order.displayExpiresAt,firstAt+DAY);assert.equal(first.activeGame,null);
  now+=60000;const second=buy(c,game,7,'FIX51-SECOND-PURCHASE');assert.equal(second.order.id,first.order.id);assert.equal(second.order.days,8);assert.equal(second.order.amount,800);assert.equal(second.order.expiresAt,0);assert.equal(second.order.displayExpiresAt,firstAt+8*DAY);assert.equal(second.profile.balance,9200);
  assert.deepEqual(buy(c,game,7,'FIX51-SECOND-PURCHASE'),second,'retried extension does not add duration or charge twice');
- assert.deepEqual(buy(c,game,1,'FIX51-FIRST-PURCHASE'),first,'earlier purchase receipt remains immutable after extension');
+ const firstReplay=buy(c,game,1,'FIX51-FIRST-PURCHASE');
+ assert.deepEqual(firstReplay.order,first.order,'earlier purchase receipt remains immutable after extension');assert.deepEqual(firstReplay.activeGame,first.activeGame);
+ assert.deepEqual(firstReplay.profile,{...first.profile,balance:second.profile.balance,points:second.profile.points,eventSpins:second.profile.eventSpins},'only the private wallet projection reflects current committed funds');
  let mine=run(c,'me',{purchasesOnly:true});assert.equal(mine.orders.total,1);assert.equal(mine.payments.total,2);assert.deepEqual(mine.payments.items.map(x=>[x.days,x.amount,x.displayExpiresAt]),[[7,-700,firstAt+8*DAY],[1,-100,firstAt+DAY]]);
  const home=run(c,'home');assert.equal(home.counts.orders,1);assert.equal(home.counts.payments,2);assert.equal(home.summary.ready,1);
  const otherOrder=buy(other,game,1).order;assert.notEqual(otherOrder.id,first.order.id);const separateOrder=buy(c,separate,1).order;assert.notEqual(separateOrder.id,first.order.id);assert.equal(run(c,'me').orders.total,2);

@@ -24,7 +24,8 @@ try{
  a2.c.installationDeviceKey=a.c.installationDeviceKey;
  const owner=s.Account(a.c).id,other=s.Account(b.c).id;
  s.Atomic(()=>Object.assign(s.ProfileById(owner),{balance:8910,points:432,eventSpins:9}));
- const untouched=()=>({points:s.ProfileById(owner).points,eventSpins:s.ProfileById(owner).eventSpins,...Object.fromEntries(['pointLedger','eventSpins','orders','shopPurchases','pointConversions','chargeRequests'].map(key=>[key,structuredClone(s.DB()[key])]))});
+ const badgeRewards=()=>Object.values(s.DB().pointLedger).filter(row=>row.accountId===owner&&row.kind==='BADGE_REWARD');
+ const untouched=()=>({points:s.ProfileById(owner).points-badgeRewards().reduce((sum,row)=>sum+row.amount,0),pointLedger:Object.fromEntries(Object.entries(s.DB().pointLedger).filter(([,row])=>row.kind!=='BADGE_REWARD')),eventSpins:s.ProfileById(owner).eventSpins,...Object.fromEntries(['eventSpins','orders','shopPurchases','pointConversions','chargeRequests'].map(key=>[key,structuredClone(s.DB()[key])]))});
  const initial=untouched(),empty=ok(a,'arcade',{game:'SLOTS'});assert.equal(empty.stats.played,0);assert.equal(empty.mode,'VIRTUAL_BALANCE');assert.equal(empty.rules.redeemable,false);
  assert.equal(empty.wallet.balance,8910);assert.equal(empty.wallet.accountId,owner);assert.equal(empty.profile,undefined,'round read does not resend full profile media');
  crypto.randomInt=max=>max-1;
@@ -46,6 +47,7 @@ try{
  assert.equal(request(a,'arcade.play',{game:'SLOTS',choice:'SPIN'}).reason,'ARCADE_RULES_CHANGED','old clients cannot settle invisible or unconfirmed bets');
  const after=ok(a2,'arcade.play',{game:'ROULETTE',choice:'RED',amount:100,rulesRevision:4});assert.equal(after.result.number,36);assert.equal(after.stats.played,1);assert.equal(after.wallet.balance,14910);
  assert.equal(ok(a,'arcade',{game:'SLOTS'}).stats.played,1);assert.deepEqual(untouched(),initial);
+ assert.deepEqual(badgeRewards().map(row=>[row.reference,row.amount]).sort(),[['ROULETTE_1',50],['SLOTS_1',50]]);const paidTitles=structuredClone(badgeRewards());assert.equal(after.wallet.points,532);
  // Existing wallet adjustments and later game rounds stay authoritative even
  // when a previous successful request is retried after its reply was lost.
  s.Atomic(()=>s.Ledger(s.ProfileById(owner),2000,'TEST_ADJUSTMENT','REPLAY-ADJUSTMENT'));
@@ -71,6 +73,6 @@ try{
  const numberRetry=ok(a2,'arcade.play',numberBody,'FIX50-NUMBER-REPLAY');assert.deepEqual(numberRetry.result,numberRound.result);assert.equal(numberRetry.wallet.balance,144023810);assert.equal(numberRetry.wallet.revision,s.DB().revision);
  assert.equal(ok(a,'home').profile.balance,144023810);assert.equal(ok(a,'rewards').profile.balance,144023810);
  assert.equal(Object.values(s.DB().ledger).filter(row=>row.reference===numberRound.result.id).length,2,'number round has exactly one debit and one payout after restart and retry');
- assert.deepEqual(untouched(),initial);
+ assert.deepEqual(untouched(),initial);assert.deepEqual(badgeRewards(),paidTitles,'later plays and persisted replays never pay the first-play titles twice');
  console.log('FIX48/FIX50 ARCADE FLOW PASS: signed immediate virtual settlement, same-account multi-device replay/rate guard, notifications, private wallet, forged inputs, authentication, wallet consistency and restart-safe fresh balance with immutable prior result.');
 }finally{Date.now=oldNow;crypto.randomInt=oldRandom;fs.rmSync(dir,{recursive:true,force:true});}
