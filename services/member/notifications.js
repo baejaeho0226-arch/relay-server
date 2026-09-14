@@ -20,8 +20,9 @@ function Read(p,body={}){
   add('payment:'+row.id,row.at,headings[row.kind],detail,'receipt',row.kind==='QR_TOPUP'?'charge':'payments');
  }
  for(const row of Object.values(db.pointLedger)){
-  if(row.accountId!==p.id||row.amount<=0||!['BADGE_REWARD','ATTENDANCE','ROULETTE'].includes(row.kind))continue;
-  const badge=row.kind==='BADGE_REWARD',heading=badge?title('칭호 보상 포인트가 지급되었어요','Title reward points received'):row.kind==='ATTENDANCE'?title('출석 보상 포인트가 지급되었어요','Attendance reward received'):title('돌림판 보상 포인트가 지급되었어요','Wheel reward received');
+  if(row.accountId!==p.id||row.amount<=0||!['BADGE_REWARD','ATTENDANCE','ROULETTE','EVENT_CARD','EVENT_CHEST','EVENT_RPS'].includes(row.kind))continue;
+  const eventTitles={EVENT_CARD:title('행운 카드 보상 포인트가 지급되었어요','Lucky cards reward received'),EVENT_CHEST:title('보물상자 보상 포인트가 지급되었어요','Treasure chest reward received'),EVENT_RPS:title('가위바위보 보상 포인트가 지급되었어요','Rock paper scissors reward received')};
+  const badge=row.kind==='BADGE_REWARD',heading=eventTitles[row.kind]||(badge?title('칭호 보상 포인트가 지급되었어요','Title reward points received'):row.kind==='ATTENDANCE'?title('출석 보상 포인트가 지급되었어요','Attendance reward received'):title('돌림판 보상 포인트가 지급되었어요','Wheel reward received'));
   add('points:'+row.id,row.at,heading,'+'+row.amount.toLocaleString(english?'en-US':'ko-KR')+'P',badge?'badge':'gift',badge?'badges':'points');
  }
  if(prefs.notifyFollowers)for(const row of Object.values(db.follows)){

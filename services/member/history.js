@@ -5,10 +5,11 @@ const LIMIT=20;
 // enter service history, and labels always come from this server-owned map.
 const SERVICES=Object.freeze({
  news:['소식','News','news'],catalog:['게임','Games','shop'],feed:['피드','Feed','feed'],
- events:['이벤트','Events','gift'],casino:['모아 카지노','Moa Casino','casino'],original:['모아 Original','Moa Original','casino'],
+ 'event.card':['행운 카드','Lucky cards','casino.group'],'event.chest':['보물상자','Treasure chests','gift'],'event.rps':['가위바위보','Rock paper scissors','heart'],
+ events:['이벤트','Events','gift'],casino:['모아 카지노','Moa Casino','casino'],original:['모아 오리지널','Moa Original','casino'],
  baccarat:['바카라','Baccarat','casino'],roulette:['룰렛','Roulette','casino'],slots:['슬롯','Slots','casino'],blackjack:['블랙잭','Blackjack','casino'],
- crash:['CRASH','CRASH','casino'],dice:['DICE','DICE','casino'],mines:['MINES','MINES','casino'],plinko:['PLINKO','PLINKO','casino'],
- limbo:['LIMBO','LIMBO','casino'],hilo:['HILO','HILO','casino'],tower:['TOWER','TOWER','casino'],
+ crash:['크래시','Crash','casino'],dice:['다이스','Dice','casino'],mines:['마인즈','Mines','casino'],plinko:['플링코','Plinko','casino'],
+ limbo:['림보','Limbo','casino'],hilo:['힐로','HiLo','casino'],tower:['타워','Tower','casino'],
  shop:['상점','Shop','store'],me:['마이페이지','My Page','user'],all:['전체 메뉴','All menus','grid'],
  orders:['이용권 내역','Pass history','ticket'],payments:['결제 내역','Payment history','receipt'],myfeed:['내 게시물','My posts','grid'],
  charge:['개인 지갑','Wallet','wallet'],bookmarks:['저장한 내용','Saved','bookmark'],blocks:['차단한 회원','Blocked members','block'],

@@ -39,7 +39,7 @@ function GrantCharge(p,row){
 function History(p,body={}){
  return s.Page(Object.values(s.DB().pointLedger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at||b.id.localeCompare(a.id)),body,20);
 }
-function Read(p,body={}){return {rules:Rules(),wallet:Wallet(p),attendance:Attendance(p),history:History(p,body),events:require('./social').News(p,{category:'EVENT',summary:true,limit:12}),profile:s.PublicProfile(p,true)};}
+function Read(p,body={}){return {rules:Rules(),wallet:Wallet(p),attendance:Attendance(p),eventGames:require('./eventGames').Read(p),history:History(p,body),events:require('./social').News(p,{category:'EVENT',summary:true,limit:12}),profile:s.PublicProfile(p,true)};}
 function Spin(p,body){
  const rules=Rules();if(!rules.enabled)s.Fail('EVENT_CLOSED');if(body.revision!==rules.revision)s.Fail('CONTENT_CHANGED');
  if((p.eventSpins||0)<1)s.Fail('EVENT_NO_TURNS');
