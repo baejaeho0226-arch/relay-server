@@ -10,7 +10,7 @@ function Catalog(body={},viewer){
   return item;
  }),body);
 }
-function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');if(p){if((p.readProducts?.[row.id]||0)<(row.revision||1))s.Atomic(()=>{p.readProducts||={};p.readProducts[row.id]=row.revision||1;});require('./views').Article(p,row,'product');}return {product:{...PublicGame(row),unread:false},...(p?{profile:s.PublicProfile(p,true)}:{})};}
+function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');if(p){if((p.readProducts?.[row.id]||0)<(row.revision||1))s.Atomic(()=>{p.readProducts||={};p.readProducts[row.id]=row.revision||1;});require('./views').Article(p,row,'product');require('./history').RecordProduct(p,body);}return {product:{...PublicGame(row),unread:false},...(p?{profile:s.PublicProfile(p,true)}:{})};}
 function SaveProduct(body){
  const id=body.id?s.Text(body.id,40):s.Id('PRD'),previous=s.DB().products[id];if(body.id&&!previous)s.Fail('PRODUCT_NOT_FOUND');
  const accessType=s.Text(body.accessType,16);if(!['TYPE1','TYPE2','TYPE3'].includes(accessType))s.Fail('ACCESS_TYPE_INVALID');

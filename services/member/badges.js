@@ -1,7 +1,7 @@
 'use strict';
 const s=require('./store');
 // A completed mission is a durable fact, not a projection of today's post or
-// follower count. No badge grants currency, a turn, or a purchase entitlement.
+// follower count. Each title grants its published point reward exactly once.
 const catalog=[
  {id:'POSTS_1',title:'첫 이야기',description:'첫 공개 게시글을 작성했어요.',metric:'posts',target:1},
  {id:'POSTS_10',title:'이야기꾼',description:'공개 게시글을 누적 10개 작성했어요.',metric:'posts',target:10},
@@ -49,6 +49,10 @@ const catalog=[
  {id:'DICE_1',title:'다이스 첫 굴림',description:'다이스 한 판을 끝까지 이용했어요.',metric:'dice',target:1},
  {id:'MINES_1',title:'마인즈 첫 탐험',description:'마인즈 한 판을 끝까지 이용했어요.',metric:'mines',target:1},
  {id:'PLINKO_1',title:'플링코 첫 낙하',description:'플링코 한 판을 끝까지 이용했어요.',metric:'plinko',target:1},
+ {id:'LIMBO_1',title:'림보 첫 도전',description:'림보 한 판을 끝까지 이용했어요.',metric:'limbo',target:1},
+ {id:'HILO_1',title:'하이로 첫 선택',description:'하이로 한 판을 끝까지 이용했어요.',metric:'hilo',target:1},
+ {id:'TOWER_1',title:'타워 첫 등반',description:'타워 한 판을 끝까지 이용했어요.',metric:'tower',target:1},
+ {id:'BLACKJACK_1',title:'블랙잭 첫 핸드',description:'블랙잭 한 판을 끝까지 이용했어요.',metric:'blackjack',target:1},
  {id:'CASINO_10',title:'테이블 탐방',description:'카지노 게임을 누적 10판 완료했어요.',metric:'casinoPlays',target:10},
  {id:'CASINO_100',title:'백 번의 플레이',description:'카지노 게임을 누적 100판 완료했어요.',metric:'casinoPlays',target:100},
  {id:'GAME_PURCHASE_1',title:'첫 게임 이용권',description:'충전 잔액으로 게임 이용권을 처음 구매했어요.',metric:'purchases',target:1},
@@ -59,11 +63,12 @@ const catalog=[
  {id:'SHOP_PURCHASE_1',title:'나만의 꾸미기',description:'포인트 상점에서 첫 상품을 구매했어요.',metric:'shopPurchases',target:1},
  {id:'NICKNAME_COLOR_1',title:'나만의 색깔',description:'닉네임 색상을 처음 적용했어요.',metric:'nicknameColor',target:1},
  // Badge text never reveals report reasons, reporter identities, or a moderation verdict.
- {id:'REPORT_1',title:'의견 전달',description:'운영팀에 게시글·댓글 관련 의견을 전달했어요. 별도 보상은 없어요.',metric:'reports',target:1},
- {id:'REPORT_RECEIVED_1',title:'피드백 도착',description:'내 게시글·댓글에 관한 의견이 접수됐어요. 위반 확정을 뜻하지 않으며 별도 보상은 없어요.',metric:'reportsReceived',target:1}
-];
+ {id:'REPORT_1',title:'의견 전달',description:'운영팀에 게시글·댓글 관련 의견을 전달했어요.',metric:'reports',target:1},
+ {id:'REPORT_RECEIVED_1',title:'피드백 도착',description:'내 게시글·댓글에 관한 의견이 접수됐어요. 위반 확정을 뜻하지 않아요.',metric:'reportsReceived',target:1}
+].map(row=>({...row,rewardPoints:row.target>=500?500:row.target>=30?300:row.target>1?100:50}));
+const REWARD_KIND='BADGE_REWARD',POINT_CAP=100000000;
 const VERSION=1,MAX=Object.fromEntries(catalog.map(row=>[row.metric,Math.max(...catalog.filter(x=>x.metric===row.metric).map(x=>x.target))]));
-const GAMES=['BACCARAT','ROULETTE','SLOTS','CRASH','DICE','MINES','PLINKO'];
+const GAMES=['BACCARAT','ROULETTE','SLOTS','CRASH','DICE','MINES','PLINKO','LIMBO','HILO','TOWER','BLACKJACK'];
 const LEGACY_SELECTED=new Set(['FOLLOWERS_500','POSTS_10','POSTS_50','ATTENDANCE_7','ATTENDANCE_30']);
 const NumberOf=value=>Number.isSafeInteger(value)&&value>0?value:0;
 const Record=p=>p.badgeProgress&&p.badgeProgress.version===VERSION?p.badgeProgress:null;
@@ -81,8 +86,36 @@ function Unique(p,metric,id){
 }
 function Award(p,legacy=false){
  const data=Record(p);if(!data)return;
- for(const row of catalog)if(!data.awards[row.id]&&NumberOf(data.counts[row.metric])>=row.target)
-  data.awards[row.id]={at:Date.now(),...(legacy?{legacy:true}:{})};
+ for(const row of catalog){
+  if(!data.awards[row.id]&&NumberOf(data.counts[row.metric])>=row.target)
+   data.awards[row.id]={at:Date.now(),...(legacy?{legacy:true}:{})};
+  const award=data.awards[row.id];if(!award)continue;
+  // Freeze the amount on first capture, including already-earned FIX52 titles.
+  // Keep the progress version and original completion time during this upgrade.
+  if(!NumberOf(award.rewardPoints))award.rewardPoints=row.rewardPoints;
+  if(award.rewardPaid!==true)award.rewardPaid=false;
+ }
+}
+function RewardLedger(p,id){return s.DB().pointLedger[p.id+':'+REWARD_KIND+':'+id];}
+function CanPay(p,award){
+ const points=p.points||0;
+ return Number.isSafeInteger(points)&&points>=0&&Number.isSafeInteger(points+award.rewardPoints)&&points+award.rewardPoints<=POINT_CAP;
+}
+function HasPayableReward(p,data){
+ return catalog.some(row=>{const award=data?.awards[row.id];return award&&!award.rewardPaid&&(RewardLedger(p,row.id)||CanPay(p,award));});
+}
+// Call only inside the caller's Atomic transaction. The durable award and its
+// account + kind + badge ledger key jointly prevent read/replay/upgrade credits.
+function PayRewards(p){
+ const data=Record(p);if(!data)return;
+ for(const row of catalog){
+  const award=data.awards[row.id];if(!award||award.rewardPaid)continue;
+  let ledger=RewardLedger(p,row.id);
+  // A full wallet must not cancel the activity that earned this title. Leave the
+  // entire reward pending; a later action or badge read retries after spending.
+  if(!ledger){if(!CanPay(p,award))continue;ledger=require('./rewards').Credit(p,award.rewardPoints,REWARD_KIND,row.id);}
+  award.rewardPaid=true;award.rewardLedgerId=ledger.id;award.rewardPaidAt=ledger.at;
+ }
 }
 function PostEvidence(p,row){
  if(!row||row.accountId!==p.id||row.hidden||row.deleted&&!row.deletedByMember)return;
@@ -147,6 +180,8 @@ function Seed(p){
 // Call only inside an existing transaction. This function never writes a second
 // transaction and never calls PublicProfile, so public projections cannot recurse.
 function Capture(p){if(!p)return;if(!Record(p))Seed(p);Derived(p);Award(p);}
+// Background game completion uses the same transaction for its award and credit.
+function Settle(p){Capture(p);PayRewards(p);}
 function ProfileFingerprint(p){return JSON.stringify([p.nickname,p.bio,p.pronouns,p.gender,p.handle,p.avatar]);}
 function Before(p,action,body={}){
  const profiles=new Map([[p.id,p]]),db=s.DB();let other;
@@ -185,14 +220,15 @@ function After(p,action,body={},result={},before={}){
  }
  for(const id of before.ids||[]){const target=s.ProfileById(id);if(!target)continue;Capture(target);if(action==='follow.set'||action==='block.set'){Observe(target,'followers',require('./follows').Counts(id).followers);Award(target);}}
  Award(p);
+ for(const id of new Set([p.id,...(before.ids||[])])){const target=s.ProfileById(id);if(target)PayRewards(target);}
 }
 function Persist(p,apply){
- // Prepare only badge state off to the side. Failed reads or failed disk writes
-// must not leave an award attached to the live profile outside Atomic rollback.
+ // Prepare badge state off to the side, then commit it and any payment together.
+ // Failed reads or disk writes cannot leave awards or points outside rollback.
  const draft={...p,badgeProgress:p.badgeProgress?structuredClone(p.badgeProgress):undefined};
  Capture(draft);if(apply)apply(draft);Award(draft);
- if(JSON.stringify(p.badgeProgress)===JSON.stringify(draft.badgeProgress))return;
- s.Atomic(()=>{p.badgeProgress=draft.badgeProgress;});
+ if(JSON.stringify(p.badgeProgress)===JSON.stringify(draft.badgeProgress)&&!HasPayableReward(p,draft.badgeProgress))return;
+ s.Atomic(()=>{p.badgeProgress=draft.badgeProgress;PayRewards(p);});
 }
 function AfterRead(p,action,body={},data={}){
  if(body.countView!==true||!['member','article','product','thread'].includes(action))return;
@@ -207,7 +243,7 @@ function ChargeApproved(p,row){
  // Inside charges.Approve's Atomic, after both the receipt and approval exist.
  const payment=s.DB().ledger[row?.paymentId];
  if(!row||row.accountId!==p.id||row.status!=='APPROVED'||row.mode!=='WALLET'||!payment||payment.accountId!==p.id||payment.kind!=='QR_TOPUP'||payment.reference!==row.id||payment.amount!==row.amount||payment.amount<=0)return;
- Capture(p);Unique(p,'charges',row.id);Award(p);
+ Capture(p);Unique(p,'charges',row.id);Award(p);PayRewards(p);
 }
 function Public(p,known={}){
  if(!p.titleBadgeId)return null;const row=catalog.find(x=>x.id===p.titleBadgeId);if(!row||row.private)return null;
@@ -217,19 +253,21 @@ function Public(p,known={}){
  const legacy=!data&&NumberOf(known[row.metric]??(row.metric==='attendance'?p.attendance?.count:0))>=row.target;
  return earned||legacy?{id:row.id,title:row.title}:null;
 }
-function Read(viewer,body={}){
- const target=body.profileId?require('./profiles').Target(viewer,{id:body.profileId}):viewer;
- if(!target)s.Fail('MEMBER_NOT_FOUND');Persist(target);
+function Inventory(viewer,target){
  const own=target.id===viewer.id,data=Record(target),selected=Public(target)?.id||'';
- let items=catalog.map(row=>{const award=data.awards[row.id];return {id:row.id,title:row.title,description:row.description,target:row.target,progress:NumberOf(data.counts[row.metric]),earned:!!award,selected:selected===row.id,selectable:!row.private,private:!!row.private,...(award?{earnedAt:award.at,legacy:!!award.legacy}:{})};});
+ let items=catalog.map(row=>{const award=data.awards[row.id];return {id:row.id,title:row.title,description:row.description,target:row.target,progress:NumberOf(data.counts[row.metric]),rewardPoints:award?.rewardPoints||row.rewardPoints,earned:!!award,selected:selected===row.id,selectable:!row.private,private:!!row.private,...(award?{earnedAt:award.at,legacy:!!award.legacy,...(own?{rewardPaid:!!award.rewardPaid,rewardStatus:award.rewardPaid?'PAID':'PENDING'}:{})}:{})};});
  if(!own)items=items.filter(row=>row.earned&&!row.private).map(({progress,private:privateRecord,...row})=>row);
  return {items,selected,own,readOnly:!own,profileId:target.id,profile:s.PublicProfile(target,own)};
+}
+function Read(viewer,body={}){
+ const target=body.profileId?require('./profiles').Target(viewer,{id:body.profileId}):viewer;
+ if(!target)s.Fail('MEMBER_NOT_FOUND');Persist(target);return Inventory(viewer,target);
 }
 function Select(p,body){
  if(body.profileId&&body.profileId!==p.id)s.Fail('NOT_OWNER');
  if(typeof body.id!=='string')s.Fail('INPUT_INVALID');Capture(p);
  if(body.id){const row=catalog.find(x=>x.id===body.id);if(!row||row.private||!Record(p).awards[row.id])s.Fail('BADGE_UNAVAILABLE');}
  if(p.titleBadgeId!==body.id){p.titleBadgeId=body.id;p.profileRevision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1;}
- return {...Read(p),publicProfile:s.PublicProfile(p)};
+ PayRewards(p);return {...Inventory(p,p),publicProfile:s.PublicProfile(p)};
 }
-module.exports={Public,Read,Select,Before,After,AfterRead,Capture,ChargeApproved};
+module.exports={Public,Read,Select,Before,After,AfterRead,Capture,Settle,ChargeApproved};
