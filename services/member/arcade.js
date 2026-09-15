@@ -1,5 +1,5 @@
 'use strict';
-const crypto=require('node:crypto'),s=require('./store');
+const crypto=require('node:crypto'),s=require('./store'),indicators=require('./indicators');
 const GAMES=Object.freeze({BACCARAT:'바카라',ROULETTE:'룰렛',SLOTS:'슬롯'});
 const CHOICES=Object.freeze({BACCARAT:['PLAYER','TIE','BANKER'],ROULETTE:['RED','GREEN','BLACK',...Array.from({length:37},(_,number)=>'NUMBER_'+number)],SLOTS:['SPIN']});
 const SLOT_SYMBOLS=Object.freeze([
@@ -20,7 +20,7 @@ function Wallet(p){return {accountId:p.id,revision:s.DB().revision,balance:p.bal
 function Read(p,body={}){
  const game=Game(body.game||'BACCARAT'),record=p.arcade?.[game]||{};
  return {mode:'VIRTUAL_BALANCE',virtual:true,redeemable:false,game,wallet:Wallet(p),rules:Rules(),games:Object.entries(GAMES).map(([id,name])=>({id,name,stats:Stats(p.arcade?.[id]),lastResult:structuredClone(p.arcade?.[id]?.lastResult||null)})),
-  stats:Stats(record),lastResult:structuredClone(record.lastResult||null),history:structuredClone(record.history||[])};
+  stats:Stats(record),lastResult:structuredClone(record.lastResult||null),history:structuredClone(record.history||[]),indicators:indicators.Snapshot(game,record)};
 }
 function Card(id){
  const rankIndex=id%13,suitIndex=Math.floor(id/13)%4,rank=['A','2','3','4','5','6','7','8','9','10','J','Q','K'][rankIndex];
@@ -123,7 +123,7 @@ function Play(p,body={}){
  if(!Number.isSafeInteger(p.balance)||p.balance<0||p.balance>MAX_BALANCE)s.Fail('BALANCE_INVALID');
  if(p.balance<amount)s.Fail('ARCADE_BALANCE_REQUIRED');
  const maxPayout=MaximumPayout(game,bets);
- if(maxPayout>MAX_BALANCE-(p.balance-amount))s.Fail('ARCADE_BALANCE_LIMIT');
+ if(maxPayout>MAX_BALANCE-s.ReservedBalance(p)-(p.balance-amount))s.Fail('ARCADE_BALANCE_LIMIT');
  const now=Date.now();if(p.arcadePlayedAt&&now-p.arcadePlayedAt<MIN_INTERVAL_MS)s.Fail('ARCADE_WAIT');
  const old=p.arcade?.[game]||{},stats=Stats(old);
  for(const key of Object.keys(stats))if(!Number.isSafeInteger(stats[key])||(key!=='netWin'&&stats[key]<0))s.Fail('INPUT_INVALID');
@@ -149,7 +149,7 @@ function Play(p,body={}){
  const bet=s.Ledger(p,-amount,'ARCADE_BET',result.id),payout=s.Ledger(p,settled.payout,'ARCADE_PAYOUT',result.id);
  Object.assign(bet,{game,virtual:true,redeemable:false});Object.assign(payout,{game,virtual:true,redeemable:false});
  result.balance=p.balance;result.betId=bet.id;result.payoutId=payout.id;
- p.arcade={...p.arcade,[game]:{...stats,lastResult:result,history:[result,...(old.history||[])].slice(0,10)}};p.arcadePlayedAt=now;
+ p.arcade={...p.arcade,[game]:{...stats,lastResult:result,history:[result,...(old.history||[])].slice(0,10),indicatorRounds:indicators.Append(old,result)}};p.arcadePlayedAt=now;
  const response={...Read(p,{game}),result:structuredClone(result)};
  response.wallet.revision=s.DB().revision+1; // Revision assigned by the enclosing Operation commit.
  return response;

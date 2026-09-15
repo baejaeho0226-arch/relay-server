@@ -2,7 +2,8 @@
 const s=require('./store');
 // A completed mission is a durable fact, not a projection of today's post or
 // follower count. Each title grants its published point reward exactly once.
-const catalog=[
+const icons={posts:'create',comments:'bubble',replies:'reply-thread',likes:'like',likesReceived:'heart',following:'following',followers:'followers',profileVisits:'eye',profileEdits:'edit',avatar:'photo',bio:'user',photoPosts:'photo',gifPosts:'gif',pollsCreated:'poll',pollVotes:'poll',reposts:'repost',bookmarks:'bookmark',newsRead:'news',gamesRead:'shop',postsRead:'feed',attendance:'calendar',attendanceStreak:'calendar',wheel:'wheel',baccarat:'baccarat',roulette:'roulette',slots:'slots',crash:'crash',dice:'dice',mines:'mines',plinko:'plinko',limbo:'limbo',hilo:'hilo',tower:'tower',blackjack:'blackjack',casinoPlays:'casino.group',purchases:'ticket',gameStarts:'shop',charges:'wallet',exchanges:'refresh',shopPurchases:'store',nicknameColor:'user',reports:'report',reportsReceived:'bell'};
+const baseCatalog=[
  {id:'POSTS_1',title:'첫 이야기',description:'첫 공개 게시글을 작성했어요.',metric:'posts',target:1},
  {id:'POSTS_10',title:'이야기꾼',description:'공개 게시글을 누적 10개 작성했어요.',metric:'posts',target:10},
  {id:'POSTS_50',title:'인기 작가',description:'공개 게시글을 누적 50개 작성했어요.',metric:'posts',target:50},
@@ -65,7 +66,10 @@ const catalog=[
  // Badge text never reveals report reasons, reporter identities, or a moderation verdict.
  {id:'REPORT_1',title:'의견 전달',description:'운영팀에 게시글·댓글 관련 의견을 전달했어요.',metric:'reports',target:1},
  {id:'REPORT_RECEIVED_1',title:'피드백 도착',description:'내 게시글·댓글에 관한 의견이 접수됐어요. 위반 확정을 뜻하지 않아요.',metric:'reportsReceived',target:1}
-].map(row=>({...row,rewardPoints:row.target>=500?500:row.target>=30?300:row.target>1?100:50}));
+].map(row=>({...row,icon:icons[row.metric],rewardPoints:row.target>=500?500:row.target>=30?300:row.target>1?100:50}));
+// This final mission counts only ordinary titles, never itself. A completed
+// collection and the published sum are frozen by the same durable award rules.
+const catalog=[...baseCatalog,{id:'ALL_TITLES',title:'모든 칭호 보유자',description:'모든 기본 칭호를 모았어요.',metric:'completedTitles',target:baseCatalog.length,icon:'badge',rewardPoints:baseCatalog.reduce((sum,row)=>sum+row.rewardPoints,0)}];
 const REWARD_KIND='BADGE_REWARD',POINT_CAP=100000000;
 const VERSION=1,MAX=Object.fromEntries(catalog.map(row=>[row.metric,Math.max(...catalog.filter(x=>x.metric===row.metric).map(x=>x.target))]));
 const GAMES=['BACCARAT','ROULETTE','SLOTS','CRASH','DICE','MINES','PLINKO','LIMBO','HILO','TOWER','BLACKJACK'];
@@ -87,6 +91,7 @@ function Unique(p,metric,id){
 function Award(p,legacy=false){
  const data=Record(p);if(!data)return;
  for(const row of catalog){
+  if(row.id==='ALL_TITLES')data.counts.completedTitles=baseCatalog.filter(item=>!!data.awards[item.id]).length;
   if(!data.awards[row.id]&&NumberOf(data.counts[row.metric])>=row.target)
    data.awards[row.id]={at:Date.now(),...(legacy?{legacy:true}:{})};
   const award=data.awards[row.id];if(!award)continue;
@@ -245,17 +250,26 @@ function ChargeApproved(p,row){
  if(!row||row.accountId!==p.id||row.status!=='APPROVED'||row.mode!=='WALLET'||!payment||payment.accountId!==p.id||payment.kind!=='QR_TOPUP'||payment.reference!==row.id||payment.amount!==row.amount||payment.amount<=0)return;
  Capture(p);Unique(p,'charges',row.id);Award(p);PayRewards(p);
 }
+function Appearance(p,row){
+ const style=p.titleStyles?.[row.id]||{};
+ return {id:row.id,title:typeof style.name==='string'&&style.name?style.name:row.title,originalTitle:row.title,icon:row.icon,color:/^#[0-9A-F]{6}$/.test(style.color||'')?style.color:'',iconColor:/^#[0-9A-F]{6}$/.test(style.iconColor||'')?style.iconColor:''};
+}
+function AllTitlesEarned(p){const data=Record(p);return !!data&&baseCatalog.every(row=>!!data.awards[row.id]);}
+function Owned(p,id){return typeof id==='string'&&!!Record(p)?.awards[id]&&catalog.some(row=>row.id===id&&!row.private);}
+// Own shop projection is read-only; callers capture before a mutation or via Ensure.
+function Cosmetics(p){return catalog.map(row=>({...Appearance(p,row),earned:Owned(p,row.id)}));}
+function Ensure(p){Persist(p);}
 function Public(p,known={}){
  if(!p.titleBadgeId)return null;const row=catalog.find(x=>x.id===p.titleBadgeId);if(!row||row.private)return null;
  const data=Record(p),earned=!!data?.awards[row.id];
  // A legacy selected badge remains visible until its next transactional capture.
  // Never scan tables, mutate state, or expose unearned progress in a projection.
  const legacy=!data&&NumberOf(known[row.metric]??(row.metric==='attendance'?p.attendance?.count:0))>=row.target;
- return earned||legacy?{id:row.id,title:row.title}:null;
+ return earned||legacy?Appearance(p,row):null;
 }
 function Inventory(viewer,target){
  const own=target.id===viewer.id,data=Record(target),selected=Public(target)?.id||'';
- let items=catalog.map(row=>{const award=data.awards[row.id];return {id:row.id,title:row.title,description:row.description,target:row.target,progress:NumberOf(data.counts[row.metric]),rewardPoints:award?.rewardPoints||row.rewardPoints,earned:!!award,selected:selected===row.id,selectable:!row.private,private:!!row.private,...(award?{earnedAt:award.at,legacy:!!award.legacy,...(own?{rewardPaid:!!award.rewardPaid,rewardStatus:award.rewardPaid?'PAID':'PENDING'}:{})}:{})};});
+ let items=catalog.map(row=>{const award=data.awards[row.id];return {...Appearance(target,row),description:row.description,target:row.target,progress:NumberOf(data.counts[row.metric]),rewardPoints:award?.rewardPoints||row.rewardPoints,earned:!!award,selected:selected===row.id,selectable:!row.private,private:!!row.private,...(award?{earnedAt:award.at,legacy:!!award.legacy,...(own?{rewardPaid:!!award.rewardPaid,rewardStatus:award.rewardPaid?'PAID':'PENDING'}:{})}:{})};});
  if(!own)items=items.filter(row=>row.earned&&!row.private).map(({progress,private:privateRecord,...row})=>row);
  return {items,selected,own,readOnly:!own,profileId:target.id,profile:s.PublicProfile(target,own)};
 }
@@ -270,4 +284,4 @@ function Select(p,body){
  if(p.titleBadgeId!==body.id){p.titleBadgeId=body.id;p.profileRevision=Math.max(p.profileRevision||0,p.avatarRevision||0)+1;}
  PayRewards(p);return {...Inventory(p,p),publicProfile:s.PublicProfile(p)};
 }
-module.exports={Public,Read,Select,Before,After,AfterRead,Capture,Settle,ChargeApproved};
+module.exports={Public,Read,Select,Before,After,AfterRead,Capture,Settle,ChargeApproved,AllTitlesEarned,Owned,Cosmetics,Ensure};

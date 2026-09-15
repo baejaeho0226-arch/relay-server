@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const state = require('../../core/state');
-const OPTIONAL_TABLES = ['commentReactions','bookmarks','blocks','reposts','pollVotes','pointLedger','eventSpins','pointConversions','shopPurchases','cosmeticUses'];
+const OPTIONAL_TABLES = ['commentReactions','bookmarks','blocks','reposts','pollVotes','pointLedger','eventSpins','pointConversions','shopPurchases','cosmeticUses','withdrawRequests'];
 const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests','follows',...OPTIONAL_TABLES];
 const TABLES = ['profiles','products','news','orders','topups','ledger','posts','comments','reactions','reports','operations'];
 function Empty() {
@@ -60,11 +60,16 @@ function Operation(account,requestId,action,body,fn,extras=[]){
  const old=DB().operations[key];if(old){if(old.fingerprint!==fingerprint)Fail('REQUEST_REUSED');return structuredClone(old.result);}
  return Atomic(()=>{const result=fn();DB().operations[key]={fingerprint,result,at:Date.now()};return result;},extras);
 }
+function ReservedBalance(p){return Object.values(DB().withdrawRequests||{}).filter(x=>x.accountId===p.id&&x.status==='PENDING').reduce((sum,x)=>sum+x.amount,0);}
 function Ledger(p,amount,kind,reference){
  // Virtual app balance uses the complete exact-integer range; individual
  // commerce actions and points retain their own amount limits.
  if(!Number.isSafeInteger(p.balance)||p.balance<0||!Number.isSafeInteger(amount))Fail('BALANCE_INVALID');
  const next=p.balance+amount;if(!Number.isSafeInteger(next)||next<0)Fail('BALANCE_INVALID');
+ // A pending withdrawal still belongs to this wallet. Preserve its restoration
+ // space so an unrelated credit cannot make a later rejection overflow.
+ const reserved=ReservedBalance(p);
+ if(!Number.isSafeInteger(reserved)||!Number.isSafeInteger(next+reserved))Fail('BALANCE_INVALID');
  p.balance=next;const id=Id('PAY');const row={id,accountId:p.id,amount,balance:next,kind,reference,at:Date.now()};DB().ledger[id]=row;return row;
 }
-module.exports={Handle,NormalizeHandle,Resolve,Subject,DB,Empty,Import,Fail,Text,Money,Id,Account,ProfileById,PublicProfile,ViewCount,Page,Atomic,Operation,Ledger};
+module.exports={Handle,NormalizeHandle,Resolve,Subject,DB,Empty,Import,Fail,Text,Money,Id,Account,ProfileById,PublicProfile,ViewCount,Page,Atomic,Operation,ReservedBalance,Ledger};

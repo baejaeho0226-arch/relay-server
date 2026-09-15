@@ -22,6 +22,7 @@ const SERVICES=Object.freeze({
  'settings.account':['계정 설정','Account','user'],about:['앱 정보','About','help'],policies:['약관 및 정책','Terms and policies','help'],
  points:['포인트','Points','gift'],attendance:['출석 체크','Attendance','calendar'],wheel:['돌림판','Wheel','gift'],
  popular:['인기 피드 Top 10','Popular feed Top 10','heart'],activity:['실시간 게임 구매','Live game purchases','receipt'],
+ 'top.games':['자주 많이 산 게임','Most purchased games','shop'],withdraw:['출금','Withdraw','wallet'],'title.color':['칭호 색상','Title colors','badge'],'title.name':['칭호 이름 변경','Rename title','edit'],
  badges:['배지','Badges','badge'],'nickname.color':['닉네임 색상','Nickname color','user']
 });
 function Rows(p,key){const rows=p.recentHistory?.[key];return Array.isArray(rows)?rows:[];}

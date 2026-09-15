@@ -24,7 +24,7 @@ function RecentPointCredits(p){
   .sort((a,b)=>b.at-a.at||(a.id<b.id?1:a.id>b.id?-1:0)).slice(0,3)
   .map(({id,kind,amount,at})=>({id,kind,amount,at}));
 }
-function TopPurchased(){
+function TopPurchased(limit=3){
  const db=s.DB(),groups=new Map(),orders=new Map();
  // Purchases retain one wallet receipt per payment even when pass durations merge.
  // Resolve aliases read-only so refunds of a combined pass remove every receipt.
@@ -56,7 +56,12 @@ function TopPurchased(){
   if(Number.isSafeInteger(days)&&days>0)row.totalDays+=days;
  }
  // Aggregate counts never expose buyers, private wallet fields or receipt IDs.
- return [...groups.values()].sort((a,b)=>b.purchaseCount-a.purchaseCount||b.totalDays-a.totalDays||(a.id<b.id?-1:a.id>b.id?1:0)).slice(0,3);
+ return [...groups.values()].sort((a,b)=>b.purchaseCount-a.purchaseCount||b.totalDays-a.totalDays||(a.id<b.id?-1:a.id>b.id?1:0)).slice(0,limit);
+}
+function TopGames(p,body={}){
+ const offset=Math.max(0,Math.min(100000,Math.floor(Number(body.offset)||0)));
+ const page=s.Page(TopPurchased(Infinity),{...body,offset},12);
+ return {...page,items:page.items.map((item,i)=>({id:item.id,title:item.title,genre:item.genre,rank:offset+i+1}))};
 }
 function Extras(p){
  const social=require('./social'),commerce=require('./commerce');
@@ -66,4 +71,4 @@ function Extras(p){
  return {...require('./history').Read(p),attendance:rewards.Attendance(p),events,news,games,popular,rewards:rewards.Read(p,{limit:3}),recentPurchases:RecentPurchases(p),recentPointCredits:RecentPointCredits(p),topPurchased:TopPurchased(),
   counts:{news:news.total,catalog:games.total,feed:feed.length,events:events.total,posts:commerce.OwnPostRows(p).length,comments:require('./activity').CommentRows(p).length}};
 }
-module.exports={Day:rewards.Day,Attendance:rewards.Attendance,Check:rewards.Check,Extras,Activity};
+module.exports={Day:rewards.Day,Attendance:rewards.Attendance,Check:rewards.Check,Extras,Activity,TopGames};

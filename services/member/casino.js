@@ -1,5 +1,5 @@
 'use strict';
-const crypto=require('node:crypto'),s=require('./store'),arcade=require('./arcade');
+const crypto=require('node:crypto'),s=require('./store'),indicators=require('./indicators'),arcade=require('./arcade');
 
 // App credits only: these games do not accept external money or offer cash-out.
 // Every draw, elapsed time, stake and settlement is decided on this server.
@@ -44,7 +44,7 @@ function Prepare(p,game,amount,maxCents){
  if(!Number.isSafeInteger(p.balance)||p.balance<0)s.Fail('BALANCE_INVALID');
  if(p.balance<amount)s.Fail('ARCADE_BALANCE_REQUIRED');
  const maximum=Pay(amount,maxCents),remaining=p.balance-amount,stats=Stats(p.casino?.[game]);
- if(maximum>MAX-remaining)s.Fail('ARCADE_BALANCE_LIMIT');
+ if(maximum>MAX-s.ReservedBalance(p)-remaining)s.Fail('ARCADE_BALANCE_LIMIT');
  for(const value of [stats.played+1,stats.matched+1,stats.score+1,stats.streak+1,stats.totalStaked+amount,stats.totalPayout+maximum,stats.netWin-amount,stats.netWin+(maximum-amount)])
   if(!Number.isSafeInteger(value))s.Fail('ARCADE_BALANCE_LIMIT');
  if(p.casinoPlayedAt&&Date.now()-p.casinoPlayedAt<INTERVAL)s.Fail('ARCADE_WAIT');
@@ -52,7 +52,7 @@ function Prepare(p,game,amount,maxCents){
 function CheckSettlementHeadroom(p,round,maxCents){
  if(!p||!Number.isSafeInteger(p.balance)||p.balance<0)s.Fail('BALANCE_INVALID');
  const maximum=Pay(round.betAmount,maxCents),stats=Stats(p.casino?.[round.game]);
- if(maximum>MAX-p.balance)s.Fail('ARCADE_BALANCE_LIMIT');
+ if(maximum>MAX-s.ReservedBalance(p)-p.balance)s.Fail('ARCADE_BALANCE_LIMIT');
  for(const value of [stats.played+1,stats.matched+1,stats.score+1,stats.streak+1,stats.totalStaked+round.betAmount,
   stats.totalPayout+maximum,stats.netWin-round.betAmount,stats.netWin+(maximum-round.betAmount)])
   if(!Number.isSafeInteger(value))s.Fail('ARCADE_BALANCE_LIMIT');
@@ -87,7 +87,7 @@ function HiloNext(round,direction){
 function BlackjackDoubleAllowed(p,round){
  const amount=round.betAmount,stats=Stats(p?.casino?.BLACKJACK);
  return !!p&&round.playerCards.length===2&&!round.doubled&&Hand(round.playerCards).total<21&&p.balance>=amount&&
-  Number.isSafeInteger(amount*2)&&Number.isSafeInteger(p.balance+amount*3)&&
+  Number.isSafeInteger(amount*2)&&Number.isSafeInteger(p.balance+amount*3)&&amount*3<=MAX-s.ReservedBalance(p)-p.balance&&
   [stats.totalStaked+amount*2,stats.totalPayout+amount*4,stats.netWin+amount*2,stats.netWin-amount*2].every(Number.isSafeInteger);
 }
 function BlackjackFields(round,reveal=false,p){
@@ -116,7 +116,7 @@ function Snapshot(p,game,now=Date.now()){
  const record=p.casino?.[game]||{};
  return {mode:'VIRTUAL_BALANCE',virtual:true,redeemable:false,game,wallet:arcade.Wallet(p),rules:Rules(),
   games:Object.entries(GAMES).map(([id,name])=>({id,name,stats:Stats(p.casino?.[id])})),stats:Stats(record),
-  active:Active(record.active,now,p),lastResult:structuredClone(record.lastResult||null),history:structuredClone(record.history||[])};
+  active:Active(record.active,now,p),lastResult:structuredClone(record.lastResult||null),history:structuredClone(record.history||[]),indicators:indicators.Snapshot(game,record)};
 }
 function Receipt(p,game,result){const response={...Snapshot(p,game),result:structuredClone(result)};response.wallet.revision=s.DB().revision+1;return response;}
 function Debit(p,round){
@@ -126,7 +126,7 @@ function Finish(p,round,cents,details={}){
  const old=p.casino?.[round.game]||{},stats=Stats(old),payout=Pay(round.betAmount,cents),net=payout-round.betAmount,matched=payout>=round.betAmount;
  // An unrelated wallet credit may have consumed headroom since Start. Reject
  // atomically, preserving the round and its stake until headroom is available.
- if(payout>MAX-p.balance)s.Fail('ARCADE_BALANCE_LIMIT');
+ if(payout>MAX-s.ReservedBalance(p)-p.balance)s.Fail('ARCADE_BALANCE_LIMIT');
  const ledger=s.Ledger(p,payout,'CASINO_PAYOUT',round.id);Object.assign(ledger,{game:round.game,virtual:true,redeemable:false});
  const result={id:round.id,roundId:round.id,game:round.game,at:Date.now(),startedAt:round.startedAt,betAmount:round.betAmount,
   multiplier:cents/100,payout,net,matched,status:net>0?'WIN':net===0?'PUSH':'LOSS',scoreEarned:matched?1:0,virtual:true,redeemable:false,rulesRevision:REVISION,
@@ -134,7 +134,7 @@ function Finish(p,round,cents,details={}){
  stats.played++;stats.matched+=matched?1:0;stats.score+=matched?1:0;stats.streak=matched?stats.streak+1:0;stats.bestStreak=Math.max(stats.bestStreak,stats.streak);
  stats.totalStaked+=round.betAmount;stats.totalPayout+=payout;stats.netWin+=net;
  for(const value of Object.values(stats))if(!Number.isSafeInteger(value))s.Fail('ARCADE_BALANCE_LIMIT');
- p.casino={...p.casino,[round.game]:{...stats,active:null,lastResult:result,history:[result,...(old.history||[])].slice(0,10)}};
+ p.casino={...p.casino,[round.game]:{...stats,active:null,lastResult:result,history:[result,...(old.history||[])].slice(0,10),indicatorRounds:indicators.Append(old,result)}};
  return result;
 }
 function TowerFields(round){return {rows:TOWER_ROWS,columns:TOWER_COLUMNS,row:round.revealed.length,revealed:[...round.revealed],trapTiles:[...round.secret.trapTiles]};}
