@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const state = require('../../core/state');
-const OPTIONAL_TABLES = ['commentReactions','bookmarks','blocks','reposts','pollVotes','pointLedger','eventSpins','pointConversions','shopPurchases','cosmeticUses','withdrawRequests'];
+const OPTIONAL_TABLES = ['commentReactions','bookmarks','blocks','reposts','pollVotes','pointLedger','eventSpins','pointConversions','shopPurchases','cosmeticUses','withdrawRequests','directThreads','directPairs'];
 const EXTRA_TABLES = ['coins','quotes','viewCounters','viewHits','chargeRequests','follows',...OPTIONAL_TABLES];
 const TABLES = ['profiles','products','news','orders','topups','ledger','posts','comments','reactions','reports','operations'];
 function Empty() {
@@ -16,6 +16,7 @@ function Import(data){
  const next=structuredClone(raw);
  for(const name of EXTRA_TABLES){if((OPTIONAL_TABLES.includes(name)||raw.schema===1||name==='chargeRequests'&&raw.schema<3||name==='follows'&&raw.schema<4)&&next[name]===undefined)next[name]={};if(!next[name]||typeof next[name]!=='object'||Array.isArray(next[name]))throw Error('MEMBER_STORAGE_INVALID');}
  next.schema=4;state.memberHub=next;
+ for(const p of Object.values(next.profiles))require('./history').PruneStored(p);
 }
 function Fail(reason){const e=Error(reason);e.memberError=true;throw e;}
 function Text(value,max,required=false){const v=String(value??'').trim().replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');if(v.length>max || required&&!v)Fail('INPUT_INVALID');return v;}

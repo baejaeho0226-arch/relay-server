@@ -58,7 +58,8 @@ function PublicNews(row,summary=false){
  return Object.fromEntries(keys.filter(key=>row[key]!==undefined).map(key=>[key,key==='category'?NewsCategory(row[key]):row[key]]));
 }
 function News(p,body={}){
- return s.Page(NewsRows(p,body).map(x=>({...PublicNews(x,!!body.summary),views:s.ViewCount('news',x.id),unread:NewsUnread(p,x)})),body);
+ const page=s.Page(NewsRows(p,body),body);
+ return {...page,items:page.items.map(x=>({...PublicNews(x,!!body.summary),views:s.ViewCount('news',x.id),unread:NewsUnread(p,x)}))};
 }
 function Article(p,body){
  const row=s.DB().news[body.id];

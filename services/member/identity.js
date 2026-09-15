@@ -32,7 +32,7 @@ function Home(p){
  const usable=orders.filter(x=>x.status!=='REFUNDED').reverse().sort((a,b)=>Number(!a.activatedAt)-Number(!b.activatedAt)||(b.lastUsedAt||b.activatedAt||b.at)-(a.lastUsedAt||a.activatedAt||a.at));
  const latestPayments=payments;
  const extras=require('./home').Extras(p);
- return {...extras,settings:{},profile:s.PublicProfile(p,true),activeGame:commerce.ActiveGame(p),counts:{...extras.counts,orders:orders.length,payments:payments.length},
+ return {...extras,settings:{},profile:s.PublicProfile(p,true),activeGame:commerce.ActiveGame(p),activeGames:commerce.ActiveGames(p),counts:{...extras.counts,orders:orders.length,payments:payments.length},
   summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:payments.length,posts:extras.counts.posts,unreadNews:require('./social').UnreadNewsCount(p)},
   recentOrders:usable.slice(0,1),recentPayments:latestPayments.slice(0,1),latestPayment:latestPayments[0]||null};
 }

@@ -1,7 +1,17 @@
 'use strict';
 const s=require('./store');
 function IsFollowing(viewer,target){return !!s.DB().follows[viewer+':'+target];}
-function Counts(id){const rows=Object.values(s.DB().follows).filter(x=>!s.ProfileById(x.follower)?.blocked&&!s.ProfileById(x.following)?.blocked);return {followers:rows.filter(x=>x.following===id).length,following:rows.filter(x=>x.follower===id).length};}
+function Counts(id){
+ let followers=0,following=0;
+ for(const row of Object.values(s.DB().follows)){
+  // Unrelated edges cannot affect this profile. Avoid two account lookups for
+  // every relationship each time a feed author or home preview is projected.
+  if(row.follower!==id&&row.following!==id)continue;
+  if(s.ProfileById(row.follower)?.blocked||s.ProfileById(row.following)?.blocked)continue;
+  if(row.following===id)followers++;if(row.follower===id)following++;
+ }
+ return {followers,following};
+}
 function Set(p,body){
  const target=s.Resolve(body.handle||body.id);if(!target||target.blocked||require('./socialActions').Blocked(p.id,target.id))s.Fail('MEMBER_NOT_FOUND');
  if(target.id===p.id||typeof body.following!=='boolean')s.Fail('INPUT_INVALID');

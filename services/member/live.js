@@ -42,6 +42,6 @@ function Read(p,body){
   if(JSON.stringify(rows.map(x=>x.id+'/'+(x.revision||0)))!==JSON.stringify(body.knownComments))
    commentPage=require('./commentThreads').Page(p,s.DB().posts[query.postId],query);
  }
- return {activeGame:require('./commerce').ActiveGame(p),posts,comments,profiles:[...profiles.values()],removedPosts,removedComments,scope,commentPage,revision:s.DB().revision};
+ return {activeGame:require('./commerce').ActiveGame(p),activeGames:require('./commerce').ActiveGames(p),posts,comments,profiles:[...profiles.values()],removedPosts,removedComments,scope,commentPage,revision:s.DB().revision};
 }
 module.exports={Read,Scope};

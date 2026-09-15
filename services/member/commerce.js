@@ -4,11 +4,12 @@ function PublicGame(p){return {id:p.id,title:p.title,description:p.description,g
 function Catalog(body={},viewer){
  const rows=Object.values(s.DB().products).filter(p=>p.published&&!p.deleted&&(!body.category||p.accessType===body.category))
   .sort((a,b)=>a.sort-b.sort||b.updatedAt-a.updatedAt);
- return s.Page(rows.map(p=>{
+ const page=s.Page(rows,body);
+ return {...page,items:page.items.map(p=>{
   const item={...PublicGame(p),unread:!!viewer&&(viewer.readProducts?.[p.id]||0)<(p.revision||1)};
   if(body.summary===true)item.description=String(p.description||'').replace(/\s+/g,' ').trim().slice(0,140);
   return item;
- }),body);
+ })};
 }
 function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');if(p){if((p.readProducts?.[row.id]||0)<(row.revision||1))s.Atomic(()=>{p.readProducts||={};p.readProducts[row.id]=row.revision||1;});require('./views').Article(p,row,'product');require('./history').RecordProduct(p,body);}return {product:{...PublicGame(row),unread:false},...(p?{profile:s.PublicProfile(p,true)}:{})};}
 function SaveProduct(body){
@@ -67,6 +68,13 @@ function ActiveGame(p){
  if(p.blocked||!order||order.accountId!==p.id||order.status!=='ACTIVE'||!order.activatedAt||order.expiresAt<=Date.now())return null;
  return {id:order.id,productId:order.productId||'',title:order.title,accessType:order.accessType,days:order.days,activatedAt:order.activatedAt,expiresAt:order.expiresAt,status:'ACTIVE'};
 }
+function ActiveGames(p){
+ if(p.blocked)return [];
+ const now=Date.now(),db=s.DB();
+ return Object.values(db.orders).filter(row=>row.accountId===p.id&&!row.mergedInto&&row.status==='ACTIVE'&&row.activatedAt>0&&row.expiresAt>now)
+  .sort((a,b)=>a.activatedAt-b.activatedAt||a.id.localeCompare(b.id))
+  .map(row=>({id:row.id,productId:row.productId||'',title:row.title,genre:db.products[row.productId]?.genre||'게임',accessType:row.accessType,days:row.days,activatedAt:row.activatedAt,expiresAt:row.expiresAt,status:'ACTIVE'}));
+}
 function Purchase(p,body){
  const game=Product({id:body.productId}).product;
  if(!Number.isSafeInteger(body.days)||body.days<1||body.days>3650)s.Fail('GAME_PLAN_INVALID');
@@ -87,7 +95,7 @@ function Purchase(p,body){
  }
  const payment=s.Ledger(p,-plan.price,'PURCHASE',row.id);
  Object.assign(payment,{days:plan.days,title:game.title,productId:game.id,displayExpiresAt:DisplayExpiresAt(row)});
- return {order:PublicOrder(row),profile:s.PublicProfile(p,true),activeGame:ActiveGame(p)};
+ return {order:PublicOrder(row),profile:s.PublicProfile(p,true),activeGame:ActiveGame(p),activeGames:ActiveGames(p)};
 }
 function Activate(p,c,body){
  const requested=s.DB().orders[body.orderId];if(!requested||requested.accountId!==p.id)s.Fail('ORDER_NOT_FOUND');
@@ -100,7 +108,7 @@ function Activate(p,c,body){
  if(!bound)s.Fail('MEMBER_AUTH_REQUIRED');
  require('./entryPass').Convert(bound.license);
  order.status='ACTIVE';state.licenseRevision++;
- return {order:PublicOrder(order),activeGame:ActiveGame(p),requiresBiometric:true};
+ return {order:PublicOrder(order),activeGame:ActiveGame(p),activeGames:ActiveGames(p),requiresBiometric:true};
 }
 function AfterActivation(c){
  require('../buildGate').RevokeForClient(c.clientId,'PURCHASE_SWITCH');
@@ -136,6 +144,6 @@ function OwnPostRows(p){return Object.values(s.DB().posts).filter(x=>x.accountId
 function Mine(p,body){
  const orders=OwnOrders(p),db=s.DB(),page=s.Page(OwnPostRows(p),body,12);
  const posts={...page,items:page.items.map(x=>body.postCards===true?require('./social').PublicPost(x,p,false,body._wire==='zlib'):{id:x.id,title:x.title||'',body:(x.title||x.body||'GIF · 투표').slice(0,140),imageThumb:x.imageThumb||require('./gifs').Get(x.gifId)?.frames[0]||'',at:x.at,revision:x.revision||0})};
- return {profile:s.PublicProfile(p,true),posts,...(body.commentsOnly?{comments:require('./activity').Comments(p,body)}:{}),activeGame:ActiveGame(p),orders:s.Page(orders,body,20),payments:s.Page(body.purchasesOnly===true?PurchasePayments(p):Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20)};
+ return {profile:s.PublicProfile(p,true),posts,...(body.commentsOnly?{comments:require('./activity').Comments(p,body)}:{}),activeGame:ActiveGame(p),activeGames:ActiveGames(p),orders:s.Page(orders,body,20),payments:s.Page(body.purchasesOnly===true?PurchasePayments(p):Object.values(db.ledger).filter(x=>x.accountId===p.id).sort((a,b)=>b.at-a.at),body,20)};
 }
-module.exports={PublicGame,Product,Catalog,SaveProduct,Purchase,Activate,AfterActivation,Refund,Mine,OwnPostRows,PurchasePayments,PublicOrder,OwnOrders,ActiveGame};
+module.exports={PublicGame,Product,Catalog,SaveProduct,Purchase,Activate,AfterActivation,Refund,Mine,OwnPostRows,PurchasePayments,PublicOrder,OwnOrders,ActiveGame,ActiveGames};

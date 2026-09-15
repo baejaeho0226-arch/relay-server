@@ -24,6 +24,26 @@ function Load(){
  }catch(_){return null;}
 }
 const snapshot=Load();
-function Reference(){return structuredClone(snapshot||{baseCurrency:'KRW',rateDate:'',source:'',sourceUrl:'',approximate:false,rates:{KRW:1},currencies:['KRW']});}
-function Supported(code){return typeof code==='string'&&currencies.includes(code)&&!!(snapshot?.rates[code]||code==='KRW');}
-module.exports={Reference,Supported,Normalize};
+const coins=require('./currency-coins');
+const names={KRW:'대한민국 원',USD:'미국 달러',EUR:'유로',JPY:'일본 엔',CNY:'중국 위안',GBP:'영국 파운드',CAD:'캐나다 달러',AUD:'호주 달러'};
+function Reference(code='KRW'){
+ const result=structuredClone(snapshot||{baseCurrency:'KRW',rateDate:'',source:'',sourceUrl:'',approximate:false,rates:{KRW:1},currencies:['KRW']});
+ // A persisted coin preference also warms a missing cache after deployment.
+ // Until its quote is verified the response keeps the honest KRW fallback.
+ const quote=coins.CodeID(code)?coins.Quote({code}):null;
+ if(quote?.ready){
+  const selected=quote.currency;result.rates[code]=selected.rate;result.currencies.push(code);result.selected=selected;
+  result.rateDate=selected.rateDate;result.source=selected.source;result.sourceUrl=selected.sourceUrl;result.approximate=true;
+ }
+ return result;
+}
+function Supported(code){return typeof code==='string'&&(currencies.includes(code)&&!!(snapshot?.rates[code]||code==='KRW')||coins.Supported(code));}
+function List(body={}){
+ const result=coins.List(body);
+ return {...result,fiat:currencies.filter(Supported).map(code=>({code,name:names[code],kind:'fiat',symbol:code,available:true}))};
+}
+function Quote(body={}){
+ if(currencies.includes(body.code)&&Supported(body.code)){const ref=Reference();return {code:body.code,ready:true,loading:false,error:'',currency:{code:body.code,kind:'fiat',symbol:body.code,name:names[body.code],rate:ref.rates[body.code],rateDate:ref.rateDate,source:ref.source}};}
+ return coins.Quote(body);
+}
+module.exports={Reference,Supported,Normalize,List,Quote};

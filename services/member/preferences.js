@@ -9,8 +9,8 @@ function Read(p){
  // Older APKs only understand a private/public flag. Restricted audiences must
  // never appear public to them; their next boolean write is still supported.
  result.profilePostsPrivate=result.profilePostsVisibility!=='PUBLIC';
+ result.currencyReference=currency.Reference(result.displayCurrency);
  result.displayCurrency=currency.Supported(result.displayCurrency)?result.displayCurrency:'KRW';
- result.currencyReference=currency.Reference();
  if(!['latest','popular'].includes(result.feedDefaultSort))result.feedDefaultSort='latest';
  return result;
 }

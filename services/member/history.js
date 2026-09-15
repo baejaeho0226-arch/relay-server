@@ -5,8 +5,9 @@ const LIMIT=20;
 // enter service history, and labels always come from this server-owned map.
 const SERVICES=Object.freeze({
  news:['소식','News','news'],catalog:['게임','Games','shop'],feed:['피드','Feed','feed'],
- 'event.card':['행운 카드','Lucky cards','casino.group'],'event.chest':['보물상자','Treasure chests','gift'],'event.rps':['가위바위보','Rock paper scissors','heart'],
- events:['이벤트','Events','gift'],casino:['모아 카지노','Moa Casino','casino'],original:['모아 오리지널','Moa Original','casino'],
+ 'event.dino':['공룡 게임','Dino Run','event.dino'],'event.flappy':['플래피 버드','Flappy Bird','event.flappy'],
+ 'event.whack':['두더지 게임','Whack-a-mole','event.whack'],'event.dodge':['똥피하기','Dodge','event.dodge'],'event.rhythm':['리듬 게임','Rhythm','event.rhythm'],
+ events:['이벤트','Events','gift'],playground:['모아의 놀이터','Moa Playground','casino'],casino:['모아의 놀이터','Moa Playground','casino'],original:['모아의 놀이터','Moa Playground','casino'],
  baccarat:['바카라','Baccarat','casino'],roulette:['룰렛','Roulette','casino'],slots:['슬롯','Slots','casino'],blackjack:['블랙잭','Blackjack','casino'],
  crash:['크래시','Crash','casino'],dice:['다이스','Dice','casino'],mines:['마인즈','Mines','casino'],plinko:['플링코','Plinko','casino'],
  limbo:['림보','Limbo','casino'],hilo:['힐로','HiLo','casino'],tower:['타워','Tower','casino'],
@@ -16,9 +17,7 @@ const SERVICES=Object.freeze({
  support:['고객센터','Support','help'],settings:['설정','Settings','settings'],appearance:['화면 설정','Appearance','settings'],
  'settings.notifications':['알림 설정','Notification settings','settings'],'settings.profile':['프로필 게시글','Profile posts','settings'],
  'settings.language':['언어 설정','Language','settings'],'settings.currency':['잔액 표시 통화','Display currency','settings'],
- 'settings.features':['앱 기능','App features','settings'],'settings.home':['홈 기능','Home features','settings'],
- 'settings.news':['소식 기능','News features','news'],'settings.games':['게임 기능','Game features','shop'],
- 'settings.feed':['피드 기능','Feed features','feed'],notifications:['알림','Notifications','news'],
+ 'settings.feed':['피드 기본 정렬','Feed default sort','settings'],notifications:['알림','Notifications','news'],
  'settings.account':['계정 설정','Account','user'],about:['앱 정보','About','help'],policies:['약관 및 정책','Terms and policies','help'],
  points:['포인트','Points','gift'],attendance:['출석 체크','Attendance','calendar'],wheel:['돌림판','Wheel','gift'],
  popular:['인기 피드 Top 10','Popular feed Top 10','heart'],activity:['실시간 게임 구매','Live game purchases','receipt'],
@@ -43,12 +42,27 @@ function Read(p){
   recentServices:Entries(p,'services').map(row=>{const [title,titleEn,icon]=SERVICES[row.route];return {...row,title,titleEn,icon};})
  };
 }
+function NeedsPrune(p,products,services){
+ if(!p.recentHistory)return false;
+ return JSON.stringify(Rows(p,'products'))!==JSON.stringify(products)||JSON.stringify(Rows(p,'services'))!==JSON.stringify(services);
+}
+// Startup migration calls this after installing the imported member store.
+// Ordinary history/home reads remain pure and never create a save per refresh.
+function PruneStored(p){
+ const products=Entries(p,'products'),services=Entries(p,'services');
+ if(!NeedsPrune(p,products,services))return false;
+ p.recentHistory={products,services};return true;
+}
 function Remember(p,key,id){
- const rows=Entries(p,key),field=key==='products'?'id':'route';
+ const products=Entries(p,'products'),services=Entries(p,'services');
+ const rows=key==='products'?products:services,field=key==='products'?'id':'route';
  // A repeated read/open of the same newest entry is a true no-op: it cannot
  // farm timestamps, revisions or persistence writes during refresh/polling.
- if(rows[0]?.[field]===id)return false;
- s.Atomic(()=>{p.recentHistory={products:Entries(p,'products'),services:Entries(p,'services'),[key]:[{[field]:id,at:Date.now()},...rows.filter(row=>row[field]!==id)].slice(0,LIMIT)};});
+ if(rows[0]?.[field]===id){
+  if(NeedsPrune(p,products,services))s.Atomic(()=>{p.recentHistory={products,services};});
+  return false;
+ }
+ s.Atomic(()=>{p.recentHistory={products,services,[key]:[{[field]:id,at:Date.now()},...rows.filter(row=>row[field]!==id)].slice(0,LIMIT)};});
  return true;
 }
 function Record(p,body={}){
@@ -62,4 +76,4 @@ function RecordProduct(p,body){
  if(body.countView!==true||!ValidProduct(body.id))return false;
  return Remember(p,'products',body.id);
 }
-module.exports={LIMIT,SERVICES,Read,Record,RecordProduct};
+module.exports={LIMIT,SERVICES,Read,Record,RecordProduct,PruneStored};
