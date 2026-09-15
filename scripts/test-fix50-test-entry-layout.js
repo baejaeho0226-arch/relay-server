@@ -3,7 +3,7 @@
 // mocks. This checks geometry and source gates, not Android runtime rendering.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const dir=path.resolve(__dirname,'../../MoaPlayApp_Android64');
-const read=name=>fs.readFileSync(path.join(dir,name),'utf8');
+const read=name=>fs.readFileSync(path.join(dir,name),'utf8').replace(/\r\n/g,'\n');
 const ui=read('MoaPlayApp.Ui.inc'),construct=read('MoaPlayApp.Lifecycle.Construction.inc');
 const production=construct.match(/if not MEMBER_BIOMETRIC_TEST_MODE then\s+begin\s+([\s\S]*?)\n  end;\n  FRuntime := nil;/);
 assert.ok(production,'Native biometric creation is scoped to normal authentication mode');

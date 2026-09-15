@@ -56,22 +56,26 @@ try{
  assert.equal(detail.wallet.points,50);
  const title=Object.values(s.DB().pointLedger).find(row=>row.accountId===account(active).id&&row.kind==='BADGE_REWARD');
  assert.equal(title.reference,'PROFILE_VISIT_1');assert.deepEqual(read(active),[projected(title)]);
- const eventBody=game=>({game,choice:0,day:rewards.Day(now),revision:rewards.Rules().revision});
- now+=1000;const firstBody=eventBody('CARD'),card=run(active,'event.play',firstBody,'FIX57-POINT-CARD');
- now+=1000;const chest=run(active,'event.play',eventBody('CHEST'));
- now+=1000;const rps=run(active,'event.play',eventBody('RPS'));
- const events=[rps.reward,chest.reward,card.reward].map(projected);
+ // Repeated real skill sessions replace the retired one-play-per-day games.
+ const earned=[],engine=require('../services/member/eventEngine');let firstBody,card;
+ for(let i=0;i<3;i++){
+  now+=1000;const start=run(active,'event.start',{game:'WHACK',revision:rewards.Rules().revision});
+  const body={sessionId:start.session.id,ticks:1,actions:[{t:1,a:'tap',lane:engine.Schedule('WHACK',start.session.seed)[0].lane}]};
+  now+=34;const result=run(active,'event.finish',body,'FIX57-POINT-SKILL-'+i);assert.equal(result.reward.amount,10);earned.push(result.reward);
+  if(i===0){firstBody=body;card=result;}
+ }
+ const events=earned.reverse().map(projected);
  assert.deepEqual(read(active),events,'actual server event rewards appear without a client-side accrual calculation');
  before=JSON.stringify(s.DB());
- assert.deepEqual(run(active,'event.play',firstBody,'FIX57-POINT-CARD').reward,card.reward);
+ assert.deepEqual(run(active,'event.finish',firstBody,'FIX57-POINT-SKILL-0').reward,card.reward);
  assert.deepEqual(read(active),events,'replaying an older reward keeps the current home ordering');
  assert.equal(JSON.stringify(s.DB()),before,'replaying a completed reward never duplicates accruals');
  const exported=database.BuildDatabaseObject();assert.equal(database.ImportDatabaseObject(exported),true);
  before=JSON.stringify(s.DB());
  assert.deepEqual(read(a),ranked);assert.deepEqual(read(active),events);assert.deepEqual(read(empty),[]);
- assert.deepEqual(run(active,'event.play',firstBody,'FIX57-POINT-CARD').reward,card.reward);
+ assert.deepEqual(run(active,'event.finish',firstBody,'FIX57-POINT-SKILL-0').reward,card.reward);
  assert.equal(JSON.stringify(s.DB()),before,'persisted ledgers and operation retries retain the same summary after restart');
  a.biometricVerified=false;assert.throws(()=>read(a),/MEMBER_AUTH_REQUIRED/);
  assert.equal(first.amount,100,'the preview never rewrites older receipts');
- console.log('FIX57 POINT SUMMARY PASS: authenticated own-account positive credits, filter before three-row limit, debit and foreign-wallet exclusion, minimal detached projection, stable ties, detail-earned title freshness, actual daily event rewards, read purity, retry and restart.');
+ console.log('FIX57 POINT SUMMARY PASS: authenticated own-account positive credits, filter before three-row limit, debit and foreign-wallet exclusion, minimal detached projection, stable ties, detail-earned title freshness, actual repeatable skill-event rewards, read purity, retry and restart.');
 }finally{Date.now=realNow;fs.rmSync(temp,{recursive:true,force:true});}

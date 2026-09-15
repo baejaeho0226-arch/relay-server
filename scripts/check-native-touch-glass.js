@@ -1,5 +1,5 @@
 'use strict';
-// Static invariants for native card interactions and the resting glass brush.
+// Static invariants for native card interactions and the restored solid card surface.
 // This reads the shipped Delphi source; it does not simulate FMX input delivery.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -38,8 +38,8 @@ function Check(apk = path.resolve(__dirname, '../../MoaPlayApp_Android64')) {
   // Card decoration uses the existing native rounded brush. It does not turn
   // passive wrappers into input targets or affect text-input/action chrome.
   const glass = widgets.split('procedure HubGlassCardStyle')[1].split('function TMoaPlayForm.HubCard')[0];
-  assert.match(glass, /Fill\.Kind:=TBrushKind\.Gradient/);
-  assert.equal((glass.match(/Point\.Offset:=/g) || []).length, 3);
+  assert.match(glass, /Fill\.Kind:=TBrushKind\.Solid;Card\.Fill\.Color:=MemberSurface/);
+  assert.doesNotMatch(glass, /Gradient|MemberGlass/);
   assert.doesNotMatch(glass, /\.Create\(|HitTest|AutoCapture|OnClick|\.Opacity\s*:=/);
   for (const name of ['HubActionPanelStyle', 'HubInputPanelStyle']) {
     const part = widgets.split('procedure ' + name)[1].split(/\n(?:procedure|function) /)[0];
@@ -58,22 +58,31 @@ function Check(apk = path.resolve(__dirname, '../../MoaPlayApp_Android64')) {
   const rgb = c => [16, 8, 0].map(s => (c >>> s) & 255);
   const luma = c => rgb(c).map(v => (v /= 255) <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
   const contrast = (a, b) => (Math.max(luma(a), luma(b)) + .05) / (Math.min(luma(a), luma(b)) + .05);
-  const composite = (fg, bg) => rgb(fg).map((v, i) => Math.round(v * (fg >>> 24) / 255 + rgb(bg)[i] * (1 - (fg >>> 24) / 255))).reduce((out, v) => out * 256 + v, 0);
   let samples = 0;
   for (const dark of [false, true]) {
-    for (const bg of ['MemberBackground', 'MemberSoft']) {
-      for (const color of ['MemberGlassTop', 'MemberGlassMiddle', 'MemberGlassBottom']) {
-        const fill = role(color, dark);
-        assert.ok((fill >>> 24) < 255, 'Glass remains translucent');
-        const surface = composite(fill, role(bg, dark));
-        for (const ink of ['MemberText', 'MemberMuted', 'MemberLink']) {
-          assert.ok(contrast(role(ink, dark), surface) >= 4.5, `${dark ? 'dark' : 'light'} ${ink} on ${color}/${bg}`);
-          samples++;
-        }
+    for (const color of ['MemberSurface', 'MemberSoft']) {
+      const fill = role(color, dark);
+      assert.equal(fill >>> 24, 255, 'Restored cards are opaque');
+      for (const ink of ['MemberText', 'MemberMuted', 'MemberLink']) {
+        assert.ok(contrast(role(ink, dark), fill) >= 4.5, `${dark ? 'dark' : 'light'} ${ink} on ${color}`);
+        samples++;
       }
     }
+    assert.equal(contrast(role('MemberFloatingInk', dark), role('MemberFloatingFill', dark)), 21);
   }
+  for (const name of ['MoaPlayMemberInput.pas', 'MoaPlayMemberMemo.pas']) {
+    const input = read(name);
+    const caption = input.split('if FFloatingLabel then begin').at(-1)?.split('end else begin')[0];
+    assert.ok(caption, 'Caption branch ' + name);
+    assert.match(caption, /State:=2;/);
+    assert.doesNotMatch(caption, /IsFocused|State:=1|SetFocus|ApplyStyleLookup/);
+  }
+  const indicators = read('MoaPlayCasinoIndicators.pas');
+  assert.doesNotMatch(indicators, /FStats|FStatLines|bestStreak|matched|'played'/);
+  const feedback = read('MoaPlayUiFeedback.pas');
+  assert.match(feedback, /Fill.Kind:=TBrushKind.Solid;FPanel.Fill.Color:=MemberFloatingFill/);
+  assert.match(feedback, /FText.TextSettings.FontColor:=MemberFloatingInk/);
   return samples;
 }
-if (require.main === module) console.log(`Native touch/glass source guard passed (${Check()} palette contrast samples; Delphi/device input not executed).`);
+if (require.main === module) console.log(`Native touch/solid-card source guard passed (${Check()} palette contrast samples; Delphi/device input not executed).`);
 module.exports = { Check };
