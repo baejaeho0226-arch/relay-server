@@ -1,6 +1,7 @@
 'use strict';
 let memberShopRules=null;
-const memberShopNames={NICKNAME_TICKET:'닉네임 변경권',NICKNAME_COLOR:'닉네임 색상'};
+const memberShopNames={NICKNAME_TICKET:'닉네임 변경권',NICKNAME_COLOR:'닉네임 색상',TITLE_COLOR:'칭호 색상 세트',TITLE_NAME:'칭호 이름 변경권'};
+const memberShopDescriptions={NICKNAME_TICKET:'닉네임 변경 대기 없이 1회 변경',NICKNAME_COLOR:'선택한 닉네임 색상 1회 적용',TITLE_COLOR:'보유 칭호의 글자·아이콘 색상 함께 1회 적용',TITLE_NAME:'모든 기본 칭호 보유 시 구매 가능 · 칭호 이름 1회 변경'};
 function memberPageButtons(result){return result.total>30?`<div class="member-pagination">${memberOffset?memberButton('prev','','이전'):''}<span>${Math.floor(memberOffset/30)+1}페이지</span>${result.nextOffset!==null?memberButton('next','','다음'):''}</div>`:'';}
 function memberConversionPanel(result){
  const rows=result.items||[];
@@ -8,7 +9,7 @@ function memberConversionPanel(result){
 }
 function memberShopPanel(result){
  memberShopRules=result.rules;const rules=result.rules,purchases=result.purchases||{items:[],total:0,nextOffset:null};
- return `<section class="member-panel"><div class="member-toolbar"><h3>회원 상점</h3>${memberButton('shop.edit','','판매 설정')}</div><div class="member-metrics">${Object.entries(memberShopNames).map(([id,name])=>{const item=rules.items[id]||{};return `<article><span>${name}</span><strong>${item.enabled?Number(item.price||0).toLocaleString('ko-KR')+' P':'판매 중지'}</strong><span>${id==='NICKNAME_TICKET'?'닉네임 변경 대기 없이 1회 변경':'선택한 닉네임 색상 1회 적용'}</span></article>`;}).join('')}</div></section><section class="member-panel"><h3>상점 구매 내역</h3>${purchases.items.length?`<div class="table-wrap"><table><thead><tr><th>회원</th><th>상품</th><th>금액</th><th>구매 시각</th></tr></thead><tbody>${purchases.items.map(x=>`<tr><td>${esc(x.member?.nickname||x.memberNickname||x.nickname||'회원')}<div class="small-note">@${esc(String(x.memberHandle||'').replace(/^@/,''))}</div></td><td>${esc(memberShopNames[x.itemId]||x.title||'상점 상품')}</td><td>${Number(x.price??x.amount??0).toLocaleString('ko-KR')} P</td><td>${esc(fmtTime(x.at))}</td></tr>`).join('')}</tbody></table></div>`:'<p class="member-empty">아직 구매 내역이 없습니다.</p>'}${memberPageButtons(purchases)}</section>`;
+ return `<section class="member-panel"><div class="member-toolbar"><h3>회원 상점</h3>${memberButton('shop.edit','','판매 설정')}</div><div class="member-metrics">${Object.entries(memberShopNames).map(([id,name])=>{const item=rules.items[id]||{};return `<article><span>${name}</span><strong>${item.enabled?Number(item.price||0).toLocaleString('ko-KR')+' P':'판매 중지'}</strong><span>${memberShopDescriptions[id]}</span></article>`;}).join('')}</div></section><section class="member-panel"><h3>상점 구매 내역</h3>${purchases.items.length?`<div class="table-wrap"><table><thead><tr><th>회원</th><th>상품</th><th>금액</th><th>구매 시각</th></tr></thead><tbody>${purchases.items.map(x=>`<tr><td>${esc(x.member?.nickname||x.memberNickname||x.nickname||'회원')}<div class="small-note">@${esc(String(x.memberHandle||'').replace(/^@/,''))}</div></td><td>${esc(memberShopNames[x.itemId]||x.title||'상점 상품')}</td><td>${Number(x.price??x.amount??0).toLocaleString('ko-KR')} P</td><td>${esc(fmtTime(x.at))}</td></tr>`).join('')}</tbody></table></div>`:'<p class="member-empty">아직 구매 내역이 없습니다.</p>'}${memberPageButtons(purchases)}</section>`;
 }
 async function editMemberShop(){
  const rules=memberShopRules;if(!rules)return;
@@ -28,6 +29,6 @@ function memberDecorationFacts(p){
  const rows=[];
  if(p.titleBadge)rows.push(['착용한 배지',p.titleBadge.name||p.titleBadge.title||p.titleBadge.label||p.titleBadge.id]);
  if(p.nicknameColor)rows.push(['닉네임 색상',p.nicknameColor]);
- if(p.inventory){rows.push(['닉네임 변경권',String(p.inventory.nicknameTickets??p.inventory.NICKNAME_TICKET??0)+'개']);rows.push(['닉네임 색상 변경권',String(p.inventory.nicknameColors??p.inventory.NICKNAME_COLOR??0)+'개']);}
+ if(p.inventory){rows.push(['닉네임 변경권',String(p.inventory.nicknameTickets??p.inventory.NICKNAME_TICKET??0)+'개']);rows.push(['닉네임 색상 변경권',String(p.inventory.nicknameColors??p.inventory.NICKNAME_COLOR??0)+'개']);rows.push(['칭호 색상 세트',String(p.inventory.titleColors||0)+'개']);rows.push(['칭호 이름 변경권',String(p.inventory.titleNames||0)+'개']);}
  return rows.length?`<section class="member-panel"><h3>회원 꾸미기</h3>${memberFacts(rows)}</section>`:'';
 }

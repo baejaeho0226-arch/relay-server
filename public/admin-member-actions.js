@@ -1,6 +1,7 @@
 'use strict';
 async function handleMemberAction(event){
  const b=event.target.closest('[data-member-action]');if(!b)return false;const action=b.dataset.memberAction;let row=memberRows.get(b.dataset.id)||{};
+ if(action==='withdraw.approve'||action==='withdraw.reject'){if(b.disabled)return true;b.disabled=true;try{await processMemberWithdrawal(action,row);}finally{if(b.isConnected)b.disabled=false;}return true;}
  if(action==='shop.edit'){await editMemberShop();return true;}
  if(action==='points.reverse'){if(b.disabled)return true;b.disabled=true;try{await reverseMemberPoints(row);}finally{if(b.isConnected)b.disabled=false;}return true;}
  if(action==='rewards.edit'){await editMemberRewards();return true;}
