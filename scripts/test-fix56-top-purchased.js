@@ -37,6 +37,16 @@ try{
  const ranked=[expected(g,3,9),expected(other,2,14),expected(ties[0],2,2)];
  assert.deepEqual(read(viewer),ranked,'purchase count leads, days break ties, product ID gives stable final ordering and only three rows');
  assert.deepEqual(read(a),ranked,'ranking is global and unaffected by viewer relationships');
+ const full=run(viewer,'topgames',{limit:2});
+ assert.equal(full.total,4,'ranking details include purchases below the three-item home preview');
+ assert.equal(full.nextOffset,2);assert.deepEqual(full.items.map(x=>x.rank),[1,2]);
+ assert.deepEqual(full.items.map(x=>x.id),ranked.slice(0,2).map(x=>x.id));
+ const secondPage=run(viewer,'topgames',{offset:2,limit:2});
+ assert.deepEqual(secondPage.items.map(x=>x.rank),[3,4]);assert.equal(secondPage.nextOffset,null);
+ assert.equal(run(viewer,'topgames',{offset:999}).items.length,0);
+ assert.deepEqual(Object.keys(full.items[0]).sort(),['genre','id','rank','title']);
+ const rankingDb=JSON.stringify(s.DB());run(viewer,'topgames');assert.equal(JSON.stringify(s.DB()),rankingDb);
+
  for(const row of read(viewer))assert.deepEqual(Object.keys(row).sort(),['genre','id','purchaseCount','title','totalDays'],'only public product metadata and aggregate counts leave the service');
  // Historical completed use remains a sale; refunds remove all merged receipts.
  s.Atomic(()=>{s.DB().orders[first.order.id].status='EXPIRED';});
@@ -82,6 +92,6 @@ try{
  const persisted=product('재시작 후 구매 순위');buy(a,persisted,7);
  const afterRestart=[expected(persisted,1,7)];assert.deepEqual(read(viewer),afterRestart);
  const exported=database.BuildDatabaseObject();assert.equal(database.ImportDatabaseObject(exported),true);assert.deepEqual(read(viewer),afterRestart,'ranking uses persisted receipts and refund state after reload');
- viewer.biometricVerified=false;assert.throws(()=>read(viewer),/MEMBER_AUTH_REQUIRED/);
+ viewer.biometricVerified=false;assert.throws(()=>read(viewer),/MEMBER_AUTH_REQUIRED/);assert.throws(()=>run(viewer,'topgames'),/MEMBER_AUTH_REQUIRED/);
  console.log('FIX56 TOP PURCHASED PASS: authenticated home, top-three global ranking, stable ties, payment/merged-duration counting, retries, rollback, aggregate privacy, available products, expiry, refunds and aliases, legacy read purity, invalid receipt filtering and reload.');
 }finally{Date.now=realNow;fs.rmSync(temp,{recursive:true,force:true});}

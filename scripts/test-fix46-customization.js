@@ -23,7 +23,7 @@ const save=db.SaveDatabase;
  const a=client('1111111111111111','CUSTOM-A'),a2=client('3333333333333333','CUSTOM-A2'),b=client('2222222222222222','CUSTOM-B');a2.c.installationDeviceKey=a.c.installationDeviceKey;
  const id=run(a,'me').profile.id;run(b,'me');
  s.Atomic(()=>{s.ProfileById(id).points=10000;});
- let offers=run(a,'shop');assert.equal(offers.items.length,2);assert.ok(offers.items.every(x=>!x.enabled));
+ let offers=run(a,'shop');assert.equal(offers.items.length,4);assert.ok(offers.items.filter(x=>x.id.startsWith('NICKNAME_')).every(x=>!x.enabled));
  assert.throws(()=>run(a,'shop.purchase',{itemId:'NICKNAME_TICKET',revision:offers.rules.revision}),/SHOP_UNAVAILABLE/);
  assert.throws(()=>run(a,'shop.save',shop.Rules()),/UNKNOWN_ACTION/);
  assert.throws(()=>run(a,'points.reverse',{id:'PCV-ANY',reason:'test'}),/UNKNOWN_ACTION/);

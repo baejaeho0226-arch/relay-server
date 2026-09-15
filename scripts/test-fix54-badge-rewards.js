@@ -18,7 +18,7 @@ function failedSave(fn){const before=snapshot(),save=database.SaveDatabase;try{d
 try{
  const a=client(1),b=client(2),legacy=client(3),capped=client(4),failure=client(5),games=client(6);
  for(const c of [a,b,legacy,capped,failure,games])run(c,'me');
- const catalog=read(a).items;assert.equal(catalog.length,61);assert.equal(new Set(catalog.map(row=>row.id)).size,61);
+ const catalog=read(a).items;assert.equal(catalog.length,62);assert.equal(new Set(catalog.map(row=>row.id)).size,catalog.length);
  assert.ok(catalog.every(row=>Number.isSafeInteger(row.rewardPoints)&&row.rewardPoints>0),'every published title has a positive point award');
  assert.equal(ledger(a).length,0,'unearned titles do not pay');
  const postBody={body:'첫 칭호 포인트 확인'},first=run(a,'post.create',postBody,'FIX54-FIRST-POST');
@@ -37,7 +37,7 @@ try{
  s.Atomic(()=>{account(legacy).badgeProgress={version:1,counts:{},seen:{},awards:Object.fromEntries(catalog.map(row=>[row.id,{at:earnedAt,legacy:true}]))};});
  failedSave(()=>read(legacy));assert.equal(account(legacy).points||0,0);
  const restored=read(legacy),total=catalog.reduce((sum,row)=>sum+row.rewardPoints,0);
- assert.equal(account(legacy).points,total);assert.equal(ledger(legacy).length,61);assert.equal(restored.profile.points,total);
+ assert.equal(account(legacy).points,total);assert.equal(ledger(legacy).length,catalog.length);assert.equal(restored.profile.points,total);
  assert.ok(restored.items.every(row=>row.earnedAt===earnedAt&&row.rewardPaid&&row.rewardStatus==='PAID'));
  assert.ok(['REPORT_1','REPORT_RECEIVED_1'].every(id=>ledger(legacy).some(row=>row.reference===id&&row.amount===50)));
  assert.ok(ledger(legacy).every(row=>s.DB().pointLedger[account(legacy).id+':BADGE_REWARD:'+row.reference]===row));
@@ -45,8 +45,8 @@ try{
  // A persisted ledger is a second idempotency guard if an older award marker is missing.
  const paidId=award(legacy,'POSTS_1').rewardLedgerId;
  s.Atomic(()=>{const old=award(legacy,'POSTS_1');delete old.rewardPaid;delete old.rewardLedgerId;delete old.rewardPaidAt;});
- read(legacy);assert.equal(account(legacy).points,total);assert.equal(ledger(legacy).length,61);assert.equal(award(legacy,'POSTS_1').rewardLedgerId,paidId);
- const remote=run(b,'badges',{profileId:account(legacy).id});assert.equal(remote.readOnly,true);assert.equal(remote.items.length,61);
+ read(legacy);assert.equal(account(legacy).points,total);assert.equal(ledger(legacy).length,catalog.length);assert.equal(award(legacy,'POSTS_1').rewardLedgerId,paidId);
+ const remote=run(b,'badges',{profileId:account(legacy).id});assert.equal(remote.readOnly,true);assert.equal(remote.items.length,catalog.length);
  for(const field of ['balance','points','inventory','eventSpins','subject','badgeProgress'])assert.equal(remote.profile[field],undefined);
  assert.ok(remote.items.every(row=>row.progress===undefined&&row.rewardPaid===undefined&&row.rewardStatus===undefined&&row.rewardPoints>0),'public titles do not reveal another wallet or payment state');
  // A capped point wallet defers rewards without blocking balance-funded play.
@@ -76,6 +76,6 @@ try{
  const pureBefore=snapshot();for(let i=0;i<10;i++)badges.Public(account(a));assert.equal(snapshot(),pureBefore);
  const exported=database.BuildDatabaseObject();assert.equal(database.ImportDatabaseObject(exported),true);
  const restartBefore=snapshot();read(legacy);read(capped);read(games);assert.equal(snapshot(),restartBefore);assert.equal(account(legacy).points,total);
- assert.equal(ledger(legacy).length,61);assert.equal(ledger(games).length,4);
- console.log('FIX54 BADGE REWARDS PASS: all 61 positive title rewards, atomic action/owner payments, permanent awards, once-only reads and replay, legacy backfill and ledger repair, cap deferral, rollback, new-game metrics, private wallet isolation and restart persistence.');
+ assert.equal(ledger(legacy).length,catalog.length);assert.equal(ledger(games).length,4);
+ console.log('FIX54 BADGE REWARDS PASS: all published positive title rewards, atomic action/owner payments, permanent awards, once-only reads and replay, legacy backfill and ledger repair, cap deferral, rollback, new-game metrics, private wallet isolation and restart persistence.');
 }finally{Date.now=realNow;fs.rmSync(temp,{recursive:true,force:true});}

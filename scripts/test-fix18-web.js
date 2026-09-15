@@ -44,7 +44,7 @@ const click=async el=>{assert.ok(el);el.click();await wait();};
  await click(w.document.querySelector('[data-member-action="news.edit"]'));assert.equal(w.document.querySelector('[data-modal-field="image"]'),null);assert.equal(w.document.querySelector('[data-modal-field="detail_platform"]'),null);
  assert.equal(w.document.querySelector('[data-modal-field=category]').value,'NOTICE');field('body','사진 없이 수정한 소식');await click(w.document.getElementById('modal-confirm'));
  assert.equal(store.DB().news[storedNews.id].category,'NOTICE');assert.equal(store.DB().news[storedNews.id].body,'사진 없이 수정한 소식');assert.equal(store.DB().news[storedNews.id].image,testPhoto,'editing text preserves legacy media in storage only');
- const memberPages={overview:'운영 요약',rewards:'이벤트·포인트',pointConversions:'포인트 교환·회수',shop:'회원 상점',products:'게임',news:'소식',orders:'이용권 내역',ledger:'결제 원장',profiles:'회원',posts:'피드',comments:'댓글',reports:'신고',policies:'약관·개인정보'};
+ const memberPages={overview:'운영 요약',rewards:'이벤트·포인트',pointConversions:'포인트 교환·회수',withdrawals:'출금 신청',shop:'회원 상점',products:'게임',news:'소식',orders:'이용권 내역',ledger:'결제 원장',profiles:'회원',posts:'피드',comments:'댓글',reports:'신고',policies:'약관·개인정보'};
  const memberNavigation=[...w.document.querySelectorAll('#nav [data-view^="member-"]')];
  assert.deepEqual(memberNavigation.map(button=>button.dataset.view).sort(),Object.keys(memberPages).map(view=>'member-'+view).sort(),'every member feature has its own navigation page with no duplicates');
  for(const [view,title] of Object.entries(memberPages)){

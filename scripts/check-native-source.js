@@ -33,7 +33,7 @@ const implemented=[...units.matchAll(/\b(?:procedure|function)\s+TMoaPlayForm\.(
 assert.equal(new Set(implemented).size,implemented.length,'Duplicate form methods');
 for(const name of declared)assert.ok(implemented.includes(name),'Missing '+name);
 for(const name of implemented)assert.ok(declared.includes(name),'Undeclared '+name);
-for(const [name,type] of [['MoaPlayMemberClient.pas','TMoaPlayMemberClient'],['MoaPlayMemberSwitch.pas','TMoaPlayMemberSwitch'],['MoaPlayMemberMemo.pas','TMoaPlayMemberMemo'],['MoaPlayRewardWheel.pas','TMoaPlayRewardWheel'],['MoaPlayIconPulse.pas','TMoaPlayIconPulse'],['MoaPlayCasinoBoard.pas','TMoaPlayCasinoBoard'],['MoaPlayCasinoAmount.pas','TMoaPlayCasinoAmount']])
+for(const [name,type] of [['MoaPlayMemberClient.pas','TMoaPlayMemberClient'],['MoaPlayMemberSwitch.pas','TMoaPlayMemberSwitch'],['MoaPlayMemberMemo.pas','TMoaPlayMemberMemo'],['MoaPlayRewardWheel.pas','TMoaPlayRewardWheel'],['MoaPlayIconPulse.pas','TMoaPlayIconPulse'],['MoaPlayCasinoBoard.pas','TMoaPlayCasinoBoard'],['MoaPlayCasinoAmount.pas','TMoaPlayCasinoAmount'],['MoaPlayCasinoIndicators.pas','TMoaPlayCasinoIndicators']])
  assert.deepEqual(require('./native-declarations').Check(read(name),type),[],name);
 // Cross-layer invariants for the lifecycle bugs: no editor exit saves a partially destroyed form.
 const flow=read('MoaPlayApp.Member.Flow.inc'),motion=read('MoaPlayApp.Member.Motion.inc'),compose=read('MoaPlayApp.Member.Compose.inc'),social=read('MoaPlayApp.Member.Social.inc');
@@ -67,4 +67,6 @@ assert.match(casino,/Tile div 3<>HubNumber\(Active,'row'\)/,'tower only sends ti
 for(const game of ['LIMBO','HILO','TOWER'])assert.ok(board.includes("FGame='"+game+"'"),'Missing graphical board '+game);
 assert.match(board,/FTimer\.Enabled:=False;FTimer\.OnTimer:=nil/,'page-owned animation timer is detached');
 require('./check-native-theme').Check(apk);
+require('./check-native-touch-glass').Check(apk);
+assert.match(flow,/if not FHubPageChanged and FHubTouch\.Busy then Exit;/,'local updates keep held cards alive');
 console.log('Native source checks passed (encoding, includes, declarations and lifecycle invariants; Delphi compilation not run).');
