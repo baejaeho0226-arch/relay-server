@@ -1,7 +1,8 @@
 'use strict';
 const crypto=require('node:crypto'),s=require('./store'),indicators=require('./indicators');
 const GAMES=Object.freeze({BACCARAT:'바카라',ROULETTE:'룰렛',SLOTS:'슬롯'});
-const CHOICES=Object.freeze({BACCARAT:['PLAYER','TIE','BANKER'],ROULETTE:['RED','GREEN','BLACK',...Array.from({length:37},(_,number)=>'NUMBER_'+number)],SLOTS:['SPIN']});
+const LEGACY_CHOICES=Object.freeze({BACCARAT:['PLAYER','TIE','BANKER'],ROULETTE:['RED','GREEN','BLACK',...Array.from({length:37},(_,number)=>'NUMBER_'+number)],SLOTS:['SPIN']});
+const CHOICES=Object.freeze({BACCARAT:[...LEGACY_CHOICES.BACCARAT,'PLAYER_PAIR','BANKER_PAIR'],ROULETTE:[...LEGACY_CHOICES.ROULETTE,'EVEN','ODD','LOW','HIGH','DOZEN_1','DOZEN_2','DOZEN_3','COLUMN_1','COLUMN_2','COLUMN_3'],SLOTS:LEGACY_CHOICES.SLOTS});
 const SLOT_SYMBOLS=Object.freeze([
  Object.freeze({id:'CHERRY',label:'체리'}),Object.freeze({id:'LEMON',label:'레몬'}),
  Object.freeze({id:'GRAPE',label:'포도'}),Object.freeze({id:'BELL',label:'종'}),
@@ -9,11 +10,11 @@ const SLOT_SYMBOLS=Object.freeze([
 ]);
 const RED=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 // Shared app credits only. These rules never receive money or provide cash-out.
-const MIN_INTERVAL_MS=300,MAX_BALANCE=Number.MAX_SAFE_INTEGER,MIN_BET=100,BET_STEP=100,RULES_REVISION=4;
+const MIN_INTERVAL_MS=300,MAX_BALANCE=Number.MAX_SAFE_INTEGER,MIN_BET=100,BET_STEP=100,RULES_REVISION=5;
 function Rules(){return {revision:RULES_REVISION,mode:'VIRTUAL_BALANCE',currency:'BALANCE',virtual:true,free:false,rewards:true,redeemable:false,
- chips:[100,500,1000,5000,10000],minBet:MIN_BET,maxBet:null,maxBetMode:'AVAILABLE_BALANCE',maxBalance:MAX_BALANCE,step:BET_STEP,minIntervalMs:MIN_INTERVAL_MS,multiBet:true,maxBets:40,choices:structuredClone(CHOICES),
- paytable:{BACCARAT:{PLAYER:{numerator:2,denominator:1},BANKER:{numerator:195,denominator:100},TIE:{numerator:9,denominator:1},tiePush:true},
- ROULETTE:{RED:2,BLACK:2,GREEN:36,NUMBER:36},SLOTS:{PAIR:1,TRIPLE:12,SEVEN_TRIPLE:60}},payoutIncludesStake:true};}
+ chips:[100,500,1000,5000,10000],minBet:MIN_BET,maxBet:null,maxBetMode:'AVAILABLE_BALANCE',maxBalance:MAX_BALANCE,step:BET_STEP,minIntervalMs:MIN_INTERVAL_MS,multiBet:true,maxBets:50,choices:structuredClone(CHOICES),
+ paytable:{BACCARAT:{PLAYER:{numerator:2,denominator:1},BANKER:{numerator:195,denominator:100},TIE:{numerator:9,denominator:1},PLAYER_PAIR:{numerator:12,denominator:1},BANKER_PAIR:{numerator:12,denominator:1},tiePush:true,pairCards:'FIRST_TWO',pairMatch:'RANK',pairTiePush:false},
+ ROULETTE:{RED:2,BLACK:2,GREEN:36,NUMBER:36,EVEN:2,ODD:2,LOW:2,HIGH:2,DOZEN_1:3,DOZEN_2:3,DOZEN_3:3,COLUMN_1:3,COLUMN_2:3,COLUMN_3:3},SLOTS:{PAIR:1,TRIPLE:12,SEVEN_TRIPLE:60}},payoutIncludesStake:true};}
 function Game(value){if(typeof value!=='string'||!Object.hasOwn(GAMES,value))s.Fail('INPUT_INVALID');return value;}
 function Stats(value={}){return {played:value.played||0,matched:value.matched||0,score:value.score||0,streak:value.streak||0,bestStreak:value.bestStreak||0,totalStaked:value.totalStaked||0,totalPayout:value.totalPayout||0,netWin:value.netWin||0};}
 function Wallet(p){return {accountId:p.id,revision:s.DB().revision,balance:p.balance,points:p.points||0,eventSpins:p.eventSpins||0};}
@@ -43,9 +44,23 @@ function Baccarat(){
   if(BankerDraw(Total(banker),third))banker.push(draw());
  }
  const playerTotal=Total(player),bankerTotal=Total(banker);
- return {player,banker,playerTotal,bankerTotal,winner:playerTotal>bankerTotal?'PLAYER':playerTotal<bankerTotal?'BANKER':'TIE'};
+ return {player,banker,playerTotal,bankerTotal,playerPair:Pair(player),bankerPair:Pair(banker),winner:playerTotal>bankerTotal?'PLAYER':playerTotal<bankerTotal?'BANKER':'TIE'};
 }
+// Pair means equal ranks in the first two cards, regardless of suit or baccarat
+// point value. A third card never forms this wager; ties do not push side bets.
+// https://www.star.com.au/sites/default/files/2024-07/tiger_baccarat_game_guide_0.pdf
+function Pair(hand){return Array.isArray(hand)&&hand.length>=2&&typeof hand[0]?.rank==='string'&&hand[0].rank===hand[1]?.rank;}
 function Roulette(){const number=crypto.randomInt(37);return {number,color:number===0?'GREEN':RED.has(number)?'RED':'BLACK'};}
+// Single-zero outside bets exclude zero. Returns the gross multiplier, so this
+// exact same predicate is used by settlement and integer overflow reservation.
+// https://www.venetianlasvegas.com/resort/casino/table-games/roulette-basic-rules.html
+function RouletteMultiplier(choice,number){
+ if(choice==='NUMBER_'+number||choice==='GREEN'&&number===0)return 36;
+ if(number===0)return 0;
+ if(choice===(RED.has(number)?'RED':'BLACK')||choice==='EVEN'&&number%2===0||choice==='ODD'&&number%2===1||choice==='LOW'&&number<=18||choice==='HIGH'&&number>=19)return 2;
+ if(choice==='DOZEN_'+Math.ceil(number/12)||choice==='COLUMN_'+((number-1)%3+1))return 3;
+ return 0;
+}
 function Slots(){
  // Each of the six symbols has equal independent probability on each reel.
  const reels=Array.from({length:3},()=>({...SLOT_SYMBOLS[crypto.randomInt(SLOT_SYMBOLS.length)]}));
@@ -54,13 +69,15 @@ function Slots(){
 function Settlement(game,choice,amount,outcome){
  let payout=0,matched=false;
  if(game==='BACCARAT'){
-  matched=choice===outcome.winner;
-  if(matched)payout=choice==='BANKER'?(amount/100)*195:amount*(choice==='TIE'?9:2);
-  else if(outcome.winner==='TIE'&&choice!=='TIE')payout=amount;
+  if(choice==='PLAYER_PAIR'||choice==='BANKER_PAIR'){
+   matched=Pair(choice==='PLAYER_PAIR'?outcome.player:outcome.banker);if(matched)payout=amount*12;
+  }else{
+   matched=choice===outcome.winner;
+   if(matched)payout=choice==='BANKER'?(amount/100)*195:amount*(choice==='TIE'?9:2);
+   else if(outcome.winner==='TIE'&&(choice==='PLAYER'||choice==='BANKER'))payout=amount;
+  }
  }else if(game==='ROULETTE'){
-  const isNumber=choice.startsWith('NUMBER_');
-  matched=isNumber?choice==='NUMBER_'+outcome.number:choice===outcome.color;
-  if(matched)payout=amount*(isNumber||choice==='GREEN'?36:2);
+  const multiplier=RouletteMultiplier(choice,outcome.number);matched=multiplier>0;payout=amount*multiplier;
  }else{
   const count=new Set(outcome.reels.map(reel=>reel.id)).size;
   matched=count<3;
@@ -77,12 +94,13 @@ function Bets(game,body){
  let rows;
  if(Object.hasOwn(body,'bets')){
   if(Object.hasOwn(body,'choice')||Object.hasOwn(body,'amount'))s.Fail('INPUT_INVALID');
-  rows=body.bets;if(!Array.isArray(rows)||rows.length<1||rows.length>40)s.Fail('INPUT_INVALID');
+  rows=body.bets;if(!Array.isArray(rows)||rows.length<1||rows.length>(body.rulesRevision===4?40:50))s.Fail('INPUT_INVALID');
  }else rows=[{choice:body.choice,amount:body.amount}];
  const amounts=new Map();let amount=0;
  for(const row of rows){
   if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).some(key=>!['choice','amount'].includes(key)))s.Fail('INPUT_INVALID');
   if(!CHOICES[game].includes(row.choice))s.Fail('INPUT_INVALID');
+  if(body.rulesRevision===4&&!LEGACY_CHOICES[game].includes(row.choice))s.Fail('ARCADE_RULES_CHANGED');
   const value=s.Money(row.amount,MIN_BET,MAX_BALANCE);if(value%BET_STEP!==0)s.Fail('AMOUNT_INVALID');
   if(value>MAX_BALANCE-amount)s.Fail('AMOUNT_INVALID');amount+=value;
   amounts.set(row.choice,(amounts.get(row.choice)||0)+value);
@@ -100,11 +118,13 @@ function MaximumPayout(game,bets){
   for(const {choice,amount} of bets){
    const stake=BigInt(amount);
    if(game==='BACCARAT'){
-    if(choice===outcome)payout+=choice==='BANKER'?stake*195n/100n:stake*(choice==='TIE'?9n:2n);
-    else if(outcome==='TIE'&&choice!=='TIE')payout+=stake;
+    // Both pairs can occur together for every winner, including a tie. Thus
+    // this is an achievable shared maximum, not a sum of exclusive winners.
+    if(choice==='PLAYER_PAIR'||choice==='BANKER_PAIR')payout+=stake*12n;
+    else if(choice===outcome)payout+=choice==='BANKER'?stake*195n/100n:stake*(choice==='TIE'?9n:2n);
+    else if(outcome==='TIE'&&(choice==='PLAYER'||choice==='BANKER'))payout+=stake;
    }else if(game==='ROULETTE'){
-    const color=outcome===0?'GREEN':RED.has(outcome)?'RED':'BLACK';
-    if(choice==='NUMBER_'+outcome||choice===color)payout+=stake*(choice==='RED'||choice==='BLACK'?2n:36n);
+    payout+=stake*BigInt(RouletteMultiplier(choice,outcome));
    }else payout+=stake*60n;
   }
   if(payout>maximum)maximum=payout;
@@ -118,7 +138,7 @@ function Play(p,body={}){
  if(Object.keys(body).some(key=>!['game','choice','amount','bets','rulesRevision','_wire','_delta'].includes(key)))s.Fail('INPUT_INVALID');
  const game=Game(body.game);
  if(!Object.hasOwn(body,'bets')&&!CHOICES[game].includes(body.choice))s.Fail('INPUT_INVALID');
- if(body.rulesRevision!==RULES_REVISION)s.Fail('ARCADE_RULES_CHANGED');
+ if(body.rulesRevision!==RULES_REVISION&&body.rulesRevision!==4)s.Fail('ARCADE_RULES_CHANGED');
  const {amount,bets}=Bets(game,body),choice=bets.length===1?bets[0].choice:'MULTIPLE';
  if(!Number.isSafeInteger(p.balance)||p.balance<0||p.balance>MAX_BALANCE)s.Fail('BALANCE_INVALID');
  if(p.balance<amount)s.Fail('ARCADE_BALANCE_REQUIRED');

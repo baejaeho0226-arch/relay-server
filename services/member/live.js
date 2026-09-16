@@ -21,8 +21,11 @@ function Scope(p,action,query={}){
  return null;
 }
 function Read(p,body){
- const posts=[],comments=[],removedPosts=[],removedComments=[],profiles=new Map(),counts=new Map();
- const profile=id=>{const row=Profile(s.ProfileById(id),p);if(row&&!extra.Blocked(p.id,id))profiles.set(id,row);};
+ const posts=[],comments=[],removedPosts=[],removedComments=[],profiles=new Map(),counts=new Map(),seenProfiles=new Set();
+ // One request has one authenticated viewer and a synchronous source snapshot.
+ // Project repeated authors once; never reuse authorization or private fields
+ // across requests, viewers, block changes or profile edits.
+ const profile=id=>{if(seenProfiles.has(id))return;seenProfiles.add(id);const row=Profile(s.ProfileById(id),p);if(row&&!extra.Blocked(p.id,id))profiles.set(id,row);};
  for(const id of Ids(body.posts)){
   const row=s.DB().posts[id];if(!extra.Visible(row,p)){removedPosts.push(id);continue;}
   const data=social.PublicPost(row,p,false,false,true);delete data.body;delete data.title;posts.push(data);profile(row.accountId);
