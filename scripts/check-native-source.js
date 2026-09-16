@@ -69,5 +69,6 @@ assert.match(board,/FTimer\.Enabled:=False;FTimer\.OnTimer:=nil/,'page-owned ani
 require('./check-native-theme').Check(apk);
 require('./check-native-touch-glass').Check(apk);
 require('./check-native-fix59').Check(apk);
+require('./test-fix60-native-updates').Check();
 assert.match(flow,/if not FHubPageChanged and FHubTouch\.Busy then Exit;/,'local updates keep held cards alive');
 console.log('Native source checks passed (encoding, includes, declarations and lifecycle invariants; Delphi compilation not run).');
