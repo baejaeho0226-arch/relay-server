@@ -13,14 +13,14 @@ try{
  const unchanged=(fn,error)=>{const before=JSON.stringify(s.DB());assert.throws(fn,error);assert.equal(JSON.stringify(s.DB()),before);};
  const original=JSON.stringify(s.DB()),empty=arcade.Read(p());assert.equal(empty.stats.played,0);assert.equal(JSON.stringify(s.DB()),original,'read is not a mutation');
  assert.equal(empty.mode,'VIRTUAL_BALANCE');assert.equal(empty.virtual,true);assert.equal(empty.redeemable,false);
- assert.deepEqual(empty.rules.chips,[100,500,1000,5000,10000]);assert.equal(empty.rules.revision,4);assert.equal(empty.rules.minIntervalMs,300);
+ assert.deepEqual(empty.rules.chips,[100,500,1000,5000,10000]);assert.equal(empty.rules.revision,5);assert.equal(empty.rules.minIntervalMs,300);
  assert.deepEqual(empty.games.map(game=>game.id),['BACCARAT','ROULETTE','SLOTS']);
  assert.deepEqual(empty.wallet,{accountId:member.id,balance:500000,points:50,eventSpins:4,revision:s.DB().revision});
  // Forged values, stale rules and invalid bets are rejected before drawing.
  crypto.randomInt=()=>assert.fail('invalid input must not consume RNG');
  for(const key of ['balance','points','bet','stake','reward','payout','chips','mode','turns','accountId','id','reels','number','winner'])unchanged(()=>play(valid({[key]:1})),/INPUT_INVALID/);
  for(const amount of [0,-100,1,99,101,1234,100001,Infinity,NaN,100.5,'100',null,undefined])unchanged(()=>play(valid({amount})),/AMOUNT_INVALID/);
- for(const rulesRevision of [undefined,null,2,3,'4',5])unchanged(()=>play(valid({rulesRevision})),/ARCADE_RULES_CHANGED/);
+ for(const rulesRevision of [undefined,null,2,3,'4',6])unchanged(()=>play(valid({rulesRevision})),/ARCADE_RULES_CHANGED/);
  unchanged(()=>play(valid({game:'toString'})),/INPUT_INVALID/);unchanged(()=>play(valid({choice:'PLAYER'})),/INPUT_INVALID/);
  s.Atomic(()=>{p().balance=99;});unchanged(()=>play(valid()),/ARCADE_BALANCE_REQUIRED/);
  s.Atomic(()=>{p().balance=Number.MAX_SAFE_INTEGER-100;});unchanged(()=>play(valid({game:'SLOTS',choice:'SPIN'})),/ARCADE_BALANCE_LIMIT/);

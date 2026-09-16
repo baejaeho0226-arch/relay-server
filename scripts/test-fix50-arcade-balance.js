@@ -16,10 +16,10 @@ function unchanged(fn,reason){const before=JSON.stringify(s.DB());assert.throws(
 function nextNumber(number){clock+=300;let calls=0;crypto.randomInt=max=>{calls++;assert.equal(max,37);return number;};return ()=>assert.equal(calls,1,'exactly one server outcome per accepted roulette round');}
 try{
  const p=member(500000),rules=arcade.Read(p()).rules;
- assert.equal(rules.revision,4);assert.equal(rules.currency,'BALANCE');assert.equal(rules.virtual,true);assert.equal(rules.redeemable,false);
+ assert.equal(rules.revision,5);assert.equal(rules.currency,'BALANCE');assert.equal(rules.virtual,true);assert.equal(rules.redeemable,false);
  assert.equal(rules.maxBet,null);assert.equal(rules.maxBetMode,'AVAILABLE_BALANCE');assert.equal(rules.maxBalance,Number.MAX_SAFE_INTEGER);assert.equal(rules.minBet,100);assert.equal(rules.step,100);
  assert.equal(rules.paytable.ROULETTE.NUMBER,36);assert.equal(rules.payoutIncludesStake,true);
- assert.deepEqual(rules.choices.ROULETTE,['RED','GREEN','BLACK',...Array.from({length:37},(_,n)=>'NUMBER_'+n)]);
+ assert.deepEqual(rules.choices.ROULETTE.slice(0,40),['RED','GREEN','BLACK',...Array.from({length:37},(_,n)=>'NUMBER_'+n)]);
  // Every exact number, including green zero and both table endpoints, wins at
  // its own number and loses on the adjacent number. Color does not qualify.
  for(let selected=0;selected<=36;selected++)for(const winning of [true,false]){

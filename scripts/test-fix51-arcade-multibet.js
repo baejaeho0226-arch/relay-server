@@ -36,8 +36,8 @@ function settled(p,request,result,before){
 }
 try{
  const p=member(500000),rules=arcade.Read(p()).rules;
- assert.equal(rules.revision,4);assert.equal(rules.multiBet,true);assert.equal(rules.maxBets,40);
- const all=rules.choices.ROULETTE.map(choice=>({choice,amount:100})),request=body('ROULETTE',all);
+ assert.equal(rules.revision,5);assert.equal(rules.multiBet,true);assert.equal(rules.maxBets,50);
+ const all=rules.choices.ROULETTE.slice(0,40).map(choice=>({choice,amount:100})),request=body('ROULETTE',all);
  // Every color and every number stay occupied in one round. GREEN and
  // NUMBER_0 both win at zero; the color and exact number win elsewhere.
  for(let n=0;n<=36;n++){
