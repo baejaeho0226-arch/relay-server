@@ -55,15 +55,15 @@ function Check(apk) {
 
  const events = read('MoaPlayApp.Member.EventGames.inc');
  const pause = Routine(events, 'TMoaPlayForm.HubEventGamePause');
- Before(pause, /\.SetActive\s*\(\s*False\s*\)/i, /\.Parent\s*:=\s*nil/i,
+ Before(pause, /\.SetActive\s*\(\s*False\s*,\s*False\s*\)/i, /\.Parent\s*:=\s*nil/i,
   'Board timer must stop before detachment');
- assert.doesNotMatch(pause, /\bFreeAndNil\s*\(|\.Free\b/i, 'Tab detachment must retain the game session');
+ assert.doesNotMatch(pause, /\bFreeAndNil\s*\(|\.Free\b/i, 'Same-page detachment retains the board instance');
  const eventRender = Routine(events, 'TMoaPlayForm.HubRenderEventGame');
  assert.match(eventRender, /\bBoard\s*:=\s*FHubEventBoards\s*\[/i, 'Reattach the per-game instance');
  assert.match(eventRender, /\bTMoaPlaySkillGame\.Create\s*\(\s*Self\s*\)/i, 'Boards must be form-owned');
  for (const name of ['HubNavigate', 'HubGoBack'])
   assert.doesNotMatch(Routine(flow, 'TMoaPlayForm.' + name), /\bHubEventGameReset\b/i,
-   name + ' must not destroy game sessions');
+   name + ' stops the run while retaining its reusable board instance');
  const eventRefresh = /if\s*\(Action\s*=\s*'rewards'\)[\s\S]*?FHubView\.StartsWith\('event\.'\)[\s\S]*?then\s+begin([\s\S]*?)\bend\s*;/i.exec(reply);
  assert.ok(eventRefresh, 'Mounted event metadata refresh branch');
  assert.match(eventRefresh[1], /\bExit\s*;/i, 'Mounted board refresh must finish in place');
