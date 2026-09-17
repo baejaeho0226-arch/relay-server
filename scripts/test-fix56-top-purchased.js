@@ -14,7 +14,7 @@ const run=(c,action,body={},id)=>hub.Execute(c,id||'FIX56-TOP-REQUEST-'+(++seria
 const account=c=>s.Account(c),read=c=>run(c,'home').topPurchased;
 const product=(title,genre='레이싱')=>commerce.SaveProduct({title,description:'구매 요약 검증',genre,accessType:'TYPE1',published:true,plans:[{days:1,price:100},{days:7,price:700}]});
 const buy=(c,game,days=1,id)=>run(c,'purchase',{productId:game.id,days,price:days*100,revision:game.revision},id);
-const expected=(game,purchaseCount,totalDays)=>({id:game.id,title:game.title,genre:game.genre,purchaseCount,totalDays});
+const expected=(game,purchaseCount,totalDays)=>({id:game.id,title:game.title,genre:game.genre,purchaseCount,totalDays,imageCover:game.imageCover||''});
 function failedSave(fn){const before=JSON.stringify(s.DB()),save=database.SaveDatabase;try{database.SaveDatabase=()=>false;assert.throws(fn,/STORAGE_SAVE_FAILED/);}finally{database.SaveDatabase=save;}assert.equal(JSON.stringify(s.DB()),before,'failed purchase leaves no receipt or duration extension');}
 try{
  const a=client(5601),b=client(5602),viewer=client(5603),legacy=client(5604);
@@ -44,10 +44,10 @@ try{
  const secondPage=run(viewer,'topgames',{offset:2,limit:2});
  assert.deepEqual(secondPage.items.map(x=>x.rank),[3,4]);assert.equal(secondPage.nextOffset,null);
  assert.equal(run(viewer,'topgames',{offset:999}).items.length,0);
- assert.deepEqual(Object.keys(full.items[0]).sort(),['genre','id','rank','title']);
+ assert.deepEqual(Object.keys(full.items[0]).sort(),['genre','id','imageCover','rank','title']);
  const rankingDb=JSON.stringify(s.DB());run(viewer,'topgames');assert.equal(JSON.stringify(s.DB()),rankingDb);
 
- for(const row of read(viewer))assert.deepEqual(Object.keys(row).sort(),['genre','id','purchaseCount','title','totalDays'],'only public product metadata and aggregate counts leave the service');
+ for(const row of read(viewer))assert.deepEqual(Object.keys(row).sort(),['genre','id','imageCover','purchaseCount','title','totalDays'],'only public product metadata and aggregate counts leave the service');
  // Historical completed use remains a sale; refunds remove all merged receipts.
  s.Atomic(()=>{s.DB().orders[first.order.id].status='EXPIRED';});
  assert.deepEqual(read(viewer),ranked,'expiry does not erase successful historical purchases');

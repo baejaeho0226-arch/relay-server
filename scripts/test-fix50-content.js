@@ -27,28 +27,29 @@ c.licenseKey=lm.CreateLicense(900,'출입증',['QR'],'QR').key;state.licenses.ge
 const run=(action,body={},id)=>hub.Execute(c,id||'FIX50-CONTENT-'+(++seq),action,body);
 const privateFields=['image','imageFeed','imageThumb','imagePreview','details'];
 function noRetired(row){for(const key of privateFields)assert.equal(Object.hasOwn(row,key),false,'retired field '+key);}
+function noGameRetired(row){for(const key of ['imageFeed','imageThumb','imagePreview','details'])assert.equal(Object.hasOwn(row,key),false,'retired game field '+key);assert.equal(typeof row.imageCover,'string');}
 function categoryLabel(text){const label=w.document.querySelector('.member-category-label');assert.ok(label);assert.equal(label.textContent,text);const icon=label.querySelector('svg');assert.ok(icon);assert.equal(icon.getAttribute('stroke'),'currentColor');assert.equal(icon.getAttribute('fill'),'none');assert.equal(w.document.querySelector('.member-category-badge,[data-category-tone]'),null);}
-function gameIcon(genre,parent=w.document){const label=parent.querySelector('.member-game-icon');assert.ok(label);assert.equal(label.getAttribute('aria-label'),genre);assert.equal(label.textContent,'');const icon=label.querySelector('svg');assert.ok(icon);assert.equal(icon.getAttribute('stroke'),'currentColor');assert.equal(icon.getAttribute('fill'),'none');assert.equal(parent.querySelector('.member-category-label,.member-category-badge,[data-category-tone]'),null);}
+function gamePhoto(genre,parent=w.document){assert.equal(parent.querySelector('.member-game-icon,.member-category-label,.member-category-badge,[data-category-tone]'),null);assert.equal(parent.querySelector('.member-game-genre').textContent,genre);assert.ok(parent.querySelector('.member-game-photo'));}
 (async()=>{try{
  await pause();
- const customGenre=w.document.createElement('tbody');customGenre.innerHTML=w.memberRow({id:'CUSTOM',title:'자유 장르',genre:'constructor',accessType:'TYPE1',plans:[]},'products');gameIcon('constructor',customGenre);assert.ok(customGenre.querySelector('.member-game-icon svg path'));
+ const customGenre=w.document.createElement('tbody');customGenre.innerHTML=w.memberRow({id:'CUSTOM',title:'자유 장르',genre:'constructor',accessType:'TYPE1',plans:[]},'products');gamePhoto('constructor',customGenre);assert.equal(customGenre.querySelector('svg'),null);
  // The real editor has only the retained game fields and a selectable required genre.
  await click('[data-view="member-products"]');await click('[data-member-action="product.new"]');
- assert.deepEqual([...w.document.querySelectorAll('[data-modal-field]')].map(x=>x.dataset.modalField),['title','description','genre','accessType','published']);
- assert.equal(w.document.querySelector('[data-modal-image],.modal-section'),null);
+ assert.deepEqual([...w.document.querySelectorAll('[data-modal-field]')].map(x=>x.dataset.modalField),['title','image','description','genre','accessType','published']);
+ assert.ok(w.document.querySelector('[data-modal-image="image"]'));assert.equal(w.document.querySelector('.modal-section'),null);
  field('title','텍스트 게임');field('description','게임 안내\n'+ '긴 소개 '.repeat(60));field('genre','레이싱');field('published','true');
  const firstPlan=w.document.querySelector('[data-plan-row]');firstPlan.querySelector('[data-plan-days]').value='3';firstPlan.querySelector('[data-plan-price]').value='300';
  await click('#modal-confirm');await pause();
- let game=Object.values(store.DB().products)[0];assert.ok(game);assert.equal(game.genre,'레이싱');assert.equal(game.plans[0].days,3);assert.equal(game.plans[0].price,300);noRetired(game);gameIcon('레이싱');
- const saveCall=calls.filter(x=>x.body?.action==='product.save').at(-1);noRetired(saveCall.body);
+ let game=Object.values(store.DB().products)[0];assert.ok(game);assert.equal(game.genre,'레이싱');assert.equal(game.plans[0].days,3);assert.equal(game.plans[0].price,300);assert.equal(game.image,'');assert.equal(game.details,undefined);gamePhoto('레이싱');
+ const saveCall=calls.filter(x=>x.body?.action==='product.save').at(-1);assert.equal(saveCall.body.image,'');assert.equal(saveCall.body.details,undefined);
  const legacy={image:'legacy-original-bytes',imageFeed:'legacy-feed-bytes',imageThumb:'legacy-thumbnail-bytes',imagePreview:'legacy-preview-bytes',details:{genre:'레이싱',developer:'보존 제작사',platform:'보존 플랫폼',channels:{official:'https://example.invalid'},extra:['unchanged']}};
  store.Atomic(()=>Object.assign(store.DB().products[game.id],structuredClone(legacy)));
  await w.renderMember();assert.equal(w.document.querySelector('.member-content-thumb'),null);await click('[data-member-action="product.edit"]');field('title','수정한 텍스트 게임');field('genre','퍼즐');await click('#modal-confirm');
- game=store.DB().products[game.id];for(const key of privateFields)assert.deepEqual(game[key],legacy[key]);gameIcon('퍼즐');
+ game=store.DB().products[game.id];for(const key of privateFields)assert.deepEqual(game[key],legacy[key]);gamePhoto('퍼즐');
  for(const genre of ['', ' '.repeat(3)])assert.throws(()=>admin('product.save',{id:game.id,title:game.title,accessType:game.accessType,genre,published:true}),/INPUT_INVALID/);
- const omittedGenre=admin('product.save',{title:'이전 형식의 새 게임',accessType:'TYPE1'});assert.equal(omittedGenre.genre,'게임');noRetired(omittedGenre);
+ const omittedGenre=admin('product.save',{title:'이전 형식의 새 게임',accessType:'TYPE1'});assert.equal(omittedGenre.genre,'게임');noGameRetired(omittedGenre);
  // All public and administrator projections retain only top-level genre and text.
- for(const row of [hub.AdminRead({view:'products'}).items.find(x=>x.id===game.id),hub.AdminRead({view:'products',id:game.id}).items[0],run('product',{id:game.id}).product,run('catalog').items[0],run('catalog',{summary:true}).items[0],run('home').games.items[0]]){noRetired(row);assert.equal(row.genre,'퍼즐');assert.ok(row.description);assert.ok(row.plans.some(p=>p.days===3&&p.price===300&&p.available));}
+ for(const row of [hub.AdminRead({view:'products'}).items.find(x=>x.id===game.id),hub.AdminRead({view:'products',id:game.id}).items[0],run('product',{id:game.id}).product,run('catalog').items[0],run('catalog',{summary:true}).items[0],run('home').games.items[0]]){noGameRetired(row);assert.equal(row.genre,'퍼즐');assert.ok(row.description);assert.ok(row.plans.some(p=>p.days===3&&p.price===300&&p.available));}
  assert.equal(run('catalog',{summary:true}).items[0].description,game.description.replace(/\s+/g,' ').trim().slice(0,140));assert.equal(run('product',{id:game.id}).product.description,game.description);
  // Normalized legacy UPDATE news stays visible and editable as NOTICE.
  const news=admin('news.save',{title:'이전 소식',body:'보존할 본문',category:'NOTICE',published:true});
@@ -71,7 +72,7 @@ function gameIcon(genre,parent=w.document){const label=parent.querySelector('.me
  const serverId='5151515151515151';state.clientIdentities.get(c.installationDeviceKey).serverId=serverId;c.serverId=serverId;state.servers.set(serverId,{type:'server',serverId,connected:true,registered:true,deviceAuthVerified:true,clients:new Set([c.clientId]),socket:{destroyed:false,write(){return true;}}});state.deviceAuthStatus.set('SERVER:'+serverId,{verified:true,verifiedAt:Date.now()});state.deviceCapabilities.set('SERVER:'+serverId,new Set(['BUILD_SESSION_LEASE']));state.deviceSecrets.set('SERVER:'+serverId,crypto.randomBytes(32).toString('hex'));
  const queued=build.Queue(c,'FIX50-CONTENT-BUILD');assert.equal(queued.ok,true);assert.equal(build.Complete(c.clientId,'FIX50-CONTENT-BUILD').ok,true);
  const lease=structuredClone(build.ActiveSessionForClient(c.clientId)),order=structuredClone(store.DB().orders[purchase.order.id]),license=structuredClone(state.licenses.get(c.licenseKey));
- const edited=admin('product.save',{id:game.id,revision:game.revision,title:'이용 중인 게임 소개 수정',description:'새 텍스트',genre:'액션',accessType:'TYPE1',published:true});noRetired(edited);
+ const edited=admin('product.save',{id:game.id,revision:game.revision,title:'이용 중인 게임 소개 수정',description:'새 텍스트',genre:'액션',accessType:'TYPE1',published:true});noGameRetired(edited);
  assert.deepEqual(build.ActiveSessionForClient(c.clientId),lease);assert.deepEqual(store.DB().orders[purchase.order.id],order);assert.deepEqual(state.licenses.get(c.licenseKey),license);assert.equal(store.ProfileById(profile.id).activeOrderId,order.id);
  for(const key of privateFields)assert.deepEqual(store.DB().products[game.id][key],legacy[key]);
  const before=JSON.stringify(store.DB()),save=database.SaveDatabase;try{database.SaveDatabase=()=>false;assert.throws(()=>admin('product.save',{...edited,title:'실패한 저장'}),/STORAGE_SAVE_FAILED/);}finally{database.SaveDatabase=save;}assert.equal(JSON.stringify(store.DB()),before);

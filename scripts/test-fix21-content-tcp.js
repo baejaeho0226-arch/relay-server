@@ -46,16 +46,16 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  const imageData=Buffer.alloc(480*640*4);for(let y=0;y<640;y++)for(let x=0;x<480;x++){const i=(y*480+x)*4;imageData[i]=(x*3+y)%256;imageData[i+1]=(x+y*2)%256;imageData[i+2]=(x*y)%256;imageData[i+3]=255;}
  const gameImage='data:image/jpeg;base64,'+require('jpeg-js').encode({width:480,height:640,data:imageData},60).data.toString('base64');assert.ok(gameImage.length>12000);
  const game=save('product.save',{title:'텍스트 게임',description:'게임 안내',genre:gameDetails.genre,accessType:'TYPE1',image:gameImage,details:gameDetails,plans:[1,7,15,30].map(days=>({days,price:days*100})),published:true});
- assert.equal(store.DB().products[game.id].image,undefined,'new games ignore retired photos');assert.equal(store.DB().products[game.id].details,undefined,'new games ignore retired metadata');
+ assert.ok(store.DB().products[game.id].image.startsWith('data:image/jpeg;'),'new games store validated photos');assert.equal(store.DB().products[game.id].details,undefined,'new games ignore retired metadata');
  const legacyGame={...require('../services/member/media').PostFields(gameImage),details:structuredClone(gameDetails)};store.Atomic(()=>Object.assign(store.DB().products[game.id],legacyGame));
  async function webAction(role,body){const req=require('node:stream').Readable.from([Buffer.from(JSON.stringify(body))]);Object.assign(req,{url:'/api/member/action',method:'POST',headers:{},socket:{remoteAddress:'127.0.0.1'}});let status,payload;await require('../web/webApi').HandleApiRequest(req,{writeHead(value){status=value;},end(value){payload=JSON.parse(value);}},{role,id:'MEDIA21'});return {status,payload};}
  const post=(await run(author,'post.create',{body:'회원 상세에서 여는 게시물'})).post;
  const bigBody={action:'product.save',id:game.id,revision:game.revision,title:'이전 사진을 포함한 웹 저장',description:'게임 소개 확인',genre:gameDetails.genre,accessType:'TYPE1',image:gameImage,details:gameDetails,published:true};
  assert.ok(Buffer.byteLength(JSON.stringify(bigBody))>128*1024,'exercise the increased bounded admin image body limit');
- assert.equal((await webAction('operator',bigBody)).status,403);assert.equal((await webAction('admin',bigBody)).status,200);game.revision=store.DB().products[game.id].revision;
+ assert.equal((await webAction('operator',bigBody)).status,403);assert.equal((await webAction('admin',bigBody)).status,200);game.revision=store.DB().products[game.id].revision;legacyGame.image=store.DB().products[game.id].image;
  const product=(await run(viewer,'product',{id:game.id})).product,summaryGame=(await run(viewer,'catalog',{summary:true})).items.find(x=>x.id===game.id);
- for(const item of [game,product,summaryGame,(await run(viewer,'catalog')).items[0],hub.AdminRead({view:'products',id:game.id}).items[0]]){assert.equal(item.genre,gameDetails.genre);for(const key of ['image','imageFeed','imageThumb','imagePreview','details'])assert.equal(item[key],undefined,'game projection omits '+key);}
- assert.equal(summaryGame.description,'게임 소개 확인');assert.equal(product.description,'게임 소개 확인');
+ for(const item of [game,product,summaryGame,(await run(viewer,'catalog')).items[0],hub.AdminRead({view:'products',id:game.id}).items[0]]){assert.equal(item.genre,gameDetails.genre);assert.ok(item.imageCover.startsWith('data:image/jpeg;'));for(const key of ['imageFeed','imageThumb','imagePreview','details'])assert.equal(item[key],undefined,'game projection omits '+key);}
+ assert.equal(summaryGame.image,undefined);assert.ok(product.image.length>12000,'game detail photos travel through signed chunks');assert.equal(summaryGame.description,'게임 소개 확인');assert.equal(product.description,'게임 소개 확인');
  const preserved=save('product.save',{id:game.id,revision:game.revision,title:'제목 수정',description:'',accessType:'TYPE1',published:true});assert.equal(preserved.genre,gameDetails.genre);assert.deepEqual(store.DB().products[game.id].details,gameDetails);assert.equal(store.DB().products[game.id].image,legacyGame.image);
  // Feed photos still validate over HTTP and travel through signed TCP chunks.
  assert.equal((await webAction('admin',{action:'post.save',id:post.id,body:post.body,image:gameImage})).status,200);
@@ -63,7 +63,7 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  const before=JSON.stringify(store.DB()),saveDb=db.SaveDatabase;try{db.SaveDatabase=()=>false;assert.throws(()=>save('news.save',{...news,title:'실패',image:''}),/STORAGE_SAVE_FAILED/);}finally{db.SaveDatabase=saveDb;}assert.equal(JSON.stringify(store.DB()),before);
  for(const image of ['data:image/svg+xml;base64,PHN2Zy8+','data:image/png;base64,AAAA','https://example.com/photo.png']){
   assert.equal((await webAction('admin',{action:'post.save',id:post.id,body:post.body,image})).status,400,'active feed photo route validates media');assert.equal(store.DB().posts[post.id].image,photoPost.image);
-  const ignored=save('product.save',{title:'사진 필드를 무시하는 게임',description:'본문',genre:'기타',accessType:'TYPE1',image});assert.equal(store.DB().products[ignored.id].image,undefined);
+  assert.throws(()=>save('product.save',{title:'사진 검증 게임',description:'본문',genre:'기타',accessType:'TYPE1',image}),/CONTENT_IMAGE_INVALID/);
  }
  assert.equal(save('product.save',{title:'이전 형식의 게임',accessType:'TYPE1'}).genre,'게임');
  assert.equal(require('../services/member/media').GameDetails({channels:{official:'javascript:alert(1)'}}).channels,undefined);

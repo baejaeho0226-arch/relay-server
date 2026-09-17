@@ -22,17 +22,18 @@ assert.throws(()=>checkSocial(social.replace("HubDirectMessagesAction('dm.open',
 const post=between(feed,'function TMoaPlayForm.HubFillPostCard','function TMoaPlayForm.HubQuoteCard');
 assert.doesNotMatch(post,/HubFollowButton|ShowFollow/,'post cards no longer have standalone follow actions');
 assert.equal((post.match(/'more\|post\|'/g)||[]).length,1,'single overflow target per post');
-assert.match(post,/C.Width-52,HeaderTop-1,44,44/,'overflow is aligned with the author at the top-right');
+assert.match(post,/C.Width-52,15,44,44/,'overflow stays at the outer card top-right when attribution moves the author');
 assert.match(social,/if Icon='more' then AddMemberSvg\([^\n]+\).RotationAngle:=90/,'shared social overflow dots are vertical');
 const apply=feed.slice(feed.indexOf('procedure TMoaPlayForm.HubApplyFollow'));
 assert.match(apply,/if Assigned\(HubObject\(Data,'counts'\)\) then\s*for Cache in FHubCache.Values do UpdateCachedState\(Cache\)/,'cache refresh is ACK-only, not a full scan per live profile');
 assert.match(apply,/HubSetJSON\(Obj,'following',TJSONBool.Create\(Following\)\)/,'reopening the sheet after ACK sees committed following state');
 const results=between(menu,'procedure TMoaPlayForm.HubRenderMenuResults','procedure TMoaPlayForm.HubMenuCategoryClick');
-assert.equal((results.match(/C.Fill.Kind:=TBrushKind.None;C.Stroke.Kind:=TBrushKind.None/g)||[]).length,2,'normal and @profile search rows have no fill or stroke');
+assert.equal((results.match(/HubGlassCardStyle\(C\)/g)||[]).length,2,'normal and @profile search rows use the shared settings-like surface');
+assert.doesNotMatch(results,/C\.(?:Fill|Stroke)\.Kind:=TBrushKind.None/,'restored destination cards retain their fill and border');
 assert.match(menu,/procedure HubMenuCategoryStyle[\s\S]*HubActionPanelStyle\(Card\);[\s\S]*if Selected then Card.Stroke.Color:=MemberText/,'category selectors retain their outline');
 for(const width of [240,280,320,360,412,600,800]){
  const headerX=16,headerWidth=width-32-44,avatarWidth=40,nameX=50,available=headerWidth-nameX,moreX=width-52,moreWidth=44;
  assert.ok(available>0);assert.ok(headerX+headerWidth<moreX,'author hit target cannot overlap overflow');
  assert.ok(avatarWidth<nameX);assert.ok(moreX+moreWidth<=width,'overflow retains a full 44px hit target');
 }
-console.log('FIX61 FEED/MENU PASS: peer-only follow/chat targets, self-route fault checks, durable mutation queue, owner actions, header hit bounds, vertical overflow, acknowledged follow state, transparent menu rows and retained category selectors.');
+console.log('FIX61 FEED/MENU PASS: peer-only follow/chat targets, self-route fault checks, durable mutation queue, owner actions, header hit bounds, vertical overflow, acknowledged follow state, restored menu surfaces and retained category selectors.');
