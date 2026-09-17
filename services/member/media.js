@@ -37,6 +37,34 @@ function Fields(value,previous={}){
  if(typeof value!=='string')s.Fail('CONTENT_IMAGE_INVALID');
  const image=Decode(value);return {image:Encoded(image,960,180000),imageThumb:Encoded(image,160,12000)};
 }
+// Catalog photos use a bounded square crop, so a 96 dp card remains sharp at
+// 4x density without sending the full upload for every row. Legacy photos are
+// decoded lazily and cached; a normal catalog read never rewrites the database.
+const gameCoverCache=new Map();
+function GameSquare(image){
+ const side=Math.min(image.width,image.height),left=Math.floor((image.width-side)/2),top=Math.floor((image.height-side)/2),data=Buffer.alloc(side*side*4);
+ for(let y=0;y<side;y++)image.data.copy?image.data.copy(data,y*side*4,((y+top)*image.width+left)*4,((y+top)*image.width+left+side)*4):data.set(image.data.subarray(((y+top)*image.width+left)*4,((y+top)*image.width+left+side)*4),y*side*4);
+ return {width:side,height:side,data};
+}
+function GameFields(value){
+ if(value===undefined)return {};
+ if(value==='')return {image:'',imageThumb:'',imageCover:''};
+ if(typeof value!=='string')s.Fail('CONTENT_IMAGE_INVALID');
+ const image=Decode(value),square=GameSquare(image);
+ return {image:Encoded(image,960,180000),imageThumb:Encoded(square,160,12000),imageCover:Encoded(square,384,28000)};
+}
+function GameImage(row){
+ const value=row.image||row.imageThumb||'';
+ return typeof value==='string'&&value.length<=600030&&/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)?value:'';
+}
+function GameCover(row){
+ if(row.imageCover&&typeof row.imageCover==='string'&&row.imageCover.length<=37360&&/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(row.imageCover))return row.imageCover;
+ const source=GameImage(row);if(!source)return '';
+ if(gameCoverCache.has(source))return gameCoverCache.get(source);
+ let cover='';try{cover=Encoded(GameSquare(Decode(source)),384,28000);}catch(_){}
+ if(gameCoverCache.size>=64)gameCoverCache.delete(gameCoverCache.keys().next().value);
+ gameCoverCache.set(source,cover);return cover;
+}
 function PostPosition(value,previous={}){
  if(value===undefined)return previous.imagePosition==='before'?'before':'after';
  if(!['before','after'].includes(value))s.Fail('INPUT_INVALID');return value;
@@ -70,4 +98,4 @@ function GameDetails(value,previous={}){
 
  return result;
 }
-module.exports={Fields,PostFields,PostPosition,GameDetails,FeedImage,LegacyFeedImage,Resize};
+module.exports={GameFields,GameImage,GameCover,Fields,PostFields,PostPosition,GameDetails,FeedImage,LegacyFeedImage,Resize};

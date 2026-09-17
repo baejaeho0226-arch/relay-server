@@ -38,7 +38,7 @@ function Entries(p,key){
 }
 function Read(p){
  return {
-  recentProducts:Entries(p,'products').map(row=>{const product=ValidProduct(row.id);return {...row,title:product.title,genre:product.genre||product.details?.genre||'게임'};}),
+  recentProducts:Entries(p,'products').map(row=>{const product=ValidProduct(row.id);return {...row,title:product.title,imageCover:require('./media').GameCover(product),genre:product.genre||product.details?.genre||'게임'};}),
   recentServices:Entries(p,'services').map(row=>{const [title,titleEn,icon]=SERVICES[row.route];return {...row,title,titleEn,icon};})
  };
 }

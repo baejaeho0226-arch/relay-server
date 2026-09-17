@@ -1,6 +1,6 @@
 'use strict';
-const s=require('./store'),state=require('../../core/state'),plans=require('./gamePlans');
-function PublicGame(p){return {id:p.id,title:p.title,description:p.description,genre:p.genre||p.details?.genre||'기타',accessType:p.accessType,plans:plans.Plans(p),published:p.published,deleted:p.deleted,sort:p.sort,revision:p.revision,updatedAt:p.updatedAt,views:s.ViewCount('product',p.id)};}
+const s=require('./store'),state=require('../../core/state'),plans=require('./gamePlans'),media=require('./media');
+function PublicGame(p,detail=false,photo=true){return {id:p.id,imageCover:photo?media.GameCover(p):'',...(detail?{image:media.GameImage(p)}:{}),title:p.title,description:p.description,genre:p.genre||p.details?.genre||'기타',accessType:p.accessType,plans:plans.Plans(p),published:p.published,deleted:p.deleted,sort:p.sort,revision:p.revision,updatedAt:p.updatedAt,views:s.ViewCount('product',p.id)};}
 function Catalog(body={},viewer){
  const rows=Object.values(s.DB().products).filter(p=>p.published&&!p.deleted&&(!body.category||p.accessType===body.category))
   .sort((a,b)=>a.sort-b.sort||b.updatedAt-a.updatedAt);
@@ -11,15 +11,16 @@ function Catalog(body={},viewer){
   return item;
  })};
 }
-function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');if(p){if((p.readProducts?.[row.id]||0)<(row.revision||1))s.Atomic(()=>{p.readProducts||={};p.readProducts[row.id]=row.revision||1;});require('./views').Article(p,row,'product');require('./history').RecordProduct(p,body);}return {product:{...PublicGame(row),unread:false},...(p?{profile:s.PublicProfile(p,true)}:{})};}
+function Product(body,p){const row=s.DB().products[body.id];if(!row||!row.published||row.deleted)s.Fail('PRODUCT_UNAVAILABLE');if(p){if((p.readProducts?.[row.id]||0)<(row.revision||1))s.Atomic(()=>{p.readProducts||={};p.readProducts[row.id]=row.revision||1;});require('./views').Article(p,row,'product');require('./history').RecordProduct(p,body);}return {product:{...PublicGame(row,true),unread:false},...(p?{profile:s.PublicProfile(p,true)}:{})};}
 function SaveProduct(body){
  const id=body.id?s.Text(body.id,40):s.Id('PRD'),previous=s.DB().products[id];if(body.id&&!previous)s.Fail('PRODUCT_NOT_FOUND');
  const accessType=s.Text(body.accessType,16);if(!['TYPE1','TYPE2','TYPE3'].includes(accessType))s.Fail('ACCESS_TYPE_INVALID');
  if(previous&&body.revision!==undefined&&body.revision!==(previous.revision||0))s.Fail('CONTENT_CHANGED');
  const genre=s.Text(body.genre===undefined?(previous?.genre||previous?.details?.genre||'게임'):body.genre,50,true);
- // Retired photos and details stay untouched in storage; current saves only edit
- // the text, genre and purchase settings exposed by PublicGame.
- const row={...previous,id,deleted:previous?.deleted||false,revision:(previous?.revision||0)+1,title:s.Text(body.title,70,true),description:s.Text(body.description,1500),genre,accessType,plans:plans.Validate(body.plans,previous),published:body.published===true,sort:Number.isInteger(body.sort)?body.sort:0,updatedAt:Date.now()};
+ // Omitted photo fields preserve the original upload and retired metadata.
+ // Explicit replacements/deletions are validated before any durable mutation.
+ const photos=media.GameFields(body.image);
+ const row={...previous,...photos,id,deleted:previous?.deleted||false,revision:(previous?.revision||0)+1,title:s.Text(body.title,70,true),description:s.Text(body.description,1500),genre,accessType,plans:plans.Validate(body.plans,previous),published:body.published===true,sort:Number.isInteger(body.sort)?body.sort:0,updatedAt:Date.now()};
  return s.Atomic(()=>{s.DB().products[id]=row;return PublicGame(row);});
 }
 const DAY=86400000;
