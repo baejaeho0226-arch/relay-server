@@ -51,7 +51,7 @@ function avatar(color){const {PNG}=require('pngjs'),png=new PNG({width:64,height
  state.serviceEnabled=false;assert.throws(()=>service.Execute(c,'FIX42-STOPPED','feed',{}),/SERVICE_DISABLED/);state.serviceEnabled=true;
  store.ProfileById(profile.id).blocked=true;assert.equal((await request(peer,'feed')).reason,'ACCOUNT_BLOCKED');store.ProfileById(profile.id).blocked=false;
  require('../services/clientBiometric').Reset(c.clientId,'FIX42_RESTORE');assert.equal(service.Allowed(c),false);
- assert.equal((await request(peer,'test.enter')).reason,'MEMBER_AUTH_REQUIRED');assert.equal((await request(peer,'home')).reason,'MEMBER_AUTH_REQUIRED');
+ assert.equal((await request(peer,'test.enter')).reason,'MEMBER_AUTH_REQUIRED');assert.equal((await request(peer,'me')).reason,'MEMBER_AUTH_REQUIRED');
  assert.ok(!JSON.stringify(db.BuildDatabaseObject()).includes('memberTestAccess'));
  console.log('PASS: restored normal mode requires genuine biometric success; signed requests, QR/permission/service/account gates, reset and Build isolation.');
 }finally{delete process.env.MEMBER_BIOMETRIC_TEST_MODE;for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});
