@@ -98,7 +98,7 @@ function Feed(p,body){
 }
 function Popular(p,body={}){
  // A fixed ranked collection, independent of ordinary feed filters/pagination.
- // Use the very same ordering and visibility rules as the Home preview.
+ // Preserve the same viewer visibility and popularity rules as the feed.
  const rows=FeedRows(p,{sort:'popular'}).slice(0,10);
  return {items:rows.map(x=>PublicPost(x,p,false,body._wire==='zlib')),total:rows.length,offset:0,limit:10,nextOffset:null};
 }
@@ -122,4 +122,4 @@ function Comment(p,body){const post=extra.Post(p,body.postId);Rate(p,'comment',1
 function Remove(p,body,table){const item=s.DB()[table][body.id];if(!item||item.accountId!==p.id)s.Fail('NOT_OWNER');const alreadyDeleted=!!item.deleted;item.deleted=true;item.deletedByMember=true;item.body='';if(table==='posts'){delete item.bodyFormats;item.image='';item.imageFeed='';item.imageThumb='';item.gifMedia=null;item.gifId='';item.poll=null;}return {removed:true,alreadyDeleted,comments:table==='comments'?Object.values(s.DB().comments).filter(x=>x.postId===item.postId&&!x.deleted&&!x.hidden&&!extra.Blocked(p.id,x.accountId)&&!s.ProfileById(x.accountId)?.blocked).length:undefined,id:item.id,kind:table==='posts'?'post':'comment',replyCounts:table==='comments'?require('./commentThreads').Delta(item,p):[],quoteSource:table==='posts'?require('./reposts').Delta(item,p,false):null,postId:table==='posts'?item.id:item.postId};}
 function React(p,body){const post=extra.Post(p,body.postId);const value=Number(body.value);if(![0,1].includes(value))s.Fail('REACTION_INVALID');const key=p.id+':'+post.id;if(value===0)delete s.DB().reactions[key];else s.DB().reactions[key]={postId:post.id,accountId:p.id,value};return {post:PublicPost(post,p,false,body._wire==='zlib',body._delta===true)};}
 function Report(p,body){return extra.Report(p,body);}
-module.exports={PublicNews,UnreadNewsCount,FeedRows,ThreadRows,AvatarThumb,Article,EditPost,Avatar,SaveProfile,News,SaveNews,Feed,Popular,Thread,Post,Comment,Remove,React,Report,PublicPost,Author};
+module.exports={NewsRows,PublicNews,UnreadNewsCount,FeedRows,ThreadRows,AvatarThumb,Article,EditPost,Avatar,SaveProfile,News,SaveNews,Feed,Popular,Thread,Post,Comment,Remove,React,Report,PublicPost,Author};

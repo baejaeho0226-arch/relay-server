@@ -26,17 +26,6 @@ function ResolveSupport(handle,selected=''){
  if(selected){const room=rooms.find(t=>[t.clientId,t.currentClientId].includes(selected));if(!room)s.Fail('NOT_OWNER');return room.clientId;}
  if(rooms.length!==1)s.Fail(rooms.length?'MEMBER_DEVICE_SELECT':'SUPPORT_NOT_FOUND');return rooms[0].clientId;
 }
-function Home(p){
- const commerce=require('./commerce'),orders=commerce.OwnOrders(p),payments=commerce.PurchasePayments(p);
- // Recently used passes lead; a newly purchased, unused pass is the fallback.
- const usable=orders.filter(x=>x.status!=='REFUNDED').reverse().sort((a,b)=>Number(!a.activatedAt)-Number(!b.activatedAt)||(b.lastUsedAt||b.activatedAt||b.at)-(a.lastUsedAt||a.activatedAt||a.at));
- const latestPayments=payments;
- const extras=require('./home').Extras(p);
- return {...extras,settings:{},profile:s.PublicProfile(p,true),activeGame:commerce.ActiveGame(p),activeGames:commerce.ActiveGames(p),counts:{...extras.counts,orders:orders.length,payments:payments.length},
-  summary:{ready:orders.filter(x=>x.status==='PAID').length,active:orders.filter(x=>x.status==='ACTIVE').length,payments:payments.length,posts:extras.counts.posts,unreadNews:require('./social').UnreadNewsCount(p)},
-  recentOrders:usable.slice(0,1),recentPayments:latestPayments.slice(0,1),latestPayment:latestPayments[0]||null};
-}
-
 const INFO_FIELDS=['name','manufacturer','product','model','os','architecture','appVersion','protocolVersion','phone','phoneStatus','serial','serialStatus','imei','imeiStatus'];
 function Device(id,rooms){
  const saved=require('../../identity/identityManager').GetSavedClientByID(id),live=state.clients.get(id),key='CLIENT:'+id;
@@ -70,6 +59,6 @@ function Read(p,body={},admin=false){
   return {profile:s.PublicProfile(p,true),section:body.section,...(body.threadId?{threadId:body.threadId}:{}),...(Array.isArray(rows)?s.Page(rows.sort((a,b)=>(b.at||b.issuedAt||0)-(a.at||a.issuedAt||0)),body,50):rows)};
  }
  const counts={};for(const [key,get]of Object.entries(sections)){const v=get();counts[key]=Array.isArray(v)?v.length:v.total;}
- return {...Home(p),profile:{...s.PublicProfile(p,true),...(admin?{blocked:!!p.blocked}:{})},devices:devices().slice(0,12),counts,qr:qr().slice(0,12),support:support().slice(0,12)};
+ return {profile:{...s.PublicProfile(p,true),...(admin?{blocked:!!p.blocked}:{})},devices:devices().slice(0,12),counts,qr:qr().slice(0,12),support:support().slice(0,12)};
 }
-module.exports={MemberIndex,ClientIds,ResolveClient,ResolveSupport,Home,Read};
+module.exports={MemberIndex,ClientIds,ResolveClient,ResolveSupport,Read};

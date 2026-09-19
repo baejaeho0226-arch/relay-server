@@ -5,7 +5,7 @@ function Counts(id){
  let followers=0,following=0;
  for(const row of Object.values(s.DB().follows)){
   // Unrelated edges cannot affect this profile. Avoid two account lookups for
-  // every relationship each time a feed author or home preview is projected.
+  // every relationship each time a feed author is projected.
   if(row.follower!==id&&row.following!==id)continue;
   if(s.ProfileById(row.follower)?.blocked||s.ProfileById(row.following)?.blocked)continue;
   if(row.following===id)followers++;if(row.follower===id)following++;

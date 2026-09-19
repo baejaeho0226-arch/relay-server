@@ -47,7 +47,7 @@ function NeedsPrune(p,products,services){
  return JSON.stringify(Rows(p,'products'))!==JSON.stringify(products)||JSON.stringify(Rows(p,'services'))!==JSON.stringify(services);
 }
 // Startup migration calls this after installing the imported member store.
-// Ordinary history/home reads remain pure and never create a save per refresh.
+// Ordinary history reads remain pure and never create a save per refresh.
 function PruneStored(p){
  const products=Entries(p,'products'),services=Entries(p,'services');
  if(!NeedsPrune(p,products,services))return false;
