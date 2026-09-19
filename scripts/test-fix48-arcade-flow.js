@@ -55,7 +55,7 @@ try{
  clock+=300;const second=ok(a2,'arcade.play',body,'ARCADE-SLOT-REPLAY-02');assert.equal(second.stats.played,2);assert.equal(second.wallet.balance,22810);
  const ledgerCount=Object.keys(s.DB().ledger).length,snapshot=JSON.parse(JSON.stringify(s.DB()));s.Import({memberHub:snapshot});
  const restarted=ok(a,'arcade.play',body,'ARCADE-SLOT-REPLAY-01');assert.deepEqual(restarted.result,result.result);assert.equal(restarted.wallet.balance,22810);assert.equal(restarted.stats.played,2);assert.deepEqual(restarted.lastResult,second.result);assert.equal(Object.keys(s.DB().ledger).length,ledgerCount);
- assert.equal(ok(a,'home').profile.balance,22810,'home sees the same wallet');
+ assert.equal(ok(a,'me').profile.balance,22810,'account sees the same wallet');
  assert.equal(ok(a,'rewards').profile.balance,22810,'points view sees the same wallet');
  assert.equal(request(b,'arcade.play',body).reason,'ARCADE_BALANCE_REQUIRED','other member cannot spend owner virtual credits');
  a.c.biometricVerified=false;assert.equal(request(a,'arcade.play',body).reason,'MEMBER_AUTH_REQUIRED');a.c.biometricVerified=true;
@@ -71,7 +71,7 @@ try{
  s.Atomic(()=>s.Ledger(s.ProfileById(owner),1000,'TEST_ADJUSTMENT','FIX50-POST-NUMBER'));
  const persisted=JSON.parse(fs.readFileSync(require('../config/config').DB_FILE,'utf8'));s.Import(persisted);
  const numberRetry=ok(a2,'arcade.play',numberBody,'FIX50-NUMBER-REPLAY');assert.deepEqual(numberRetry.result,numberRound.result);assert.equal(numberRetry.wallet.balance,144023810);assert.equal(numberRetry.wallet.revision,s.DB().revision);
- assert.equal(ok(a,'home').profile.balance,144023810);assert.equal(ok(a,'rewards').profile.balance,144023810);
+ assert.equal(ok(a,'me').profile.balance,144023810);assert.equal(ok(a,'rewards').profile.balance,144023810);
  assert.equal(Object.values(s.DB().ledger).filter(row=>row.reference===numberRound.result.id).length,2,'number round has exactly one debit and one payout after restart and retry');
  assert.deepEqual(untouched(),initial);assert.deepEqual(badgeRewards(),paidTitles,'later plays and persisted replays never pay the first-play titles twice');
  console.log('FIX48/FIX50 ARCADE FLOW PASS: signed immediate virtual settlement, same-account multi-device replay/rate guard, notifications, private wallet, forged inputs, authentication, wallet consistency and restart-safe fresh balance with immutable prior result.');

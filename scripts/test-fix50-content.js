@@ -49,7 +49,7 @@ function gamePhoto(genre,parent=w.document){assert.equal(parent.querySelector('.
  for(const genre of ['', ' '.repeat(3)])assert.throws(()=>admin('product.save',{id:game.id,title:game.title,accessType:game.accessType,genre,published:true}),/INPUT_INVALID/);
  const omittedGenre=admin('product.save',{title:'이전 형식의 새 게임',accessType:'TYPE1'});assert.equal(omittedGenre.genre,'게임');noGameRetired(omittedGenre);
  // All public and administrator projections retain only top-level genre and text.
- for(const row of [hub.AdminRead({view:'products'}).items.find(x=>x.id===game.id),hub.AdminRead({view:'products',id:game.id}).items[0],run('product',{id:game.id}).product,run('catalog').items[0],run('catalog',{summary:true}).items[0],run('home').games.items[0]]){noGameRetired(row);assert.equal(row.genre,'퍼즐');assert.ok(row.description);assert.ok(row.plans.some(p=>p.days===3&&p.price===300&&p.available));}
+ for(const row of [hub.AdminRead({view:'products'}).items.find(x=>x.id===game.id),hub.AdminRead({view:'products',id:game.id}).items[0],run('product',{id:game.id}).product,run('catalog').items[0],run('catalog',{summary:true}).items[0]]){noGameRetired(row);assert.equal(row.genre,'퍼즐');assert.ok(row.description);assert.ok(row.plans.some(p=>p.days===3&&p.price===300&&p.available));}
  assert.equal(run('catalog',{summary:true}).items[0].description,game.description.replace(/\s+/g,' ').trim().slice(0,140));assert.equal(run('product',{id:game.id}).product.description,game.description);
  // Normalized legacy UPDATE news stays visible and editable as NOTICE.
  const news=admin('news.save',{title:'이전 소식',body:'보존할 본문',category:'NOTICE',published:true});

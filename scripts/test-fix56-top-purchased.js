@@ -11,10 +11,10 @@ function client(n){
  c.licenseKey=lm.CreateLicense(900,'출입증',['QR'],'QR').key;state.licenses.get(c.licenseKey).boundClient=id;return c;
 }
 const run=(c,action,body={},id)=>hub.Execute(c,id||'FIX56-TOP-REQUEST-'+(++serial),action,body);
-const account=c=>s.Account(c),read=c=>run(c,'home').topPurchased;
+const account=c=>s.Account(c),read=c=>{run(c,'topgames');return require('../services/member/topGames').RankedPurchases();};
 const product=(title,genre='레이싱')=>commerce.SaveProduct({title,description:'구매 요약 검증',genre,accessType:'TYPE1',published:true,plans:[{days:1,price:100},{days:7,price:700}]});
 const buy=(c,game,days=1,id)=>run(c,'purchase',{productId:game.id,days,price:days*100,revision:game.revision},id);
-const expected=(game,purchaseCount,totalDays)=>({id:game.id,title:game.title,genre:game.genre,purchaseCount,totalDays,imageCover:game.imageCover||''});
+const expected=(game,purchaseCount,totalDays)=>({id:game.id,title:game.title,genre:game.genre,purchaseCount,totalDays});
 function failedSave(fn){const before=JSON.stringify(s.DB()),save=database.SaveDatabase;try{database.SaveDatabase=()=>false;assert.throws(fn,/STORAGE_SAVE_FAILED/);}finally{database.SaveDatabase=save;}assert.equal(JSON.stringify(s.DB()),before,'failed purchase leaves no receipt or duration extension');}
 try{
  const a=client(5601),b=client(5602),viewer=client(5603),legacy=client(5604);
@@ -31,14 +31,14 @@ try{
  run(b,'preferences.save',{purchaseActivityVisible:false});buy(b,g);
  run(a,'block.set',{id:account(b).id,blocked:true});
  assert.deepEqual(read(a),[expected(g,3,9)]);
- assert.equal(run(a,'home').recentPurchases.some(x=>x.member.id===account(b).id),false);
+ assert.equal(run(a,'activity').items.some(x=>x.member.id===account(b).id),false);
  for(const game of [other,tieA,tieB]){buy(a,game,game===other?7:1);buy(b,game,game===other?7:1);}
  const ties=[tieA,tieB].sort((x,y)=>x.id<y.id?-1:1);
- const ranked=[expected(g,3,9),expected(other,2,14),expected(ties[0],2,2)];
- assert.deepEqual(read(viewer),ranked,'purchase count leads, days break ties, product ID gives stable final ordering and only three rows');
+ const ranked=[expected(g,3,9),expected(other,2,14),expected(ties[0],2,2),expected(ties[1],2,2)];
+ assert.deepEqual(read(viewer),ranked,'purchase count leads, days break ties, product ID gives stable final ordering across the full ranking');
  assert.deepEqual(read(a),ranked,'ranking is global and unaffected by viewer relationships');
  const full=run(viewer,'topgames',{limit:2});
- assert.equal(full.total,4,'ranking details include purchases below the three-item home preview');
+ assert.equal(full.total,4,'ranking details include all four purchased games');
  assert.equal(full.nextOffset,2);assert.deepEqual(full.items.map(x=>x.rank),[1,2]);
  assert.deepEqual(full.items.map(x=>x.id),ranked.slice(0,2).map(x=>x.id));
  const secondPage=run(viewer,'topgames',{offset:2,limit:2});
@@ -47,17 +47,17 @@ try{
  assert.deepEqual(Object.keys(full.items[0]).sort(),['genre','id','imageCover','rank','title']);
  const rankingDb=JSON.stringify(s.DB());run(viewer,'topgames');assert.equal(JSON.stringify(s.DB()),rankingDb);
 
- for(const row of read(viewer))assert.deepEqual(Object.keys(row).sort(),['genre','id','imageCover','purchaseCount','title','totalDays'],'only public product metadata and aggregate counts leave the service');
+ for(const row of read(viewer))assert.deepEqual(Object.keys(row).sort(),['genre','id','purchaseCount','title','totalDays'],'ranking aggregation contains only public product metadata and counts');
  // Historical completed use remains a sale; refunds remove all merged receipts.
  s.Atomic(()=>{s.DB().orders[first.order.id].status='EXPIRED';});
  assert.deepEqual(read(viewer),ranked,'expiry does not erase successful historical purchases');
  commerce.Refund({id:first.order.id,reason:'구매 요약 환불 검증'},'FIX56-TEST');
- assert.deepEqual(read(viewer),[expected(other,2,14),expected(ties[0],2,2),expected(ties[1],2,2)]);
+ assert.deepEqual(read(viewer),[expected(other,2,14),expected(ties[0],2,2),expected(ties[1],2,2),expected(g,1,1)]);
  s.Atomic(()=>{s.DB().products[other.id].published=false;s.DB().products[ties[0].id].deleted=true;});
  assert.deepEqual(read(viewer),[expected(ties[1],2,2),expected(g,1,1)],'deleted and unpublished products cannot occupy clickable summary rows');
  s.Atomic(()=>{s.DB().products[ties[1].id].published=false;s.DB().products[g.id].published=false;});
  assert.deepEqual(read(viewer),[]);
- // Old independent orders carry one unsnapshotted payment each. Home reads must
+ // Old independent orders carry one unsnapshotted payment each. Ranking reads must
  // remain pure until the account's normal commerce migration merges the passes.
  const old=product('이전 구매 기록','아케이드');
  function oldOrder(id,days){const p=account(legacy),row={id,accountId:p.id,productId:old.id,title:old.title,accessType:'TYPE1',days,amount:days*100,status:'PAID',at:now,activatedAt:0,expiresAt:0,licenseKey:'',source:'WALLET_PURCHASE'};s.DB().orders[id]=row;s.Ledger(p,-row.amount,'PURCHASE',id);return row;}
@@ -88,10 +88,10 @@ try{
   seed('ORD-FIX56-DETACHED-MERGE','MERGED');
  });
  assert.deepEqual(read(viewer),[]);
- before=JSON.stringify(s.DB());for(let i=0;i<3;i++)assert.deepEqual(read(viewer),[]);assert.equal(JSON.stringify(s.DB()),before,'home refresh is read-only even with invalid legacy references');
+ before=JSON.stringify(s.DB());for(let i=0;i<3;i++)assert.deepEqual(read(viewer),[]);assert.equal(JSON.stringify(s.DB()),before,'ranking refresh is read-only even with invalid legacy references');
  const persisted=product('재시작 후 구매 순위');buy(a,persisted,7);
  const afterRestart=[expected(persisted,1,7)];assert.deepEqual(read(viewer),afterRestart);
  const exported=database.BuildDatabaseObject();assert.equal(database.ImportDatabaseObject(exported),true);assert.deepEqual(read(viewer),afterRestart,'ranking uses persisted receipts and refund state after reload');
  viewer.biometricVerified=false;assert.throws(()=>read(viewer),/MEMBER_AUTH_REQUIRED/);assert.throws(()=>run(viewer,'topgames'),/MEMBER_AUTH_REQUIRED/);
- console.log('FIX56 TOP PURCHASED PASS: authenticated home, top-three global ranking, stable ties, payment/merged-duration counting, retries, rollback, aggregate privacy, available products, expiry, refunds and aliases, legacy read purity, invalid receipt filtering and reload.');
+ console.log('FIX56 TOP PURCHASED PASS: authenticated complete global ranking, stable ties, payment/merged-duration counting, retries, rollback, aggregate privacy, available products, expiry, refunds and aliases, legacy read purity, invalid receipt filtering and reload.');
 }finally{Date.now=realNow;fs.rmSync(temp,{recursive:true,force:true});}

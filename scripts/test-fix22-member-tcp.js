@@ -74,10 +74,10 @@ let regressionCompleted=false;process.once('exit',()=>{if(!regressionCompleted){
  author.c.hubRate=null;viewer.c.hubRate=null;
  const feed=await run(viewer,'feed');assert.equal(feed.items.length,8);assert.ok(Buffer.from(JSON.stringify({ok:true,data:feed})).toString('base64').length<900000);assert.ok(feed.items.every(x=>x.image.startsWith('data:image/jpeg;')));
  const removed=await run(author,'post.edit',{id:posted.post.id,revision:1,body:'사진 삭제',image:'',imagePosition:'after'});assert.equal(removed.post.image,'');assert.equal(removed.post.imagePosition,'after');
- const home=await run(author,'home');assert.equal(home.profile.id,a.id);assert.equal(home.summary.posts,8);
+ const menu=await run(author,'menu');assert.equal(menu.profile.id,a.id);assert.equal(menu.counts.posts,8);
  const records=await web('admin','/api/member?view=lookup&handle=%40round.member&section=posts&limit=3');assert.equal(records.payload.items.length,3);assert.equal(records.payload.total,8);assert.equal(records.payload.nextOffset,3);
  const persistent=db.BuildDatabaseObject();assert.equal(db.ImportDatabaseObject(persistent),true);assert.equal(store.Resolve('@ROUND.MEMBER').id,a.id);assert.ok(store.ProfileById(a.id).handleChangedAt);assert.ok(Object.values(store.DB().posts).some(x=>x.imageFeed));assert.equal(store.DB().posts[posted.post.id].imagePosition,'after');
  author.c.biometricVerified=false;assert.equal((await request(author,'records',{handle:'@round.member'})).reason,'MEMBER_AUTH_REQUIRED');
- console.log('FIX22 TCP/API PASS: one-time unique handle, 30-day nickname gate, reserved legacy handle, signed photo upload/edit/delete/replay, response bound, admin-only records, registered phone/biometric links, admin role and alias operations, home summary and durable import');
+ console.log('FIX22 TCP/API PASS: one-time unique handle, 30-day nickname gate, reserved legacy handle, signed photo upload/edit/delete/replay, response bound, admin-only records, registered phone/biometric links, admin role and alias operations, menu counts and durable import');
  regressionCompleted=true;
 }catch(e){console.error(e);process.exitCode=1;}finally{for(const p of peers)p.close();await Promise.all(closed);await new Promise(resolve=>server.close(resolve));fs.rmSync(temp,{recursive:true,force:true});}})().catch(e=>{console.error(e);process.exitCode=1;});

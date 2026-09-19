@@ -48,7 +48,7 @@ async function run(p,action,body,id){const r=await request(p,action,body,id);ass
  assert.equal((await request(peer,'test.enter')).reason,'MEMBER_AUTH_REQUIRED');c.permissionsGranted=true;
  const grant=await run(peer,'test.enter');assert.equal(grant.testAccess,true);assert.equal(grant.challengeId,c.deviceAuthChallengeId);assert.equal(service.Allowed(c),true);
  assert.equal(c.biometricVerified,false);assert.equal(JSON.stringify([...state.clientBiometricProfiles]),before);
- const profile=(await run(peer,'me')).profile;await run(peer,'home');await run(peer,'feed');await run(peer,'catalog');
+ const profile=(await run(peer,'me')).profile;await run(peer,'me');await run(peer,'feed');await run(peer,'catalog');
  const post=(await run(peer,'post.create',{body:'인증 생략 테스트 게시글',_delta:true})).post;
  assert.equal((await run(peer,'thread',{postId:post.id})).post.body,'인증 생략 테스트 게시글');
  await run(peer,'post.delete',{id:post.id});

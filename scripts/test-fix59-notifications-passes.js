@@ -41,7 +41,7 @@ try{
   const baseline=snapshot(),initial=run(a,'notifications');assert.equal(initial.total,29);assert.equal(initial.items.length,20);assert.equal(initial.nextOffset,20);assert.equal(snapshot(),baseline,'inbox reads are pure');
   assert.ok(!JSON.stringify(initial).includes('SECRET-B'));assert.equal(run(a,'notifications',{accountId:bId}).total,initial.total);
   const points=JSON.stringify(s.DB().pointLedger),wallet=JSON.stringify(s.DB().ledger),news=JSON.stringify(s.DB().news),otherBefore=noticeIds(run(b,'notifications'));
-  for(const action of ['notifications','notifications.clear','live','me','home']){a.biometricVerified=false;assert.throws(()=>run(a,action,{confirmed:true}),/MEMBER_AUTH_REQUIRED/);a.biometricVerified=true;}
+  for(const action of ['notifications','notifications.clear','live','me','menu']){a.biometricVerified=false;assert.throws(()=>run(a,action,{confirmed:true}),/MEMBER_AUTH_REQUIRED/);a.biometricVerified=true;}
   for(const confirmed of [false,undefined,1,'true'])assert.throws(()=>run(a,'notifications.clear',{confirmed}),/INPUT_INVALID/);
   let before=snapshot();const save=database.SaveDatabase;database.SaveDatabase=()=>false;
   try{assert.throws(()=>run(a,'notifications.clear',{confirmed:true},'FIX59-CLEAR-FAIL'),/STORAGE_SAVE_FAILED/);}finally{database.SaveDatabase=save;}
@@ -79,7 +79,7 @@ try{
   });
   const activeIds=[id1,id2];
   before=snapshot();const live=run(game,'live',{accountId:own(remote).id});assert.deepEqual(ids(live),activeIds);assert.equal(snapshot(),before,'active-game projections never normalize or write during live reads');
-  for(const view of ['home','me','live']){
+  for(const view of ['me','live']){
    const value=run(game,view);assert.deepEqual(ids(value),activeIds,view+' includes all own active passes');assert.equal(value.activeGame.id,id2,'legacy singular field keeps the last-used pass');
    for(const row of value.activeGames){assert.equal(row.genre,'레이싱');for(const key of ['licenseKey','accountId','subject','amount'])assert.equal(row[key],undefined);}
    for(const excluded of [remoteId,unused,refundable,'MERGED','EXPIRED','DETACHED_MERGED','NOT_ACTIVATED','REFUNDED'])assert.ok(!ids(value).includes(excluded));

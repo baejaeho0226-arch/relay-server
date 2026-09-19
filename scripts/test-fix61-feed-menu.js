@@ -27,13 +27,24 @@ assert.match(social,/if Icon='more' then AddMemberSvg\([^\n]+\).RotationAngle:=9
 const apply=feed.slice(feed.indexOf('procedure TMoaPlayForm.HubApplyFollow'));
 assert.match(apply,/if Assigned\(HubObject\(Data,'counts'\)\) then\s*for Cache in FHubCache.Values do UpdateCachedState\(Cache\)/,'cache refresh is ACK-only, not a full scan per live profile');
 assert.match(apply,/HubSetJSON\(Obj,'following',TJSONBool.Create\(Following\)\)/,'reopening the sheet after ACK sees committed following state');
-const results=between(menu,'procedure TMoaPlayForm.HubRenderMenuResults','procedure TMoaPlayForm.HubMenuCategoryClick');
-assert.equal((results.match(/HubGlassCardStyle\(C\)/g)||[]).length,2,'normal and @profile search rows use the shared settings-like surface');
-assert.doesNotMatch(results,/C\.(?:Fill|Stroke)\.Kind:=TBrushKind.None/,'restored destination cards retain their fill and border');
-assert.match(menu,/procedure HubMenuCategoryStyle[\s\S]*HubActionPanelStyle\(Card\);[\s\S]*if Selected then Card.Stroke.Color:=MemberText/,'category selectors retain their outline');
+const results=menu.slice(menu.indexOf('procedure TMoaPlayForm.HubRenderMenuResults'));
+assert.equal((results.match(/C\.Fill\.Kind:=TBrushKind.None;C\.Stroke\.Kind:=TBrushKind.None/g)||[]).length,2,'normal and @profile search rows remain fully transparent');
+assert.doesNotMatch(menu,/HubMenuCategory|FHubMenuCategory|HubRenderHomeSummary|HubCached\('home'\)/,'All menu no longer contains Home or category filters');
+assert.match(menu,/HubObject\(HubCached\('menu'\),'counts'\)/,'menu badges read the lightweight menu response');
+assert.match(menu,/if Query.StartsWith\('@'\) then begin/,'member lookup is available without category gating');
+assert.match(menu,/AddMemberSvg\(C,C,Icons\[I\],23,18,20,20\)/,'icons remain visible directly on each row');
+const arrays=Object.fromEntries(['Names','Actions','Groups','Icons'].map(key=>{
+ const line=menu.match(new RegExp(key+":=\\[([^\\n]+)\\];"));assert.ok(line,key+' array');
+ return [key,[...line[1].matchAll(/'([^']*)'/g)].map(m=>m[1])];
+}));
+for(const values of Object.values(arrays)) assert.equal(values.length,arrays.Names.length,'menu metadata remains aligned');
+for(const [action,name,group] of [['attendance','출석 체크','wallet'],['notifications','알림','my']]){
+ const index=arrays.Actions.indexOf(action);assert.ok(index>=0,action+' remains reachable after Home removal');
+ assert.equal(arrays.Names[index],name);assert.equal(arrays.Groups[index],group);assert.ok(arrays.Icons[index]);
+}
 for(const width of [240,280,320,360,412,600,800]){
  const headerX=16,headerWidth=width-32-44,avatarWidth=40,nameX=50,available=headerWidth-nameX,moreX=width-52,moreWidth=44;
  assert.ok(available>0);assert.ok(headerX+headerWidth<moreX,'author hit target cannot overlap overflow');
  assert.ok(avatarWidth<nameX);assert.ok(moreX+moreWidth<=width,'overflow retains a full 44px hit target');
 }
-console.log('FIX61 FEED/MENU PASS: peer-only follow/chat targets, self-route fault checks, durable mutation queue, owner actions, header hit bounds, vertical overflow, acknowledged follow state, restored menu surfaces and retained category selectors.');
+console.log('FIX61 FEED/MENU PASS: peer-only follow/chat targets, self-route fault checks, durable mutation queue, owner actions, header hit bounds, vertical overflow, acknowledged follow state, transparent compact menu rows, category-free search and retained attendance/notification routes.');

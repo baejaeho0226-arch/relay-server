@@ -15,7 +15,7 @@ try{
  for(const action of ['coin.save','topup.decide','topup.reopen','settings.save'])fail(()=>admin(action,{}),'TOPUP_UNAVAILABLE');
  for(const view of ['coins','topups'])fail(()=>hub.AdminRead({view}),'TOPUP_UNAVAILABLE');
  fail(()=>admin('content.action',{table:'coins',id:'old',operation:'delete'}),'CONTENT_ACTION_INVALID');assert.equal(JSON.stringify(s.DB()),before);
- assert.equal(run(a,'me').profile.balance,10000);assert.equal(run(a,'me').topups,undefined);assert.equal(run(a,'me').settings,undefined);assert.deepEqual(run(a,'home').settings,{});
+ assert.equal(run(a,'me').profile.balance,10000);assert.equal(run(a,'me').topups,undefined);assert.equal(run(a,'me').settings,undefined);assert.equal(run(a,'me').settings,undefined);
  const snapshot=structuredClone(s.DB());s.Import({memberHub:snapshot});assert.deepEqual(s.DB().topups,snapshot.topups);assert.deepEqual(s.DB().ledger,snapshot.ledger);
  // Only opening a published, authorized article marks that specific revision as read.
  const n1=admin('news.save',{title:'소식 1',body:'첫 내용',category:'NOTICE',published:true});const n2=admin('news.save',{title:'소식 2',body:'다른 내용',category:'NOTICE',published:true});

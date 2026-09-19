@@ -70,7 +70,7 @@ try{
  // global revision is replaced; rule revisions still belong to cached content.
  const rewards=run(a,'rewards'),ruleRevision=rewards.rules.revision;s.Atomic(()=>{s.DB().settings.rewards={...require('../services/member/rewards').Rules(),revision:ruleRevision+1};});
  const revisedRules=run(a,'rewards',{_ifNoneMatch:rewards.contentTag});assert.notEqual(token(revisedRules),rewards.contentTag);assert.equal(revisedRules.rules.revision,ruleRevision+1);
- const home=run(a,'home'),homeTag=token(home);s.Atomic(()=>{s.DB().settings.unrelatedDiagnosticCounter++;});unchanged(run(a,'home',{_ifNoneMatch:homeTag}),homeTag);
+ const menu=run(a,'menu'),menuTag=token(menu);s.Atomic(()=>{s.DB().settings.unrelatedDiagnosticCounter++;});unchanged(run(a,'menu',{_ifNoneMatch:menuTag}),menuTag);
  // Signed read responses can use compact envelopes without broadcasting an
  // invalidation storm merely because the action name contains a dot.
  for(const [action,body] of [['currency.list',{query:'bit'}],['currency.quote',{code:'CG:bitcoin'}],['currency.quote',{code:'KRW'}]]){
